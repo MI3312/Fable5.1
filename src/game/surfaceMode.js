@@ -8,6 +8,7 @@ import { createVoxelMaterials, voxelUniforms } from '../world/voxelMaterial.js';
 import { World } from '../world/world.js';
 import { B, BLOCKS, IS_LIQUID, IS_CROSS, IS_AIRLIKE, IS_SOLID, isPlaceable } from '../world/blocks.js';
 import { planStructure, REGION, STRUCTURE_INFO } from '../world/structures.js';
+import { ZONE_INFO } from '../world/zones.js';
 import { Sky, Clouds, Weather } from '../surface/sky.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
@@ -32,6 +33,12 @@ const HAZARD_COLORS = { heat: [1, 0.45, 0.1], cold: [0.5, 0.8, 1], toxic: [0.6, 
 const LOOT_DREAM = ['chroma_shard', 'somnium', 'liquid_light', 'echo_shell', 'memory_fragment', 'static_bloom'];
 const LOOT_TECH = ['metal_plating', 'dihydrogen_jelly', 'carbon_nanotubes', 'ion_battery', 'chromatic_metal', 'gold', 'cobalt', 'microprocessor', 'antimatter'];
 
+const POINT_LIGHT_COLORS = {
+  [B.LIGHT_PANEL]: [0.72, 0.76, 0.8], [B.LAMP]: [1.0, 0.78, 0.5], [B.NEON]: [1.0, 0.35, 0.85], [B.SODIUM_PLANT]: [0.9, 0.65, 0.2],
+  [B.DIHYDRO]: [0.3, 0.55, 1.0], [B.STARRY]: [0.4, 0.3, 0.9], [B.POD]: [0.35, 0.85, 1.0], [B.SENTINEL_PILLAR]: [1.0, 0.18, 0.12],
+};
+
+const ENC_OFFS = [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [7, 7], [-7, -7], [7, -7], [-7, 7]];
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
@@ -40,7 +47,7 @@ export class SurfaceMode {
   constructor(game) {
     this.game = game;
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xffffff, 40, 110);
+    this.scene.fog = new THREE.FogExp2(0xffffff, 0.01);
     this.atlas = createAtlasTexture();
     this.materials = createVoxelMaterials(this.atlas);
     this.world = new World(this.scene, this.materials);
@@ -100,7 +107,7 @@ export class SurfaceMode {
   setRenderDistance(d) {
     this.world.setRenderDistance(d);
     const far = d * 16;
-    voxelUniforms.uFogNear.value = far * 0.35;
+    voxelUniforms.uFogNear.value = far * 0.6;
     voxelUniforms.uFogFar.value = far - 6;
     this.fogFar = far - 6;
   }
@@ -376,6 +383,19 @@ export class SurfaceMode {
   }
 
   // ---------------- sky / time ----------------
+  // 0 = open sky, 1 = well under a roof. Samples the sky-height map around the camera.
+  _enclosure(dt) {
+    const c = this.game.camera.position;
+    let cover = 0;
+    for (const [dx, dz] of ENC_OFFS) {
+      const sh = this.world.skyHeightAt(c.x + dx, c.z + dz);
+      if (sh > c.y + 1.5) cover++;
+    }
+    const target = this.game.inShip || this.interior ? 0 : clamp((cover - 1) / (ENC_OFFS.length - 2), 0, 1);
+    this.encK = (this.encK ?? target) + (target - (this.encK ?? target)) * Math.min(1, dt * 1.5);
+    return this.encK;
+  }
+
   _applySky(dt) {
     const P = this.P;
     const u = voxelUniforms;
@@ -415,21 +435,47 @@ export class SurfaceMode {
     const moon = 1 - daylight;
     u.uSkyLight.value.setRGB(sk * lerp(1, 1.1, sunset) * (1 - moon * 0.25), sk * lerp(1, 0.85, sunset) * (1 - moon * 0.1), sk * lerp(1.05, 0.75, sunset) * (1 + moon * 0.25));
     const far = this.fogFar || 110;
-    u.uFogFar.value = far * (1 - storm * 0.45) * (P.biome === 'toxic' || P.biome === 'radioactive' ? 0.85 : 1);
-    u.uFogNear.value = u.uFogFar.value * (0.3 - storm * 0.15);
-    this.scene.fog.color.setRGB(hor[0], hor[1], hor[2]);
-    this.scene.fog.near = u.uFogNear.value;
-    this.scene.fog.far = u.uFogFar.value * 1.1;
+    u.uFogFar.value = far;
+    u.uFogNear.value = far * 0.6;
+    const FG = P.fog;
+    const fogK = (1 + storm * 1.6) * (this.game.inShip && this.game.ship.state === 'flying' ? 0.6 : 1);
+    u.uFogDensity.value = FG.density * fogK;
+    u.uMistDensity.value = FG.mistDensity * (1 + storm);
+    u.uMistBase.value = FG.mistBase;
+    u.uMistFalloff.value = FG.mistFalloff;
+    // mist glows softly in daylight, turns to deep velvet at night
+    const mc = FG.mistColor;
+    const ml = lerp(0.16, 1, daylight);
+    u.uMistCol.value.setRGB(
+      lerp(mc[0] * ml, u.uSunsetCol.value.r, sunset * 0.35) + (1 - daylight) * 0.02,
+      lerp(mc[1] * ml, u.uSunsetCol.value.g, sunset * 0.35) + (1 - daylight) * 0.02,
+      lerp(mc[2] * ml, u.uSunsetCol.value.b, sunset * 0.35) + (1 - daylight) * 0.05,
+    );
+    this.sky.uniforms.uSkyFog.value = FG.skyFog * (1 - (P.sky.stars >= 1 ? 1 : 0)) + storm * 0.3;
+    // enclosure: under a roof (caves, backrooms, libraries) the open-air mist gives way to a dim indoor haze
+    const enc = this._enclosure(dt);
+    u.uEnclosed.value = enc;
+    if (enc > 0.001) {
+      u.uMistDensity.value *= 1 - enc;
+      u.uFogDensity.value = lerp(u.uFogDensity.value, dream ? 1 / 42 : 1 / 34, enc);
+      const A = u.uArtificial.value, am = u.uAmbient.value;
+      if (dream) u.uCaveCol.value.setRGB(A.r * 0.42 + am.r * 0.15, A.g * 0.4 + am.g * 0.15, A.b * 0.3 + am.b * 0.15);
+      else u.uCaveCol.value.setRGB(am.r * 0.12, am.g * 0.12, am.b * 0.14);
+    }
+    this.scene.fog.color.setRGB((hor[0] + u.uMistCol.value.r) * 0.5, (hor[1] + u.uMistCol.value.g) * 0.5, (hor[2] + u.uMistCol.value.b) * 0.5);
+    this.scene.fog.color.lerp(u.uCaveCol.value, enc);
+    this.scene.fog.density = u.uFogDensity.value * 1.25;
     if (this.interior) {
       u.uDaylight.value = 0;
       u.uSunset.value = 0;
       this.daylight = 1;
       u.uAmbient.value.setRGB(0.5, 0.48, 0.55);
       u.uSkyLight.value.setRGB(0.62, 0.6, 0.64);
-      u.uFogFar.value = 400; u.uFogNear.value = 300;
+      u.uFogFar.value = 400; u.uFogNear.value = 300; u.uFogDensity.value = 0.002; u.uMistDensity.value = 0; u.uEnclosed.value = 0;
+      this.scene.fog.density = 0.002;
+      this.sky.uniforms.uSkyFog.value = 0;
       u.uZenith.value.setRGB(0, 0, 0.01); u.uHorizon.value.setRGB(0.03, 0.02, 0.06);
       u.uSunDir.value.copy(this.starDir);
-      this.scene.fog.near = 300; this.scene.fog.far = 400;
       this.sunLight.position.copy(this.starDir).multiplyScalar(100);
       this.sunLight.intensity = 0.9 * Math.PI;
       this.hemi.intensity = 0.9 * Math.PI;
@@ -514,6 +560,7 @@ export class SurfaceMode {
     }
     this.world.update(focus.x, focus.z, 5);
     this._updateCamera(dt);
+    this._updatePointLights(dt);
     // crashed ship smoke
     if (!ship.thrustersRepaired && ship.state === 'landed') {
       this.smokeTimer -= dt;
@@ -570,6 +617,37 @@ export class SurfaceMode {
     this._structures(dt);
     this._whispers(dt);
     this._updateHUD(dt);
+  }
+
+  _updatePointLights(dt) {
+    this.plTimer = (this.plTimer || 0) - dt;
+    if (this.plTimer > 0) return;
+    this.plTimer = 0.2;
+    const W = this.world, cam = this.game.camera.position;
+    const pcx = Math.floor(cam.x / 16), pcz = Math.floor(cam.z / 16);
+    const cand = [];
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const c = W.chunks.get((pcx + dx) + ',' + (pcz + dz));
+      if (!c || !c.lights) continue;
+      const L = c.lights;
+      for (let i = 0; i < L.length; i += 4) {
+        const x = c.cx * 16 + L[i] + 0.5, y = L[i + 1] + 0.5, z = c.cz * 16 + L[i + 2] + 0.5;
+        const d = (x - cam.x) ** 2 + (y - cam.y) ** 2 + (z - cam.z) ** 2;
+        if (d < 34 * 34) cand.push([d, x, y, z, L[i + 3]]);
+      }
+    }
+    cand.sort((a, b) => a[0] - b[0]);
+    const u = voxelUniforms;
+    const T = this.P.tints;
+    for (let i = 0; i < u.uPL.value.length; i++) {
+      const c = cand[i];
+      if (!c) { u.uPL.value[i].set(0, -9999, 0); u.uPLCol.value[i].setRGB(0, 0, 0); continue; }
+      u.uPL.value[i].set(c[1], c[2], c[3]);
+      const col = POINT_LIGHT_COLORS[c[4]] || [0.6, 0.6, 0.6];
+      if (c[4] === B.CRYSTAL) u.uPLCol.value[i].setRGB(T[30] * 0.7, T[31] * 0.7, T[32] * 0.7);
+      else u.uPLCol.value[i].setRGB(col[0], col[1], col[2]);
+    }
+    u.uPLStrength.value = this.interior ? 0.5 : lerp(1.0, 0.3, this.daylight ?? 1);
   }
 
   _footEvents(ev) {
@@ -753,7 +831,7 @@ export class SurfaceMode {
     // interaction prompt
     this._interaction(target);
 
-    const muzzle = cam.localToWorld(new THREE.Vector3(0.26, -0.2, -0.95));
+    const muzzle = this._muzzleWorld(cam);
     const lmb = ctl && input.mouseDown(0);
     let beamOn = false;
     if (this.visor) {
@@ -814,6 +892,14 @@ export class SurfaceMode {
     t.rotation.set(0.03 + this.recoil * 0.2, 0.08, 0);
     t.userData.glowMat.color.set(this.overheated ? 0xff4020 : TOOL_COLORS[mode]);
     if (beamOn) t.position.x += (Math.random() - 0.5) * 0.004;
+  }
+
+  // Where the view-model's muzzle appears on screen, pushed into the world along that pixel's ray
+  _muzzleWorld(cam) {
+    this.tool.updateMatrixWorld(true);
+    const ndc = this.tool.userData.muzzle.getWorldPosition(new THREE.Vector3()).project(this.viewCamera);
+    const dir = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(cam).sub(cam.position).normalize();
+    return cam.position.clone().addScaledVector(dir, 0.9);
   }
 
   _mineBlock(hit, dt, how) {
@@ -1305,10 +1391,53 @@ export class SurfaceMode {
         }
       }
     }
+    const zone = this._zoneCheck(p);
+    if (zone === 'poolscape' || zone === 'backrooms' || zone === 'plasticity') hum = true;
     g.audio.setLoop('hum', hum && !g.inShip);
   }
 
+  // Which liminal zone the player stands in; announces each zone as it is entered.
+  _zoneCheck(p) {
+    const g = this.game;
+    if (this.interior) return null;
+    let zone = null;
+    if (this.P.underlayer && p.y > 6 && p.y < 16 && (this.encK || 0) > 0.5) zone = 'backrooms';
+    else {
+      const zi = this.world.terrain.zoneAt(p.x, p.z);
+      if (zi.type !== 'natural' && zi.blend > 0.6) zone = zi.type;
+    }
+    if (zone === this.zoneCur) return zone;
+    this.zoneCur = zone;
+    if (!zone || g.inShip) return zone;
+    const info = ZONE_INFO[zone];
+    const d = g.state.discoveries;
+    d.zones = d.zones || {};
+    const k = `${this.planet.id}:${zone}`;
+    if (!d.zones[k]) {
+      d.zones[k] = { name: info.name, planet: this.planet.name };
+      g.inventory.add('units', 500);
+      g.inventory.add('chroma_shard', 1);
+      g.hud.notify(null, 'chroma_shard', 1);
+      g.hud.toast(info.name, info.text, '#f3c6ff');
+      g.audio.zoneEnter(true);
+    } else {
+      g.hud.toast(info.name, null, '#d9c9ef');
+      g.audio.zoneEnter(false);
+    }
+    return zone;
+  }
+
   _whispers(dt) {
+    const dreamy = this.P.biome === 'liminal' || this.P.biome === 'exotic' || !!this.zoneCur;
+    if (!dreamy || this.interior) return;
+    // distant, unexplained sounds
+    this.eerieTimer = (this.eerieTimer ?? 25) - dt;
+    if (this.eerieTimer <= 0 && !this.game.inShip) {
+      this.eerieTimer = 28 + Math.random() * 50;
+      const z = this.zoneCur;
+      const kinds = z === 'backrooms' || z === 'plasticity' ? ['door', 'steps', 'hum', 'thud'] : z === 'library' ? ['steps', 'door', 'chime'] : ['thud', 'chime', 'door', 'steps'];
+      this.game.audio.distant(kinds[Math.floor(Math.random() * kinds.length)]);
+    }
     if (this.P.biome !== 'liminal' && this.P.biome !== 'exotic') return;
     this.whisperTimer -= dt;
     if (this.whisperTimer <= 0) {

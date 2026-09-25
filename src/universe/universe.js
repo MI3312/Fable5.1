@@ -161,6 +161,7 @@ export class Universe {
     params.sky.nightZenith = [0, 0, 0]; params.sky.nightHorizon = [0.03, 0.02, 0.06];
     params.sky.stars = 1; params.sky.cloudCover = 0; params.sky.dream = 0.6;
     params.adjective = 'Orbital';
+    params.fog = { density: 1 / 400, mistDensity: 0, mistBase: 0, mistFalloff: 5, skyFog: 0, mistColor: [0.1, 0.08, 0.15] };
     return {
       id: `${sys.key}/station`,
       index: -1,

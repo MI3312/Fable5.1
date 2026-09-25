@@ -23,7 +23,7 @@ self.onmessage = (e) => {
     const data = gen.generate(msg.cx, msg.cz, msg.edits);
     const heights = computeHeights(data, new Int16Array(PW * PW));
     const mesh = meshChunk(data, heights, tints, msg.cx * 16, msg.cz * 16);
-    const transfer = [data.buffer, heights.buffer];
+    const transfer = [data.buffer, heights.buffer, mesh.lights.buffer];
     for (const k of ['opaque', 'cutout', 'translucent']) {
       const m = mesh[k];
       transfer.push(m.pos.buffer, m.uvl.buffer, m.tint.buffer, m.light.buffer, m.idx.buffer);

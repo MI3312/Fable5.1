@@ -58,7 +58,7 @@ class Buf {
     this.pos = new Float32Array(q * 12);
     this.uvl = new Float32Array(q * 12);
     this.tint = new Uint8Array(q * 12);
-    this.light = new Uint8Array(q * 12);
+    this.light = new Uint8Array(q * 16);
     this.idx = new Uint32Array(q * 6);
     this.q = 0;
   }
@@ -77,7 +77,7 @@ class Buf {
       pos: this.pos.slice(0, q * 12),
       uvl: this.uvl.slice(0, q * 12),
       tint: this.tint.slice(0, q * 12),
-      light: this.light.slice(0, q * 12),
+      light: this.light.slice(0, q * 16),
       idx: this.idx.slice(0, q * 6),
     };
   }
@@ -94,10 +94,14 @@ export function meshChunk(data, heights, tints, ox, oz) {
   const skyAt = (px, y, pz) => {
     if (y >= HEIGHT) return 1;
     if (y < 0) return 0;
-    const id = data[px + PW * (pz + PW * y)];
-    if (id === B.LIT_AIR) return 1;
     return y > heights[px + PW * pz] ? 1 : 0;
   };
+  // artificial light: interiors of liminal rooms are always fluorescent-lit
+  const artAt = (px, y, pz) => {
+    if (y < 0 || y >= HEIGHT) return 0;
+    return data[px + PW * (pz + PW * y)] === B.LIT_AIR ? 1 : 0;
+  };
+  const lights = [];
   const opaqueAt = (px, y, pz) => {
     if (y < 0) return 1;
     if (y >= HEIGHT) return 0;
@@ -124,9 +128,10 @@ export function meshChunk(data, heights, tints, ox, oz) {
         const buf = bufs[pass];
         const emit = BLOCK_EMIT[id];
         const wx = ox + px - 1, wz = oz + pz - 1;
+        if (emit >= 0.5 && id !== B.LAVA && lights.length < 1024) lights.push(px - 1, y, pz - 1, id);
 
         if (IS_CROSS[id]) {
-          emitCross(buf, def, id, px, y, pz, wx, wz, tints, skyAt(px, y, pz), emit);
+          emitCross(buf, def, id, px, y, pz, wx, wz, tints, skyAt(px, y, pz), emit, artAt(px, y, pz));
           continue;
         }
         const liquid = IS_LIQUID[id];
@@ -172,7 +177,7 @@ export function meshChunk(data, heights, tints, ox, oz) {
             buf.tint[o + 1] = Math.min(255, tg * 255);
             buf.tint[o + 2] = Math.min(255, tb * 255);
             // ambient occlusion + light
-            let ao = 3, sky;
+            let ao = 3, sky, art;
             const aoo = face.ao[v];
             const s1x = nx + aoo[0][0], s1y = ny + aoo[0][1], s1z = nz + aoo[0][2];
             const s2x = nx + aoo[1][0], s2y = ny + aoo[1][1], s2z = nz + aoo[1][2];
@@ -180,18 +185,22 @@ export function meshChunk(data, heights, tints, ox, oz) {
             if (!liquid && emit < 0.9) {
               const a1 = opaqueAt(s1x, s1y, s1z), a2 = opaqueAt(s2x, s2y, s2z), a3 = opaqueAt(ccx, ccy, ccz);
               ao = (a1 && a2) ? 0 : 3 - (a1 + a2 + a3);
-              let sum = skyAt(nx, ny, nz), cnt = 1;
-              if (!a1) { sum += skyAt(s1x, s1y, s1z); cnt++; }
-              if (!a2) { sum += skyAt(s2x, s2y, s2z); cnt++; }
-              if (!a3 && !(a1 && a2)) { sum += skyAt(ccx, ccy, ccz); cnt++; }
+              let sum = skyAt(nx, ny, nz), asum = artAt(nx, ny, nz), cnt = 1;
+              if (!a1) { sum += skyAt(s1x, s1y, s1z); asum += artAt(s1x, s1y, s1z); cnt++; }
+              if (!a2) { sum += skyAt(s2x, s2y, s2z); asum += artAt(s2x, s2y, s2z); cnt++; }
+              if (!a3 && !(a1 && a2)) { sum += skyAt(ccx, ccy, ccz); asum += artAt(ccx, ccy, ccz); cnt++; }
               sky = sum / cnt;
+              art = asum / cnt;
             } else {
               sky = skyAt(nx, ny, nz);
+              art = artAt(nx, ny, nz);
             }
             aoVals[v] = ao;
-            buf.light[o] = AO_CURVE[ao] * face.shade * 255;
-            buf.light[o + 1] = sky * 255;
-            buf.light[o + 2] = emit * 255;
+            const o4 = q * 16 + v * 4;
+            buf.light[o4] = AO_CURVE[ao] * face.shade * 255;
+            buf.light[o4 + 1] = sky * 255;
+            buf.light[o4 + 2] = emit * 255;
+            buf.light[o4 + 3] = art * 255;
           }
           const base = q * 4, io = q * 6;
           if (aoVals[0] + aoVals[2] >= aoVals[1] + aoVals[3]) {
@@ -205,10 +214,10 @@ export function meshChunk(data, heights, tints, ox, oz) {
       }
     }
   }
-  return { opaque: bufs[0].result(), cutout: bufs[1].result(), translucent: bufs[2].result() };
+  return { opaque: bufs[0].result(), cutout: bufs[1].result(), translucent: bufs[2].result(), lights: new Int16Array(lights) };
 }
 
-function emitCross(buf, def, id, px, y, pz, wx, wz, tints, sky, emit) {
+function emitCross(buf, def, id, px, y, pz, wx, wz, tints, sky, emit, art) {
   const h = hash32(wx, y, wz, 91);
   const jx = ((h & 15) / 15 - 0.5) * 0.4;
   const jz = (((h >> 4) & 15) / 15 - 0.5) * 0.4;
@@ -232,9 +241,11 @@ function emitCross(buf, def, id, px, y, pz, wx, wz, tints, sky, emit) {
       buf.pos[o] = verts[v][0]; buf.pos[o + 1] = verts[v][1]; buf.pos[o + 2] = verts[v][2];
       buf.uvl[o] = verts[v][3]; buf.uvl[o + 1] = verts[v][4]; buf.uvl[o + 2] = tile;
       buf.tint[o] = Math.min(255, tr * 255); buf.tint[o + 1] = Math.min(255, tg * 255); buf.tint[o + 2] = Math.min(255, tb * 255);
-      buf.light[o] = (v < 2 ? 0.7 : 0.95) * 255;
-      buf.light[o + 1] = sky * 255;
-      buf.light[o + 2] = emit * 255;
+      const o4 = q * 16 + v * 4;
+      buf.light[o4] = (v < 2 ? 0.7 : 0.95) * 255;
+      buf.light[o4 + 1] = sky * 255;
+      buf.light[o4 + 2] = emit * 255;
+      buf.light[o4 + 3] = art * 255;
     }
     const base = q * 4, io = q * 6;
     buf.idx[io] = base; buf.idx[io + 1] = base + 1; buf.idx[io + 2] = base + 2;

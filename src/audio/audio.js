@@ -144,6 +144,16 @@ export class AudioSystem {
     lfo.connect(lfoG); lfoG.connect(filter.frequency);
     lfo.start(t); lfo.stop(t + 16);
     filter.connect(this.musicBus);
+    // worn-tape warble on dreamlike moods
+    let warble = null;
+    if (m.dream) {
+      const wl = c.createOscillator();
+      warble = c.createGain();
+      wl.frequency.value = 0.21 + this.rng.range(0, 0.15);
+      warble.gain.value = 14;
+      wl.connect(warble);
+      wl.start(t); wl.stop(t + 30);
+    }
     notes.forEach((n, i) => {
       for (const det of [-6, 6]) {
         const o = c.createOscillator();
@@ -155,6 +165,7 @@ export class AudioSystem {
         const peak = (m.pad === 'sawtooth' || m.pad === 'square' ? 0.018 : 0.04) * (i === 0 ? 1.2 : 1);
         g.gain.linearRampToValueAtTime(peak, t + 3.5);
         o.connect(g); g.connect(filter);
+        if (warble) warble.connect(o.detune);
         o.start(t);
         o.stop(t + 30);
         this.padVoices.push({ o, g });
@@ -261,6 +272,65 @@ export class AudioSystem {
     setTimeout(() => this.tone(1200, 0.5, 'sine', 0.05, 1.2), 400);
   }
   discover() { [0, 4, 7, 12].forEach((s, i) => setTimeout(() => this.tone(midi(72 + s), 0.5, 'sine', 0.08), i * 110)); }
+  // A slow, detuned music-box phrase drowned in reverb: plays when a liminal zone is entered.
+  zoneEnter(first) {
+    if (!this.ctx) return;
+    const c = this.ctx;
+    const base = 64 + (this.rootShift || 0);
+    const phrase = first ? [12, 7, 3, 7, 0, -5] : [7, 3, 0];
+    phrase.forEach((st, i) => {
+      const t = c.currentTime + i * 0.42 + 0.05;
+      const f = midi(base + st);
+      for (const [mul, v] of [[1, 0.05], [4.01, 0.012], [2.76, 0.008]]) {
+        const o = c.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = f * mul;
+        o.detune.value = -18 + Math.random() * 10;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(v, t + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+        o.connect(g); g.connect(this.reverb); g.connect(this.sfxBus);
+        o.start(t); o.stop(t + 2.5);
+      }
+    });
+  }
+
+  // Distant, unexplained sounds for dream worlds. kind: 'thud' | 'door' | 'hum' | 'chime' | 'steps'
+  distant(kind) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const pan = c.createStereoPanner ? c.createStereoPanner() : null;
+    const out = c.createGain();
+    out.gain.value = 1;
+    if (pan) { pan.pan.value = (Math.random() * 2 - 1) * 0.9; out.connect(pan); pan.connect(this.reverb); pan.connect(this.sfxBus); }
+    else { out.connect(this.reverb); out.connect(this.sfxBus); }
+    const noise = (dur, freq, vol, type = 'lowpass', q = 0.7, at = 0) => {
+      const s = this._noiseSrc();
+      const f = c.createBiquadFilter();
+      f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = c.createGain();
+      this._env(g, t + at, 0.01, vol, dur);
+      s.connect(f); f.connect(g); g.connect(out);
+      s.start(t + at, Math.random()); s.stop(t + at + dur + 0.1);
+    };
+    const osc = (freq, dur, vol, type = 'sine', slide = 0, at = 0) => {
+      const o = c.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t + at);
+      if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + at + dur);
+      const g = c.createGain();
+      this._env(g, t + at, 0.02, vol, dur);
+      o.connect(g); g.connect(out);
+      o.start(t + at); o.stop(t + at + dur + 0.1);
+    };
+    if (kind === 'thud') { noise(1.2, 140, 0.16); osc(48, 1.4, 0.1, 'sine', 0.7); }
+    else if (kind === 'door') { noise(0.25, 900, 0.05, 'bandpass', 3); noise(1.4, 220, 0.14, 'lowpass', 0.7, 0.18); osc(70, 1, 0.06, 'sine', 0.6, 0.18); }
+    else if (kind === 'hum') { osc(60, 5, 0.025, 'sawtooth'); osc(120.4, 5, 0.012, 'square'); }
+    else if (kind === 'chime') { [0, 5, 10].forEach((st, i) => osc(midi(83 + st), 3, 0.018, 'sine', 0, i * 0.9)); }
+    else if (kind === 'steps') { for (let i = 0; i < 6; i++) noise(0.09, 500, 0.05, 'bandpass', 1.2, i * 0.55 + Math.random() * 0.05); }
+  }
+
   alert() { [0, 1, 0, 1].forEach((s, i) => setTimeout(() => this.tone(s ? 760 : 560, 0.15, 'square', 0.06), i * 180)); }
   warning() { this.tone(440, 0.3, 'square', 0.05); setTimeout(() => this.tone(440, 0.3, 'square', 0.05), 400); }
   craft() { this.tone(660, 0.1, 'triangle', 0.08); setTimeout(() => this.tone(990, 0.15, 'triangle', 0.08), 90); }

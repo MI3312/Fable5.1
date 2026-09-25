@@ -522,6 +522,61 @@ function paintTiles() {
       return [0.72 + n, 0.6 + n, 0.42 + n, UNT];
     });
   });
+  t('bookshelf', (p) => {
+    p.fill((x, y, r) => {
+      const board = y % 8 === 0 || y % 8 === 7;
+      if (board || x === 0 || x === 15) return [0.28, 0.19, 0.13, UNT];
+      // book spines of varied height and colour
+      const book = Math.floor(x / 2) + Math.floor(y / 8) * 11;
+      const rr = ((book * 9301 + 49297) % 233280) / 233280;
+      const hue = [[0.45, 0.12, 0.12], [0.15, 0.25, 0.4], [0.2, 0.35, 0.2], [0.5, 0.42, 0.25], [0.3, 0.15, 0.35], [0.55, 0.5, 0.45]][Math.floor(rr * 6)];
+      const top = 7 - Math.floor(rr * 3);
+      if ((y % 8) < 8 - top) return [0.12, 0.08, 0.06, UNT];
+      const n = (r.next() - 0.5) * 0.05;
+      const band = (y % 8) === 5 ? 0.15 : 0;
+      return [hue[0] + n + band, hue[1] + n + band, hue[2] + n + band, UNT];
+    });
+  });
+  t('silver', (p) => {
+    p.fill((x, y, r) => {
+      const d = Math.min(x, y, 15 - x, 15 - y);
+      const n = (r.next() - 0.5) * 0.03;
+      const sheen = Math.max(0, 1 - Math.abs(x - y) / 3) * 0.12;
+      const v = 0.78 + n + sheen + (d === 0 ? -0.12 : d === 1 ? 0.06 : 0);
+      return [v, v + 0.01, v + 0.03, UNT];
+    });
+  });
+  t('tv', (p) => {
+    p.fill((x, y, r) => {
+      if (x <= 1 || x >= 14 || y <= 1 || y >= 12) return y >= 13 ? [0.2, 0.2, 0.22, UNT] : [0.35, 0.33, 0.32, UNT];
+      const s = r.next();
+      const scan = (y % 2) * 0.08;
+      return [0.55 + s * 0.45 - scan, 0.55 + s * 0.45 - scan, 0.6 + s * 0.4 - scan, UNT];
+    });
+    p.set(12, 14, 0.9, 0.2, 0.2, UNT);
+  });
+  t('dark_wood', (p) => {
+    p.fill((x, y, r) => {
+      const n = (r.next() - 0.5) * 0.05;
+      const g = Math.sin(y * 0.9 + Math.sin(x * 0.4) * 2) * 0.03;
+      const seam = x % 8 === 0 ? -0.05 : 0;
+      return [0.3 + n + g + seam, 0.2 + n + g + seam, 0.14 + n + g + seam, UNT];
+    });
+  });
+  t('flesh', (p) => {
+    p.fill((x, y, r) => {
+      const v = Math.sin(x * 0.7 + Math.sin(y * 0.5) * 2.5) * 0.5 + 0.5;
+      const n = (r.next() - 0.5) * 0.06;
+      return [0.72 + v * 0.12 + n, 0.36 + v * 0.1 + n, 0.38 + v * 0.08 + n, UNT];
+    });
+  });
+  t('onyx', (p) => {
+    p.fill((x, y, r) => {
+      const v = Math.sin((x + y) * 0.5 + Math.sin(x * 0.3) * 3) * 0.5 + 0.5;
+      const n = (r.next() - 0.5) * 0.03;
+      return [0.06 + v * 0.05 + n, 0.05 + v * 0.04 + n, 0.08 + v * 0.07 + n, UNT];
+    });
+  });
   t('dream_water', (p) => {
     p.fill((x, y, r) => {
       const w = Math.sin((x - y * 0.5) * 0.7) * 0.06;

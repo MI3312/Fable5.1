@@ -6,6 +6,7 @@ import { B, IS_SOLID, IS_AIRLIKE, IS_LIQUID } from './blocks.js';
 import { CHUNK, HEIGHT, PW, MARGIN, GW } from '../config.js';
 import { stampStructures } from './structures.js';
 import { stationBlockAt } from './station.js';
+import { zoneAt, zoneFloor, writeZoneColumn, writeUnderlayer, writeManhole, stampProp, PROP_KINDS } from './zones.js';
 
 const CS = 4; // coarse sampling step for 3D noise
 const CGX = GW / CS + 1; // 7
@@ -34,6 +35,10 @@ export class TerrainGen {
     this.fOver = new Float32Array(CGX * CGX * CGY);
     this.fCave = new Float32Array(CGX * CGX * CGY);
     this.fIsle = new Float32Array(CGX * CGX * CGY);
+    this.zoneCache = new Map();
+    this.zType = new Array(GW * GW).fill('natural');
+    this.zBlend = new Float32Array(GW * GW);
+    this.zFloor = new Float32Array(GW * GW);
     this.treeWeights = params.flora.trees;
     this.plantWeights = params.flora.plants;
     this.oreWeights = params.ores;
@@ -77,8 +82,12 @@ export class TerrainGen {
         else if (d < 1.4) h += (1 - Math.abs(d - 1.15) / 0.25) * r * 0.08;
       }
     }
+    const zi = zoneAt(this, x, z);
+    if (zi.blend > 0) h += (zoneFloor(this, zi.type, x, z) - h) * zi.blend;
     return Math.max(4, Math.min(HEIGHT - 8, h));
   }
+
+  zoneAt(x, z) { return zoneAt(this, x, z); }
 
   // Approximate integer surface y for spawning (ignores overhangs)
   surfaceY(x, z) {
@@ -122,9 +131,15 @@ export class TerrainGen {
     const sea = P.seaLevel;
     const liquid = P.liquid;
 
-    // 1. heights
+    // 1. heights + dream zones
     for (let gz = 0; gz < GW; gz++) for (let gx = 0; gx < GW; gx++) {
-      this.hf[gx + GW * gz] = this.heightAt(wx0 + gx, wz0 + gz);
+      const col = gx + GW * gz;
+      const wx = wx0 + gx, wz = wz0 + gz;
+      this.hf[col] = this.heightAt(wx, wz);
+      const zi = zoneAt(this, wx, wz);
+      this.zType[col] = zi.type;
+      this.zBlend[col] = zi.blend;
+      this.zFloor[col] = zi.blend > 0 ? Math.round(zoneFloor(this, zi.type, wx, wz)) : 0;
     }
     // 2. coarse 3D fields
     const useOver = T.overhang > 0;
@@ -155,19 +170,20 @@ export class TerrainGen {
     for (let gz = 0; gz < GW; gz++) for (let gx = 0; gx < GW; gx++) {
       const col = gx + GW * gz;
       const h = this.hf[col];
+      const plain = this.zBlend[col] > 0.2;
       let groundTop = 0;
       const ymax = Math.min(HEIGHT - 1, Math.max(Math.ceil(h + T.overhang * 1.4) + 1, useIsle ? isleMax + 2 : 0));
       for (let y = 0; y <= ymax; y++) {
         let d = h - y;
-        if (useOver && d > -T.overhang * 1.4 && d < T.overhang * 1.4) {
+        if (useOver && !plain && d > -T.overhang * 1.4 && d < T.overhang * 1.4) {
           d += this._interp(this.fOver, gx, y, gz) * T.overhang;
         }
         let solid = d > 0;
-        if (solid && useCave && y > 3 && y < h - 3) {
+        if (solid && useCave && !plain && y > 3 && y < h - 3) {
           if (this._interp(this.fCave, gx, y, gz) < caveThr) solid = false;
         }
         if (solid) { groundTop = y; gen[col + GW * GW * y] = 1; continue; }
-        if (useIsle && y > isleMin && y < isleMax) {
+        if (useIsle && !plain && y > isleMin && y < isleMax) {
           const band = 1 - Math.abs(y - isleMid) / ((isleMax - isleMin) * 0.5);
           const v = this._interp(this.fIsle, gx, y, gz) + band * 0.55;
           if (v > isleThr) gen[col + GW * GW * y] = 2;
@@ -227,8 +243,19 @@ export class TerrainGen {
       this.top[col] = top;
     }
 
-    // 5. features: trees, plants, boulders, deposits
+    // 5. features: trees, plants, boulders, deposits, dream props
     this._features(wx0, wz0);
+
+    // 5b. dream zones, the backrooms beneath, and the manholes that lead down to them
+    for (let gz = 0; gz < GW; gz++) for (let gx = 0; gx < GW; gx++) {
+      const col = gx + GW * gz;
+      const wx = wx0 + gx, wz = wz0 + gz;
+      const S = (y, id) => { if (y >= 1 && y < HEIGHT) gen[col + GW * GW * y] = id; };
+      if (P.underlayer && this.top[col] > 18) writeUnderlayer(this, S, wx, wz);
+      const t = this.zType[col], b = this.zBlend[col];
+      if (b >= 0.5 && t !== 'natural' && t !== 'meadow') writeZoneColumn(this, t, S, wx, wz, this.zFloor[col]);
+      else if (P.underlayer && b < 0.2 || (P.underlayer && t === 'meadow')) writeManhole(this, S, wx, wz, this.top[col]);
+    }
 
     // 6. structures (liminal rooms, monoliths, outposts...)
     const ctx = {
@@ -303,6 +330,28 @@ export class TerrainGen {
       if (top < 1 || top >= HEIGHT - 12) continue;
       const ground = gen[col + GW * GW * top];
       if (!SOIL[ground]) continue;
+      const zb = this.zBlend[col], zt = this.zType[col];
+      if (zb > 0.2) {
+        if (zt !== 'meadow' || gen[col + GW * GW * (top + 1)] !== 0) continue;
+        // fog meadow: endless tall grass, and now and then something that should not be there
+        const wxm = wx0 + gx, wzm = wz0 + gz;
+        const hm = hash32(this.seed, wxm, wzm, 1231);
+        if ((hm & 0xffff) < 0xffff * 0.0022) {
+          const rng = new RNG(hm);
+          stampProp(rng.weighted(PROP_KINDS), gx, top + 1, gz, setIfFree, rng);
+        } else if (gx >= MARGIN - 1 && gx <= MARGIN + CHUNK && gz >= MARGIN - 1 && gz <= MARGIN + CHUNK && ((hm >>> 16) & 1023) < 470) {
+          setAny(gx, top + 1, gz, ((hm >>> 26) & 31) === 0 ? B.FLOWER : B.TALLGRASS);
+        }
+        continue;
+      }
+      if (P.biome === 'liminal') {
+        const hm = hash32(this.seed, wx0 + gx, wz0 + gz, 1237);
+        if ((hm & 0xffff) < 0xffff * 0.0005 && gen[col + GW * GW * (top + 1)] === 0) {
+          const rng = new RNG(hm);
+          stampProp(rng.weighted(PROP_KINDS), gx, top + 1, gz, setIfFree, rng);
+          continue;
+        }
+      }
       const above = gen[col + GW * GW * (top + 1)];
       if (above !== 0) continue; // underwater or covered
       const wx = wx0 + gx, wz = wz0 + gz;

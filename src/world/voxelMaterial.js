@@ -1,15 +1,26 @@
 // Shader materials for voxel chunks: texture-array atlas, planet tints, baked AO,
-// sky light + emissive, headlamp, sky-matched fog and fake planetary curvature.
+// sky light + artificial (liminal) light + emissive, dynamic point lights, headlamp,
+// dense sky-matched exponential fog with drifting ground mist, and fake planetary curvature.
 import * as THREE from 'three';
-import { SKY_GLSL, curvatureUniforms } from '../core/shaderlib.js';
+import { SKY_GLSL, FOG_GLSL, curvatureUniforms } from '../core/shaderlib.js';
+
+export const MAX_POINT_LIGHTS = 8;
 
 export const voxelUniforms = {
   uAtlas: { value: null },
   uTime: { value: 0 },
   uAmbient: { value: new THREE.Color(0.2, 0.2, 0.25) },
   uSkyLight: { value: new THREE.Color(1, 1, 1) },
+  uArtificial: { value: new THREE.Color(0.62, 0.6, 0.57) },
   uFogNear: { value: 40 },
   uFogFar: { value: 120 },
+  uFogDensity: { value: 0.012 },
+  uMistBase: { value: 44 },
+  uMistFalloff: { value: 10 },
+  uMistDensity: { value: 0.02 },
+  uMistCol: { value: new THREE.Color(0.85, 0.85, 0.9) },
+  uEnclosed: { value: 0 },
+  uCaveCol: { value: new THREE.Color(0.05, 0.05, 0.06) },
   uTorch: { value: new THREE.Vector3() },
   uTorchOn: { value: 0 },
   uZenith: { value: new THREE.Color(0.3, 0.5, 0.9) },
@@ -20,19 +31,22 @@ export const voxelUniforms = {
   uDaylight: { value: 1 },
   uSunset: { value: 0 },
   uSunsetCol: { value: new THREE.Color(1, 0.5, 0.3) },
+  uPL: { value: Array.from({ length: MAX_POINT_LIGHTS }, () => new THREE.Vector3(0, -9999, 0)) },
+  uPLCol: { value: Array.from({ length: MAX_POINT_LIGHTS }, () => new THREE.Color(0, 0, 0)) },
+  uPLStrength: { value: 1 },
   uCurve: curvatureUniforms.uCurve,
 };
 
 const vert = /* glsl */`
 attribute vec3 uvl;
 attribute vec3 tint;
-attribute vec3 light;
+attribute vec4 light;
 uniform float uCurve;
 uniform float uTime;
 uniform float uWave;
 varying vec3 vUvl;
 varying vec3 vTint;
-varying vec3 vLight;
+varying vec4 vLight;
 varying vec3 vWorld;
 varying float vDist;
 varying float vDist3;
@@ -46,7 +60,6 @@ void main() {
   wp.y -= dot(cd, cd) * uCurve;
   vec4 mv = viewMatrix * wp;
   gl_Position = projectionMatrix * mv;
-  // fog by horizontal distance hides the chunk streaming edge but lets you see the ground from altitude
   vDist = length(cd);
   vDist3 = length(mv.xyz);
   vUvl = uvl;
@@ -58,19 +71,21 @@ void main() {
 const frag = /* glsl */`
 precision highp sampler2DArray;
 uniform sampler2DArray uAtlas;
-uniform float uTime;
 uniform vec3 uAmbient;
 uniform vec3 uSkyLight;
-uniform float uFogNear;
-uniform float uFogFar;
+uniform vec3 uArtificial;
 uniform vec3 uTorch;
 uniform float uTorchOn;
 uniform float uAlpha;
 uniform float uLiquid;
+uniform vec3 uPL[${MAX_POINT_LIGHTS}];
+uniform vec3 uPLCol[${MAX_POINT_LIGHTS}];
+uniform float uPLStrength;
 ${SKY_GLSL}
+${FOG_GLSL}
 varying vec3 vUvl;
 varying vec3 vTint;
-varying vec3 vLight;
+varying vec4 vLight;
 varying vec3 vWorld;
 varying float vDist;
 varying float vDist3;
@@ -84,9 +99,18 @@ void main() {
   float ao = vLight.r;
   float sky = vLight.g;
   float emit = vLight.b;
-  vec3 lightCol = uAmbient + uSkyLight * sky;
+  float art = vLight.a;
+  vec3 lightCol = uAmbient + uSkyLight * sky + uArtificial * art;
   float td = distance(vWorld, uTorch);
   lightCol += vec3(1.0, 0.92, 0.8) * uTorchOn * pow(clamp(1.0 - td / 20.0, 0.0, 1.0), 1.5) * 1.2;
+  vec3 plGlow = vec3(0.0);
+  for (int i = 0; i < ${MAX_POINT_LIGHTS}; i++) {
+    float d = distance(vWorld, uPL[i]);
+    float a = clamp(1.0 - d / 10.0, 0.0, 1.0);
+    a *= a;
+    lightCol += uPLCol[i] * a * uPLStrength * 1.3;
+    plGlow += uPLCol[i] * a * a;
+  }
   vec3 col = base * lightCol * ao;
   col = mix(col, base * (0.85 + 0.25 * ao), emit);
   vec3 viewDir = normalize(vWorld - cameraPosition);
@@ -99,11 +123,7 @@ void main() {
     col = mix(col, skyGradient(r), fres * 0.35 * (1.0 - emit));
     alpha = mix(uAlpha + fres * 0.2, 1.0, emit);
   }
-  vec3 fogDir = normalize(vec3(viewDir.x, max(viewDir.y, 0.02), viewDir.z));
-  vec3 fogCol = skyGradient(fogDir);
-  float fog = smoothstep(uFogNear, uFogFar, vDist);
-  fog = max(fog, (1.0 - exp(-vDist3 * 0.0022)) * 0.55);
-  col = mix(col, fogCol, fog);
+  col = applyFog(col, vWorld, viewDir, vDist, vDist3, plGlow * uPLStrength);
   gl_FragColor = vec4(col, alpha);
 }
 `;

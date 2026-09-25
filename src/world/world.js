@@ -174,6 +174,7 @@ export class World {
   }
 
   _applyMesh(c, mesh) {
+    c.lights = mesh.lights || c.lights;
     const parts = [mesh.opaque, mesh.cutout, mesh.translucent];
     for (let i = 0; i < 3; i++) {
       const m = parts[i];
@@ -184,7 +185,7 @@ export class World {
       g.setAttribute('position', new THREE.BufferAttribute(m.pos, 3));
       g.setAttribute('uvl', new THREE.BufferAttribute(m.uvl, 3));
       g.setAttribute('tint', new THREE.BufferAttribute(m.tint, 3, true));
-      g.setAttribute('light', new THREE.BufferAttribute(m.light, 3, true));
+      g.setAttribute('light', new THREE.BufferAttribute(m.light, 4, true));
       g.setIndex(new THREE.BufferAttribute(m.idx, 1));
       g.boundingSphere = new THREE.Sphere(SPHERE_CENTER, 92);
       const mesh3 = new THREE.Mesh(g, this.materials[i]);

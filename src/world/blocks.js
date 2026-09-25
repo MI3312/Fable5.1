@@ -14,6 +14,7 @@ export const TILE = {
   dream_tile: 55, marble: 56, neon: 57, coral: 58, pool_deep: 59, eye: 60,
   sentinel: 61, starry: 62, chest_open: 63, pod_open: 64, acid: 65, dream_water: 66, door: 67,
   plastic_r: 68, plastic_y: 69, plastic_b: 70, plastic_w: 71, concrete: 72, shelf: 73,
+  bookshelf: 74, silver: 75, tv: 76, dark_wood: 77, flesh: 78, onyx: 79,
 };
 
 // Tint channels. The palette of each planet supplies an RGB colour per channel.
@@ -38,6 +39,7 @@ export const B = {
   LIT_AIR: 56, SENTINEL_PILLAR: 57, SNOW_GRASS: 58, STARRY: 59, CHEST_OPEN: 60, POD_OPEN: 61,
   ACID: 62, DREAM_WATER: 63, DREAM_DOOR: 64,
   PLASTIC_R: 65, PLASTIC_Y: 66, PLASTIC_B: 67, PLASTIC_W: 68, CONCRETE: 69, SHELF: 70,
+  BOOKSHELF: 71, SILVER: 72, TV: 73, DARK_WOOD: 74, FLESH: 75, ONYX: 76,
 };
 
 const T = TILE;
@@ -135,6 +137,12 @@ BLOCKS[B.PLASTIC_B] = def('Blue Plastic', T.plastic_b, { hardness: 0.5, drops: [
 BLOCKS[B.PLASTIC_W] = def('White Plastic', T.plastic_w, { hardness: 0.5, drops: [['carbon', 1, 2]], color: [0.95, 0.95, 0.95] });
 BLOCKS[B.CONCRETE] = def('Concrete', T.concrete, { hardness: 1.1, drops: [['silicate', 1, 2], ['ferrite', 0, 1]], color: [0.62, 0.62, 0.6] });
 BLOCKS[B.SHELF] = def('Warehouse Shelf', [T.planks, T.planks, T.shelf], { hardness: 0.6, drops: [['carbon', 1, 2], ['ferrite', 0, 1]], color: [0.6, 0.5, 0.35] });
+BLOCKS[B.BOOKSHELF] = def('Endless Shelf', [T.dark_wood, T.dark_wood, T.bookshelf], { hardness: 0.7, drops: [['carbon', 2, 3], ['memory_fragment', 0, 1]], color: [0.45, 0.3, 0.22] });
+BLOCKS[B.SILVER] = def('Memory Silver', T.silver, { hardness: 1.2, emissive: 0.15, drops: [['ferrite', 1, 2], ['chroma_shard', 0, 1]], color: [0.85, 0.87, 0.9] });
+BLOCKS[B.TV] = def('Static Television', [T.dark_wood, T.dark_wood, T.tv], { hardness: 0.8, emissive: 0.6, drops: [['static_bloom', 0, 1], ['silicate', 1, 2]], color: [0.7, 0.7, 0.72] });
+BLOCKS[B.DARK_WOOD] = def('Dark Wood', T.dark_wood, { hardness: 0.7, drops: [['carbon', 2, 3]], color: [0.3, 0.2, 0.15] });
+BLOCKS[B.FLESH] = def('Flesh', T.flesh, { hardness: 0.4, drops: [['mordite', 1, 2]], color: [0.75, 0.4, 0.42] });
+BLOCKS[B.ONYX] = def('Onyx', T.onyx, { hardness: 1.4, drops: [['ferrite', 1, 2], ['cobalt', 0, 1]], color: [0.08, 0.07, 0.1] });
 BLOCKS[B.DREAM_WATER] = def('Dream Water', T.dream_water, { pass: PASS.translucent, solid: false, liquid: true, emissive: 0.15, collect: false, hardness: 0, color: [0.95, 0.6, 0.85] });
 
 export const BLOCK_COUNT = BLOCKS.length;

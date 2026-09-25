@@ -50,6 +50,12 @@ export function planStructure(seed, params, terrain, rx, rz) {
   const x = rx * REGION + margin + rng.int(0, Math.max(0, REGION - margin * 2 - w));
   const z = rz * REGION + margin + rng.int(0, Math.max(0, REGION - margin * 2 - d));
   const cx = x + (w >> 1), cz = z + (d >> 1);
+  if (terrain.zoneAt) {
+    const zc = terrain.zoneAt(cx, cz);
+    if (zc.blend > 0.05) return null;
+    const zs = [terrain.zoneAt(x, z), terrain.zoneAt(x + w, z), terrain.zoneAt(x, z + d), terrain.zoneAt(x + w, z + d)];
+    if (zs.some((q) => q.blend > 0.05)) return null;
+  }
   let ground = Math.round(terrain.heightAt(cx, cz));
   // Sample corners to settle on a sensible floor level
   const hs = [ground, terrain.heightAt(x, z), terrain.heightAt(x + w - 1, z), terrain.heightAt(x, z + d - 1), terrain.heightAt(x + w - 1, z + d - 1)];

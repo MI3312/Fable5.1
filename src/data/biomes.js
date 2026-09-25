@@ -228,6 +228,33 @@ export function makePlanetParams(seed, biome, opts = {}) {
     }
   }
 
+  // Atmosphere: every world is misty; liminal worlds are drowned in dream-fog
+  const FOG = {
+    lush: [1 / 150, 0.014, 2, 9, 0.35], frozen: [1 / 105, 0.022, 3, 12, 0.5], scorched: [1 / 120, 0.01, 1, 8, 0.4],
+    toxic: [1 / 80, 0.032, 3, 11, 0.6], radioactive: [1 / 90, 0.024, 2, 10, 0.55], barren: [1 / 135, 0.008, 1, 7, 0.35],
+    exotic: [1 / 95, 0.022, 4, 12, 0.55], liminal: [1 / 52, 0.04, 7, 14, 0.85], dead: [1 / 420, 0.0, 0, 5, 0.0],
+  }[biome] || [1 / 150, 0.01, 2, 8, 0.3];
+  const foggy = rng.chance(0.25) ? rng.range(1.3, 1.9) : rng.range(0.8, 1.15);
+  P.fog = {
+    density: FOG[0] * foggy,
+    mistDensity: FOG[1] * foggy,
+    mistBase: P.terrain.base + FOG[2],
+    mistFalloff: FOG[3],
+    skyFog: Math.min(0.95, FOG[4] * foggy),
+    mistColor: mixColor(P.sky.horizon, biome === 'toxic' ? [0.85, 0.95, 0.55] : biome === 'scorched' ? [0.75, 0.6, 0.55] : [0.92, 0.9, 0.96], 0.55),
+  };
+  // Dream zones: regions of the world that have slipped into liminal space
+  const ZONES = {
+    liminal: [['natural', 1.2], ['meadow', 3.2], ['poolscape', 2.2], ['tilevoid', 1.2], ['memory', 0.9], ['library', 1.3], ['plasticity', 1.1], ['lines', 0.7]],
+    exotic: [['natural', 5], ['memory', 1.2], ['tilevoid', 1.2], ['lines', 1.2], ['meadow', 1]],
+    dead: [['natural', 7], ['memory', 1], ['library', 0.7], ['tilevoid', 0.6]],
+  }[biome];
+  if (ZONES) P.zones = ZONES;
+  else if (rng.chance(0.55)) {
+    // ordinary worlds sometimes hold a few intrusions of the dream
+    P.zones = [['natural', 12], ['meadow', 1.4], ['poolscape', 0.8], ['library', 0.5], ['plasticity', 0.5], ['memory', 0.3]];
+  }
+  P.underlayer = biome === 'liminal' || (biome === 'exotic' && rng.chance(0.5));
   if (P.liquid === B.LAVA) setTint(T.water, [1, 1, 1]);
   if (!P.sky.cloudCover && P.sky.cloudCover !== 0) P.sky.cloudCover = 0.4;
   // sun tint shifts slightly with sky

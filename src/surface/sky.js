@@ -25,6 +25,8 @@ export class Sky {
       uBodyCol: { value: Array.from({ length: MAX_BODIES }, () => new THREE.Color()) },
       uBodySize: { value: new Array(MAX_BODIES).fill(0) },
       uStorm: { value: 0 },
+      uSkyFog: { value: 0 },
+      uMistCol: voxelUniforms.uMistCol,
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -46,6 +48,8 @@ export class Sky {
         uniform vec3 uBodyCol[${MAX_BODIES}];
         uniform float uBodySize[${MAX_BODIES}];
         uniform float uStorm;
+        uniform float uSkyFog;
+        uniform vec3 uMistCol;
         varying vec3 vDir;
         float hash13(vec3 p) {
           p = fract(p * 0.1031);
@@ -115,6 +119,9 @@ export class Sky {
           float sd = dot(dir, uSunDir);
           col += uSunColor * smoothstep(0.9993, 0.9997, sd) * 3.0;
           col += uSunColor * pow(max(sd, 0.0), 300.0) * 0.8;
+          // the horizon dissolves into mist: the world ends in fog, not in a line
+          float hz = 1.0 - smoothstep(-0.1, 0.55, dir.y);
+          col = mix(col, mix(col, uMistCol, 0.8), uSkyFog * hz);
           gl_FragColor = vec4(col, 1.0);
         }`,
       side: THREE.BackSide,
@@ -156,6 +163,7 @@ export class Clouds {
       uCurve: curvatureUniforms.uCurve,
       uOffset: { value: new THREE.Vector2() },
       uHeight: { value: 150 },
+      uFogDensity: voxelUniforms.uFogDensity,
     };
     const geo = new THREE.PlaneGeometry(1400, 1400, 80, 80);
     geo.rotateX(-Math.PI / 2);
@@ -181,6 +189,7 @@ export class Clouds {
         uniform float uDaylight;
         uniform vec3 uHorizon;
         uniform vec2 uOffset;
+        uniform float uFogDensity;
         varying vec3 vWorld;
         varying float vDist;
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -206,7 +215,8 @@ export class Clouds {
           float shade = 0.8 + 0.2 * smoothstep(0.0, 0.12, e);
           if (cameraPosition.y < vWorld.y) shade *= 0.86;
           vec3 col = uCloudCol * shade * (0.25 + 0.75 * uDaylight);
-          float fade = 1.0 - smoothstep(350.0, 680.0, vDist);
+          float fd = vDist * uFogDensity * 0.7;
+          float fade = (1.0 - smoothstep(350.0, 680.0, vDist)) * exp(-fd * fd);
           col = mix(uHorizon, col, 0.6 + 0.4 * fade);
           gl_FragColor = vec4(col, 0.82 * fade);
         }`,
