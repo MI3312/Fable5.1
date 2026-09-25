@@ -1,0 +1,104 @@
+// Refining, crafting, block fabrication, dream alchemy and technology upgrades.
+import { B } from '../world/blocks.js';
+
+// Output formats: ['item_id', n] or ['block:ID', n] or ['nanites', n]
+export const RECIPES = [
+  // ---- refining ----
+  { id: 'r_pure_ferrite', type: 'refine', in: [['ferrite', 2]], out: ['pure_ferrite', 1] },
+  { id: 'r_mag_ferrite', type: 'refine', in: [['pure_ferrite', 2]], out: ['magnetised_ferrite', 1] },
+  { id: 'r_cond_carbon', type: 'refine', in: [['carbon', 2]], out: ['condensed_carbon', 1] },
+  { id: 'r_sodium_nitrate', type: 'refine', in: [['sodium', 2]], out: ['sodium_nitrate', 1] },
+  { id: 'r_chromatic', type: 'refine', in: [['copper', 2]], out: ['chromatic_metal', 1] },
+  { id: 'r_chromatic_gold', type: 'refine', in: [['gold', 1]], out: ['chromatic_metal', 2] },
+  { id: 'r_chromatic_u', type: 'refine', in: [['uranium', 3]], out: ['chromatic_metal', 1] },
+  { id: 'r_ion_cobalt', type: 'refine', in: [['cobalt', 2]], out: ['ionised_cobalt', 1] },
+  { id: 'r_pugneum', type: 'refine', in: [['pugneum', 5]], out: ['nanites', 12] },
+  { id: 'r_mordite', type: 'refine', in: [['mordite', 4]], out: ['pugneum', 1] },
+  { id: 'r_oxygen_carbon', type: 'refine', in: [['oxygen', 1]], out: ['carbon', 2] },
+  // ---- crafting ----
+  { id: 'c_plating', type: 'craft', in: [['ferrite', 50]], out: ['metal_plating', 1] },
+  { id: 'c_nanotubes', type: 'craft', in: [['carbon', 50]], out: ['carbon_nanotubes', 1] },
+  { id: 'c_jelly', type: 'craft', in: [['dihydrogen', 40]], out: ['dihydrogen_jelly', 1] },
+  { id: 'c_launch_fuel', type: 'craft', in: [['dihydrogen_jelly', 1], ['metal_plating', 1]], out: ['launch_fuel', 1] },
+  { id: 'c_life_gel', type: 'craft', in: [['dihydrogen_jelly', 1], ['oxygen', 20]], out: ['life_support_gel', 1] },
+  { id: 'c_ion_battery', type: 'craft', in: [['ferrite', 10], ['cobalt', 10]], out: ['ion_battery', 1] },
+  { id: 'c_starshield', type: 'craft', in: [['ionised_cobalt', 10], ['ferrite', 20]], out: ['starshield_battery', 1] },
+  { id: 'c_antimatter', type: 'craft', in: [['chromatic_metal', 25], ['condensed_carbon', 20]], out: ['antimatter', 1] },
+  { id: 'c_am_housing', type: 'craft', in: [['oxygen', 30], ['pure_ferrite', 50]], out: ['antimatter_housing', 1] },
+  { id: 'c_warp_cell', type: 'craft', in: [['antimatter', 1], ['antimatter_housing', 1]], out: ['warp_cell', 1] },
+  { id: 'c_microprocessor', type: 'craft', in: [['chromatic_metal', 40], ['carbon_nanotubes', 1]], out: ['microprocessor', 1] },
+  { id: 'c_hermetic', type: 'craft', in: [['condensed_carbon', 30]], out: ['hermetic_seal', 1] },
+  // ---- block fabrication (Lucid building) ----
+  { id: 'b_pool', type: 'block', in: [['silicate', 10], ['sodium', 2]], out: ['block:' + B.POOL_TILE, 8] },
+  { id: 'b_pool_deep', type: 'block', in: [['silicate', 10], ['cobalt', 2]], out: ['block:' + B.POOL_DEEP, 8] },
+  { id: 'b_glass', type: 'block', in: [['silicate', 12]], out: ['block:' + B.GLASS, 4] },
+  { id: 'b_metal', type: 'block', in: [['pure_ferrite', 8]], out: ['block:' + B.METAL_PLATE, 4] },
+  { id: 'b_hull', type: 'block', in: [['pure_ferrite', 8], ['carbon', 4]], out: ['block:' + B.METAL_PANEL, 4] },
+  { id: 'b_lamp', type: 'block', in: [['sodium', 6], ['silicate', 4]], out: ['block:' + B.LAMP, 2] },
+  { id: 'b_panel', type: 'block', in: [['sodium_nitrate', 2], ['silicate', 4]], out: ['block:' + B.LIGHT_PANEL, 2] },
+  { id: 'b_checker', type: 'block', in: [['silicate', 8], ['carbon', 8]], out: ['block:' + B.CHECKER, 8] },
+  { id: 'b_brick', type: 'block', in: [['silicate', 10], ['ferrite', 4]], out: ['block:' + B.BRICK, 8] },
+  { id: 'b_planks', type: 'block', in: [['carbon', 12]], out: ['block:' + B.PLANKS, 8] },
+  { id: 'b_marble', type: 'block', in: [['silicate', 12], ['sodium', 2]], out: ['block:' + B.MARBLE, 8] },
+  { id: 'b_wallpaper', type: 'block', in: [['carbon', 10], ['sodium', 2]], out: ['block:' + B.WALLPAPER, 8] },
+  { id: 'b_carpet', type: 'block', in: [['carbon', 10]], out: ['block:' + B.CARPET, 8] },
+  { id: 'b_ceiling', type: 'block', in: [['silicate', 8]], out: ['block:' + B.CEILING_TILE, 8] },
+  { id: 'b_dream', type: 'block', in: [['chroma_shard', 1], ['carbon', 10]], out: ['block:' + B.DREAM_BLOCK, 4] },
+  { id: 'b_dream_tile', type: 'block', in: [['chroma_shard', 1], ['silicate', 10]], out: ['block:' + B.DREAM_TILE, 8] },
+  { id: 'b_neon', type: 'block', in: [['chroma_shard', 1], ['sodium', 6]], out: ['block:' + B.NEON, 4] },
+  { id: 'b_starry', type: 'block', in: [['chroma_shard', 2], ['cobalt', 4]], out: ['block:' + B.STARRY, 4] },
+  { id: 'b_cloud', type: 'block', in: [['oxygen', 6], ['dihydrogen', 6]], out: ['block:' + B.CLOUD, 6] },
+  { id: 'b_obsidian', type: 'block', in: [['ferrite', 6], ['carbon', 6]], out: ['block:' + B.OBSIDIAN, 4] },
+];
+
+// Dream alchemy: combine two ingredients (1 of each unless qty given). Discovered by experimenting.
+export const ALCHEMY = [
+  { a: 'sodium', b: 'chroma_shard', out: ['liquid_light', 2], hint: 'Something bright, and something dreamed.' },
+  { a: 'silicate', b: 'chroma_shard', out: ['somnium', 2], hint: 'Dust that remembers the sea.' },
+  { a: 'oxygen', b: 'somnium', out: ['echo_shell', 1], hint: 'Breathe into the sleeping sand.' },
+  { a: 'carbon', b: 'echo_shell', out: ['memory_fragment', 1], hint: 'Life, listening to an empty hallway.' },
+  { a: 'liquid_light', b: 'echo_shell', out: ['dream_lens', 1], hint: 'Light poured into an echo.' },
+  { a: 'dream_lens', b: 'reverie_bloom', out: ['lucid_core', 1], hint: 'See the flower that only blooms in dreams.' },
+  { a: 'dream_lens', b: 'memory_fragment', out: ['lucid_core', 1], hint: 'Look closely at a memory that is not yours.' },
+  { a: 'mordite', b: 'chroma_shard', out: ['void_egg', 1], hint: 'Death, dreaming.' },
+  { a: 'uranium', b: 'reverie_bloom', out: ['static_bloom', 2], hint: 'A warm flower on an old television.' },
+  { a: 'gamma_root', b: 'chroma_shard', out: ['static_bloom', 2], hint: 'Radiant roots in a dream.' },
+  { a: 'star_bulb', b: 'chroma_shard', out: ['liquid_light', 3], hint: 'A star, dreamed smaller.' },
+  { a: 'solanium', b: 'chroma_shard', out: ['liquid_light', 3], hint: 'Heat, dreamed into light.' },
+  { a: 'frost_crystal', b: 'chroma_shard', out: ['somnium', 3], hint: 'Ice that fell asleep.' },
+  { a: 'fungal_mould', b: 'chroma_shard', out: ['memory_fragment', 1], hint: 'Spores carry memories.' },
+  { a: 'cactus_flesh', b: 'chroma_shard', out: ['echo_shell', 1], hint: 'The desert keeps its echoes.' },
+  { a: 'hexite', b: 'chroma_shard', out: ['dream_lens', 1], hint: 'Impossible geometry, focused.' },
+  { a: 'static_bloom', b: 'somnium', out: ['memory_fragment', 2], hint: 'Static, sleeping.' },
+  { a: 'void_egg', b: 'liquid_light', out: ['lucid_core', 1], hint: 'Warm the egg with light.' },
+  { a: 'carbon', b: 'chroma_shard', out: ['block:' + B.DREAM_BLOCK, 6], hint: 'Build with a dream.' },
+  { a: 'cobalt', b: 'chroma_shard', out: ['block:' + B.STARRY, 4], hint: 'A piece of night, held.' },
+  { a: 'oxygen', b: 'chroma_shard', out: ['block:' + B.CLOUD, 6], hint: 'Breath, dreaming of the sky.' },
+  { a: 'sodium', b: 'silicate', out: ['block:' + B.GLASS, 4], hint: 'Salt and sand, heated.' },
+  { a: 'memory_fragment', b: 'somnium', out: ['block:' + B.EYE, 3], hint: 'Something is watching the memory.' },
+  { a: 'dihydrogen', b: 'chroma_shard', out: ['block:' + B.POOL_TILE, 10], hint: 'Water remembers the pool.' },
+  { a: 'ferrite', b: 'chroma_shard', out: ['block:' + B.NEON, 4], hint: 'Metal humming a colour.' },
+  { a: 'memory_fragment', b: 'memory_fragment', out: ['lore', 1], hint: 'Two memories, remembered together.' },
+];
+
+// Technology upgrades (installed from the inventory)
+export const UPGRADES = [
+  { id: 'repair_thrusters', name: 'Repair Launch Thrusters', target: 'ship', cost: [['metal_plating', 1], ['dihydrogen_jelly', 1]], desc: 'Restores your crashed starship\'s launch thrusters. Required for take-off.', once: true },
+  { id: 'jetpack', name: 'Jetpack Booster', target: 'suit', cost: [['chromatic_metal', 30], ['pure_ferrite', 20]], desc: 'Jetpack burns 50% longer and harder.', once: true },
+  { id: 'hazard', name: 'Hazard Shielding', target: 'suit', cost: [['sodium_nitrate', 15], ['chromatic_metal', 20]], desc: 'Hazard protection lasts 60% longer.', once: true },
+  { id: 'life', name: 'Life Support Recycler', target: 'suit', cost: [['metal_plating', 2], ['oxygen', 40]], desc: 'Life support lasts 50% longer.', once: true },
+  { id: 'mining', name: 'Mining Beam Overdrive', target: 'suit', cost: [['chromatic_metal', 40], ['carbon_nanotubes', 2]], desc: 'Mining beam cuts 60% faster.', once: true },
+  { id: 'scanner', name: 'Dream Lens Scanner', target: 'suit', cost: [['dream_lens', 1]], desc: 'Scanner pulse range doubled; reveals liminal places further away.', once: true },
+  { id: 'slots', name: 'Exosuit Cargo Expansion', target: 'suit', cost: [['echo_shell', 2], ['metal_plating', 2]], desc: '+6 exosuit inventory slots.', once: false },
+  { id: 'pulse', name: 'Pulse Engine Tuning', target: 'ship', cost: [['chromatic_metal', 50], ['microprocessor', 1]], desc: 'Pulse drive 40% faster and more efficient.', once: true },
+  { id: 'hyperdrive', name: 'Hyperdrive Expansion', target: 'ship', cost: [['microprocessor', 2], ['chromatic_metal', 60]], desc: 'Hyperdrive jump range +3 light-years.', once: false, max: 3 },
+  { id: 'deflector', name: 'Deflector Shield', target: 'ship', cost: [['ionised_cobalt', 20], ['metal_plating', 2]], desc: 'Starship shields 50% stronger.', once: true },
+];
+
+export function outLabel(out, ITEMS, BLOCKS) {
+  const [id, n] = out;
+  if (id.startsWith('block:')) return `${n}× ${BLOCKS[Number(id.slice(6))].name}`;
+  if (id === 'nanites') return `${n} Nanites`;
+  if (id === 'lore') return 'A forgotten memory';
+  return `${n}× ${ITEMS[id]?.name ?? id}`;
+}

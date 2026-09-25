@@ -1,0 +1,17 @@
+{
+  "name": "lucid-sky",
+  "version": "1.0.0",
+  "description": "LUCID SKY - a procedural voxel space exploration game in the spirit of No Man's Sky and Lucid Blocks, built with three.js + WebGL.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx http-server . -p 8080 -c-1",
+    "vendor": "node tools/vendor-three.mjs",
+    "build": "node tools/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "three": "0.186.1"
+  },
+  "license": "MIT"
+}
