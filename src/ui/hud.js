@@ -121,6 +121,7 @@ export class HUD {
       this.shipGauges[key] = b;
     };
     g('shield', 'SHIELD', 'var(--shield)');
+    g('hull', 'HULL', 'var(--health)');
     g('launch', 'LAUNCH', 'var(--accent)');
     g('pulse', 'PULSE', 'var(--jet)');
     this.shipAlt = h('div', { class: 'speed', style: { fontSize: '22px' } }, '0');
@@ -285,6 +286,7 @@ export class HUD {
     this.set(this.shipSpeed, 'sspeed', String(Math.round(ship.speed)));
     this.set(this.shipAlt, 'salt', space ? '—' : String(Math.round(altitude)));
     this.setBar(this.shipGauges.shield, 'sg_shield', ship.shield);
+    this.setBar(this.shipGauges.hull, 'sg_hull', ship.hull);
     this.setBar(this.shipGauges.launch, 'sg_launch', ship.fuel.launch);
     this.setBar(this.shipGauges.pulse, 'sg_pulse', ship.fuel.pulse);
     const sx = ship.stick.x * 50, sy = ship.stick.y * 50;

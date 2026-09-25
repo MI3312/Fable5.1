@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { SpaceScene } from '../space/space.js';
 import { Bolts, Debris } from '../surface/effects.js';
+import { buildNightmare } from '../entities/shipModel.js';
 
 const _v = new THREE.Vector3();
 
@@ -13,8 +14,12 @@ export class SpaceMode {
     this.scene = this.space.scene;
     this.bolts = new Bolts(this.scene, 80);
     this.debris = new Debris(this.scene, 300, 3.5);
+    this.enemyBolts = new Bolts(this.scene, 120);
     this.bolts.mesh.userData.keep = true;
     this.debris.mesh.userData.keep = true;
+    this.enemyBolts.mesh.userData.keep = true;
+    this.enemies = [];
+    this.encounterTimer = 150;
     this.builtKey = null;
     this.titleT = 0;
     this.docked = false;
@@ -62,6 +67,9 @@ export class SpaceMode {
     this.entering = false;
     this.bolts.clear();
     this.debris.clear();
+    this._clearEnemies();
+    this.destroyed = false;
+    this.encounterTimer = 120 + Math.random() * 200;
     if (opts.fromPlanet != null) {
       const pl = this.space.planets[opts.fromPlanet];
       const q = this.space.planetWorldQuat(opts.fromPlanet);
@@ -103,6 +111,88 @@ export class SpaceMode {
     this.game.audio.setLoop('engine', false);
     this.bolts.clear();
     this.debris.clear();
+    this._clearEnemies();
+  }
+
+  _clearEnemies() {
+    for (const e of this.enemies) this.scene.remove(e.model);
+    this.enemies = [];
+    this.enemyBolts.clear();
+  }
+
+  _spawnEncounter() {
+    const g = this.game, ship = g.ship;
+    const n = 2 + Math.floor(Math.random() * 2) + (g.system.conflict === 'Unstable' ? 1 : 0);
+    const fwd = ship.forward(new THREE.Vector3());
+    for (let i = 0; i < n; i++) {
+      const model = buildNightmare(Math.floor(Math.random() * 1e6));
+      const pos = ship.pos.clone().addScaledVector(fwd, 1400 + Math.random() * 400)
+        .add(new THREE.Vector3((Math.random() - 0.5) * 900, (Math.random() - 0.5) * 500, (Math.random() - 0.5) * 900));
+      const e = { model, pos, quat: new THREE.Quaternion(), speed: 160, hp: 90, fireCd: 2 + Math.random() * 2, offset: new THREE.Vector3((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 60) };
+      const m = new THREE.Matrix4().lookAt(pos, ship.pos, new THREE.Vector3(0, 1, 0));
+      e.quat.setFromRotationMatrix(m);
+      model.position.copy(pos);
+      model.quaternion.copy(e.quat);
+      this.scene.add(model);
+      this.enemies.push(e);
+    }
+    g.hud.toast('Nightmares inbound', `${n} hostile dream-ships are hunting you · Pulse drive blocked`, '#ff7ab8');
+    g.audio.alert();
+  }
+
+  _updateEnemies(dt) {
+    const g = this.game, ship = g.ship;
+    const tmpF = new THREE.Vector3();
+    for (const e of this.enemies) {
+      // steer toward a lead point near the player
+      const lead = ship.pos.clone().addScaledVector(ship.forward(tmpF), ship.speed * 0.6).add(e.offset);
+      const toT = lead.sub(e.pos);
+      const dist = toT.length();
+      const desired = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(e.pos, e.pos.clone().add(toT), new THREE.Vector3(0, 1, 0)));
+      // break off when very close, then come around again
+      if (dist < 120) e.breakT = 2.5;
+      if (e.breakT > 0) { e.breakT -= dt; } else e.quat.rotateTowards(desired, dt * 1.4);
+      const f = new THREE.Vector3(0, 0, -1).applyQuaternion(e.quat);
+      const wantSpeed = dist > 900 ? 420 : Math.max(120, ship.speed * 0.95 + 20);
+      e.speed += (wantSpeed - e.speed) * Math.min(1, dt * 1.5);
+      e.pos.addScaledVector(f, e.speed * dt);
+      e.model.position.copy(e.pos);
+      e.model.quaternion.copy(e.quat);
+      e.fireCd -= dt;
+      const aim = ship.pos.clone().sub(e.pos);
+      const ad = aim.length();
+      if (e.fireCd <= 0 && ad < 900 && aim.normalize().dot(f) > 0.94) {
+        e.fireCd = 0.45 + Math.random() * 0.4;
+        const spread = new THREE.Vector3((Math.random() - 0.5) * 0.04, (Math.random() - 0.5) * 0.04, (Math.random() - 0.5) * 0.04);
+        this.enemyBolts.fire(e.pos.clone().addScaledVector(f, 6), aim.add(spread).normalize(), 600, 'enemy', 5, 0xff4fb0, 2.5, 4);
+        if (ad < 600) g.audio.enemyShoot();
+      }
+    }
+    this.enemyBolts.update(dt, (b) => {
+      if (b.p.distanceTo(ship.pos) < 6) { this.hurtShip(b.damage); return true; }
+      return false;
+    });
+    // escape: enemies far away give up
+    this.enemies = this.enemies.filter((e) => {
+      if (e.pos.distanceTo(ship.pos) > 7000) { this.scene.remove(e.model); return false; }
+      return true;
+    });
+  }
+
+  hurtShip(dmg) {
+    const g = this.game, ship = g.ship;
+    const d = dmg / ship.upgrades.shield;
+    if (ship.shield > 0) ship.shield = Math.max(0, ship.shield - d);
+    else ship.hull = Math.max(0, ship.hull - d * 1.4);
+    ship.shake = Math.max(ship.shake, 0.5);
+    g.post.uniforms.uDamage.value = Math.min(1, g.post.uniforms.uDamage.value + 0.25);
+    g.audio.hurt();
+    if (ship.hull <= 0 && !this.destroyed) {
+      this.destroyed = true;
+      this.debris.spawn(ship.pos, [1, 0.6, 0.3], 40, 80, 2);
+      g.audio.explosion(1.5);
+      g.shipDestroyed();
+    }
   }
 
   writeState(st) {
@@ -214,6 +304,7 @@ export class SpaceMode {
     const st = this.space.station;
     const dStation = ship.pos.distanceTo(st.position);
     if (dStation < 2500) pulseBlocked = true;
+    if (this.enemies.some((e) => e.pos.distanceTo(ship.pos) < 4000)) pulseBlocked = true;
     const events = ship.update(dt, input, { mode: 'space', ctl, pulseBlocked });
     for (const e of events) {
       if (e === 'noPulseFuel') hud.notify('Pulse engine needs Tritium - mine asteroids (fire at them)');
@@ -232,6 +323,25 @@ export class SpaceMode {
       g.audio.shipShoot();
     }
     this.bolts.update(dt, (b) => {
+      for (const e of this.enemies) {
+        if (e.pos.distanceTo(b.p) < 9) {
+          e.hp -= b.damage;
+          this.debris.spawn(b.p, [1, 0.4, 0.8], 4, 40, 0.6);
+          if (e.hp <= 0 && !e.dead) {
+            e.dead = true;
+            this.scene.remove(e.model);
+            this.debris.spawn(e.pos, [0.3, 0.2, 0.4], 30, 90, 2.2);
+            this.debris.spawn(e.pos, [1, 0.35, 0.75], 20, 70, 1.6);
+            g.audio.explosion(1.2);
+            const u = 1500 + Math.floor(Math.random() * 2000);
+            g.inventory.add('units', u);
+            g.inventory.add('nanites', 6);
+            if (Math.random() < 0.5) { g.inventory.add('chroma_shard', 3); hud.notify(null, 'chroma_shard', 3); }
+            hud.notify(`Nightmare dispelled · +${u} units · +6 nanites`);
+          }
+          return true;
+        }
+      }
       const idx = this.space.asteroidHit(b.p, 1);
       if (idx < 0) return false;
       const a = this.space.asteroidData[idx];
@@ -251,7 +361,18 @@ export class SpaceMode {
       }
       return true;
     });
+    this.enemies = this.enemies.filter((e) => !e.dead);
+    this._updateEnemies(dt);
     this.debris.update(dt);
+    // encounters
+    const inCombat = this.enemies.length > 0;
+    if (!inCombat && !g.system.isCore) {
+      this.encounterTimer -= dt;
+      if (this.encounterTimer <= 0) {
+        this.encounterTimer = 180 + Math.random() * 260;
+        if (dStation > 4000 && g.state.jumps + (g.state.flags.docked ? 1 : 0) > 0 && Math.random() < 0.75) this._spawnEncounter();
+      }
+    }
     // asteroid collision
     const hitIdx = this.space.asteroidHit(ship.pos, 5);
     if (hitIdx >= 0) {
@@ -260,8 +381,7 @@ export class SpaceMode {
       ship.pos.copy(a.p).addScaledVector(push, a.s + 6);
       ship.speed *= 0.3;
       ship.shake = 1;
-      ship.shield = Math.max(0, ship.shield - 8 / ship.upgrades.shield);
-      g.post.uniforms.uDamage.value = 0.6;
+      this.hurtShip(8);
       g.audio.explosion(0.4);
     }
     // station collision + docking
@@ -293,8 +413,8 @@ export class SpaceMode {
       } else g.post.uniforms.uHazard.value = 0;
     }
     hud.setPrompt(prompt);
-    // shield regen
-    ship.shield = Math.min(100, ship.shield + dt * 1.5);
+    // shield regen (slower in combat)
+    ship.shield = Math.min(100, ship.shield + dt * (this.enemies.length ? 0.6 : 2));
     ship.updateFlames(g.time);
     ship.updateCamera(g.spaceCamera, dt, null);
     g.spaceCamera.updateMatrixWorld();
@@ -328,6 +448,7 @@ export class SpaceMode {
       if (d > p.data.radius * 1.8) add(p.group.position, '◯', `${p.data.name} · ${p.data.biomeLabel}`, g.state.discoveries.planets[p.data.id] ? '#7ef0ff' : '#ffffff');
     }
     add(this.space.station.position, '⌂', 'Space Station', '#ffd35a');
+    for (const e of this.enemies) add(e.pos, '◆', '', '#ff5fa8');
     hud.updateMarkers(cam, list, g.width, g.height);
     const f = cam.getWorldDirection(_v);
     hud.updateCompass((Math.atan2(f.x, -f.z) * 180 / Math.PI + 360) % 360, compass);

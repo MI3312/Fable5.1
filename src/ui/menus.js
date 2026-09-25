@@ -375,12 +375,13 @@ export class Menus {
       stat('Launch thrusters', ship.thrustersRepaired ? `${Math.round(ship.fuel.launch)}% fuel` : 'DAMAGED'),
       stat('Pulse engine', `${Math.round(ship.fuel.pulse)}% fuel`),
       stat('Shields', `${Math.round(ship.shield)}%`),
+      stat('Hull integrity', `${Math.round(ship.hull)}%`),
       stat('Hyperdrive range', `${g.hyperdriveRange()} ly · ${inv.count('warp_cell')} warp cells · ${inv.count('lucid_core')} lucid cores`),
     );
     const fuelBtns = h('div', { class: 'row-flex' });
     const fb = (label, kind, item) => h('button', { class: 'btn small', disabled: inv.count(item) > 0 ? null : true, onclick: () => { g.refuelShip(kind, item); this.renderTab(); } }, `${label} · ${ITEMS[item].name} (${inv.count(item)})`);
     fuelBtns.append(fb('Launch', 'launch', 'dihydrogen_jelly'), fb('Launch', 'launch', 'launch_fuel'), fb('Launch', 'launch', 'uranium'),
-      fb('Pulse', 'pulse', 'tritium'), fb('Shield', 'shield', 'starshield_battery'), fb('Shield', 'shield', 'ferrite'));
+      fb('Pulse', 'pulse', 'tritium'), fb('Shield', 'shield', 'starshield_battery'), fb('Shield', 'shield', 'ferrite'), fb('Hull', 'hull', 'metal_plating'));
     shipCol.appendChild(fuelBtns);
     const upCol = h('div', { class: 'col grow' }, h('div', { class: 'section-title' }, 'Technology upgrades'));
     const list = h('div', { class: 'recipes' });
@@ -503,6 +504,7 @@ export class Menus {
         srv('Refill pulse engine', 'Station technicians top up your pulse drive.', 2500, () => g.stationService('pulse', 2500)),
         srv('Refill launch thrusters', 'Fuel the launch thrusters to 100%.', 3000, () => g.stationService('launch', 3000)),
         srv('Recharge starship shields', 'Restore shields to full.', 1500, () => g.stationService('shield', 1500)),
+        srv('Repair starship hull', 'Patch every scorch mark the Nightmares left.', 2000, () => g.stationService('hull', 2000)),
         srv('Restore exosuit', 'Health, shield, hazard protection and life support to full.', 800, () => g.stationService('suit', 800)),
         srv('Record journey', 'Save your progress in the station archive.', 0, () => g.saveGame(true)),
       );

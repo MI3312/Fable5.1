@@ -21,6 +21,7 @@ export class Ship {
     this.state = 'landed';
     this.fuel = { launch: 0, pulse: 60 };
     this.shield = 100;
+    this.hull = 100;
     this.thrustersRepaired = false;
     this.pulsing = false;
     this.pulseCharge = 0;

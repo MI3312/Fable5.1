@@ -199,6 +199,7 @@ export class Game {
     if (st.shipData) {
       Object.assign(this.ship.fuel, st.shipData.fuel);
       this.ship.shield = st.shipData.shield;
+      this.ship.hull = st.shipData.hull ?? 100;
       this.ship.thrustersRepaired = st.shipData.thrustersRepaired;
       Object.assign(this.ship.upgrades, st.shipData.upgrades || {});
     }
@@ -239,6 +240,18 @@ export class Game {
     } else {
       this.hud.toast(p.name, `${p.params.adjective} ${p.biomeLabel} · ${this.system.name}`);
     }
+    if (!this.state.flags.intro && !p.isStation) {
+      this.state.flags.intro = true;
+      this.input.unlock();
+      setTimeout(() => this.menus.dialog('You wake up',
+        `The ground is warm. The sky is the wrong colour. Your starship lies a few steps away, its launch thrusters crushed.\n\n` +
+        `WASD move · Mouse look · Space jump / jetpack · Shift sprint\n` +
+        `LMB use multi-tool · Q switch Mining Beam / Builder / Boltcaster\n` +
+        `F scanner · V analysis visor · E interact · R recharge · Tab inventory · M galaxy map\n\n` +
+        `Follow the objective on the left. Mine, build, dream - and find your way to the Dream Core.`,
+        [{ label: 'Begin', primary: true, action: () => this.resume() }]), 600);
+      return;
+    }
     if (!this.input.locked) this.resume();
   }
 
@@ -269,6 +282,20 @@ export class Game {
     this.galaxy.close();
     this.surface.enter(sp, { spawn: 'dock' });
     curvatureUniforms.uCurve.value = 0;
+  }
+
+  shipDestroyed() {
+    const lostU = Math.floor(this.inventory.units * 0.15);
+    this.inventory.remove('units', lostU);
+    const tr = this.inventory.count('tritium');
+    if (tr) this.inventory.remove('tritium', tr);
+    this.fade(1.2, () => {
+      this.space.leave();
+      this.ship.shield = 60;
+      this.ship.hull = 60;
+      this.enterStation();
+      setTimeout(() => this.menus.dialog('Rescued', `Your starship was torn apart by the Nightmares. Station drones towed what was left of you back to the hangar.\n\nLost ${lostU.toLocaleString()} units${tr ? ' and your Tritium' : ''}.`), 2500);
+    }, 0x300010);
   }
 
   launchFromStation() {
@@ -423,7 +450,7 @@ export class Game {
     st.inventory = this.inventory.serialize();
     st.stats = { ...this.player.stats };
     st.playerUpgrades = { ...this.player.upgrades };
-    st.shipData = { fuel: { ...this.ship.fuel }, shield: this.ship.shield, thrustersRepaired: this.ship.thrustersRepaired, upgrades: { ...this.ship.upgrades } };
+    st.shipData = { fuel: { ...this.ship.fuel }, shield: this.ship.shield, hull: this.ship.hull, thrustersRepaired: this.ship.thrustersRepaired, upgrades: { ...this.ship.upgrades } };
     if (this.mode === 'surface') this.surface.writeState(st);
     else this.space.writeState(st);
     const ok = safeSet(SAVE_KEY, JSON.stringify(st));
@@ -472,6 +499,7 @@ export class Game {
     if (kind === 'pulse') this.ship.fuel.pulse = 100;
     if (kind === 'launch') this.ship.fuel.launch = 100;
     if (kind === 'shield') this.ship.shield = 100;
+    if (kind === 'hull') this.ship.hull = 100;
     if (kind === 'suit') Object.assign(this.player.stats, { health: 100, shield: 100, hazard: 100, life: 100, jet: 100 });
     this.audio.craft();
   }
@@ -607,16 +635,16 @@ export class Game {
 
   refuelShip(kind, item) {
     const ship = this.ship;
-    const per = { dihydrogen_jelly: 50, launch_fuel: 100, uranium: 2, tritium: 1, starshield_battery: 100, ferrite: 0.5 }[item];
-    const cur = kind === 'shield' ? ship.shield : ship.fuel[kind];
+    const per = { dihydrogen_jelly: 50, launch_fuel: 100, uranium: 2, tritium: 1, starshield_battery: 100, ferrite: 0.5, metal_plating: 50 }[item];
+    const cur = kind === 'shield' ? ship.shield : kind === 'hull' ? ship.hull : ship.fuel[kind];
     const missing = 100 - cur;
     if (missing < 1) { this.hud.notify('Already full'); return false; }
     const need = Math.min(this.inventory.count(item), Math.ceil(missing / per));
     if (need <= 0) return false;
     this.inventory.remove(item, need);
     const v = Math.min(100, cur + need * per);
-    if (kind === 'shield') ship.shield = v; else ship.fuel[kind] = v;
-    this.hud.notify(`${kind === 'shield' ? 'Shields' : kind === 'launch' ? 'Launch thrusters' : 'Pulse engine'} at ${Math.round(v)}%`);
+    if (kind === 'shield') ship.shield = v; else if (kind === 'hull') ship.hull = v; else ship.fuel[kind] = v;
+    this.hud.notify(`${{ shield: 'Shields', hull: 'Hull', launch: 'Launch thrusters', pulse: 'Pulse engine' }[kind]} at ${Math.round(v)}%`);
     this.audio.craft();
     return true;
   }

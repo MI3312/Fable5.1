@@ -1340,6 +1340,7 @@ export class SurfaceMode {
       if (hz) { pl.damage(hz * dt); hurting = true; this.lastDamage = 0; g.post.uniforms.uDamage.value = Math.max(g.post.uniforms.uDamage.value, 0.5); }
     }
     if (hurting) { this.lastDamage = Math.min(this.lastDamage, 0); g.post.uniforms.uDamage.value = Math.max(g.post.uniforms.uDamage.value, 0.25); }
+    if (st.health <= 0) { this._die(); return; }
     if (this.lastDamage > 5) st.shield = Math.min(100, st.shield + dt * 12);
     if (this.lastDamage > 9 && st.hazard > 0 && st.life > 0) st.health = Math.min(100, st.health + dt * 1.5);
     // warnings

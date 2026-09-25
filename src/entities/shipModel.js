@@ -169,3 +169,28 @@ export function buildTraveller(seed = 1) {
   g.userData.arms = body.children.filter((c) => c.userData.side);
   return g;
 }
+
+// Hostile "Nightmare" fighter: dark angular hull with a glowing magenta eye
+export function buildNightmare(seed = 1) {
+  const rng = new RNG(seed);
+  const g = new THREE.Group();
+  const hull = new THREE.MeshLambertMaterial({ color: 0x1d1826, flatShading: true });
+  const edge = new THREE.MeshLambertMaterial({ color: 0x3a2f4d, flatShading: true });
+  const eyeCol = new THREE.Color().setRGB(...hsl(rng.range(0.8, 0.98), 0.95, 0.6));
+  const eye = new THREE.MeshBasicMaterial({ color: eyeCol });
+  const glow = new THREE.MeshBasicMaterial({ color: eyeCol, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
+  box(1.4, 1.0, 5.5, hull, 0, 0, 0, g);
+  box(0.9, 0.7, 1.6, edge, 0, 0.1, -3.2, g);
+  box(0.6, 0.35, 0.2, eye, 0, 0.15, -4.05, g);
+  for (const s of [-1, 1]) {
+    const w = box(4.2, 0.18, 1.8, hull, s * 2.6, 0, 1.0, g);
+    w.rotation.y = s * 0.45;
+    w.rotation.z = s * 0.3;
+    box(0.25, 1.6, 0.8, edge, s * 4.4, 0.8, 1.9, g);
+    box(0.5, 0.5, 0.2, glow, s * 0.7, 0, 2.85, g);
+  }
+  box(0.2, 1.4, 1.6, edge, 0, 0.9, 1.6, g);
+  g.scale.setScalar(1.3);
+  g.userData.eyeMat = eye;
+  return g;
+}
