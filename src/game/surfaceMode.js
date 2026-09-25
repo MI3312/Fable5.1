@@ -8,7 +8,7 @@ import { createVoxelMaterials, voxelUniforms } from '../world/voxelMaterial.js';
 import { World } from '../world/world.js';
 import { B, BLOCKS, IS_LIQUID, IS_CROSS, IS_AIRLIKE, IS_SOLID, isPlaceable } from '../world/blocks.js';
 import { planStructure, REGION, STRUCTURE_INFO } from '../world/structures.js';
-import { ZONE_INFO } from '../world/zones.js';
+import { ZONE_INFO, ZONE_ATMOS } from '../world/zones.js';
 import { Sky, Clouds, Weather } from '../surface/sky.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
@@ -396,6 +396,25 @@ export class SurfaceMode {
     return this.encK;
   }
 
+  // Smoothly blended atmosphere of the dream zone around the camera
+  _zoneAtmos(dt) {
+    const za = this.zAtm || (this.zAtm = { k: 0, fog: [1, 1, 1], dens: 1, mist: 1, light: [1, 1, 1], sky: 0 });
+    let tk = 0, A = null;
+    if (!this.interior && this.world && this.world.terrain) {
+      const c = this.game.camera.position;
+      const zi = this.world.terrain.zoneAt(c.x, c.z);
+      A = ZONE_ATMOS[zi.type];
+      if (A) tk = zi.blend;
+    }
+    const r = Math.min(1, dt * 1.2);
+    za.k += (tk - za.k) * r;
+    if (A) {
+      for (let i = 0; i < 3; i++) { za.fog[i] += (A.fog[i] - za.fog[i]) * r; za.light[i] += (A.light[i] - za.light[i]) * r; }
+      za.dens += (A.dens - za.dens) * r; za.mist += (A.mist - za.mist) * r; za.sky += (A.sky - za.sky) * r;
+    }
+    return za;
+  }
+
   _applySky(dt) {
     const P = this.P;
     const u = voxelUniforms;
@@ -419,6 +438,14 @@ export class SurfaceMode {
       zen[i] = lerp(zen[i], gray * 0.6, storm * 0.6);
       hor[i] = lerp(hor[i], (hor[0] + hor[1] + hor[2]) / 3 * 0.75, storm * 0.5);
     }
+    const ZA = this._zoneAtmos(dt);
+    if (ZA.k > 0.001) {
+      const nk = lerp(0.25, 1, daylight);
+      for (let i = 0; i < 3; i++) {
+        hor[i] = lerp(hor[i], ZA.fog[i] * nk, ZA.k * ZA.sky);
+        zen[i] = lerp(zen[i], ZA.fog[i] * 0.5 * nk, ZA.k * ZA.sky * 0.85);
+      }
+    }
     u.uZenith.value.setRGB(zen[0], zen[1], zen[2]);
     u.uHorizon.value.setRGB(hor[0], hor[1], hor[2]);
     u.uSunset.value = P.sky.stars >= 1 ? 0 : sunset * (1 - storm * 0.7);
@@ -434,13 +461,17 @@ export class SurfaceMode {
     const sk = lerp(0.2, 0.78, daylight) * (1 - storm * 0.3);
     const moon = 1 - daylight;
     u.uSkyLight.value.setRGB(sk * lerp(1, 1.1, sunset) * (1 - moon * 0.25), sk * lerp(1, 0.85, sunset) * (1 - moon * 0.1), sk * lerp(1.05, 0.75, sunset) * (1 + moon * 0.25));
+    if (ZA.k > 0.001) {
+      u.uSkyLight.value.r *= lerp(1, ZA.light[0], ZA.k); u.uSkyLight.value.g *= lerp(1, ZA.light[1], ZA.k); u.uSkyLight.value.b *= lerp(1, ZA.light[2], ZA.k);
+      u.uAmbient.value.r *= lerp(1, ZA.light[0], ZA.k); u.uAmbient.value.g *= lerp(1, ZA.light[1], ZA.k); u.uAmbient.value.b *= lerp(1, ZA.light[2], ZA.k);
+    }
     const far = this.fogFar || 110;
     u.uFogFar.value = far;
     u.uFogNear.value = far * 0.6;
     const FG = P.fog;
     const fogK = (1 + storm * 1.6) * (this.game.inShip && this.game.ship.state === 'flying' ? 0.6 : 1);
-    u.uFogDensity.value = FG.density * fogK;
-    u.uMistDensity.value = FG.mistDensity * (1 + storm);
+    u.uFogDensity.value = FG.density * fogK * lerp(1, ZA.dens, ZA.k);
+    u.uMistDensity.value = FG.mistDensity * (1 + storm) * lerp(1, ZA.mist, ZA.k);
     u.uMistBase.value = FG.mistBase;
     u.uMistFalloff.value = FG.mistFalloff;
     // mist glows softly in daylight, turns to deep velvet at night
@@ -451,7 +482,11 @@ export class SurfaceMode {
       lerp(mc[1] * ml, u.uSunsetCol.value.g, sunset * 0.35) + (1 - daylight) * 0.02,
       lerp(mc[2] * ml, u.uSunsetCol.value.b, sunset * 0.35) + (1 - daylight) * 0.05,
     );
-    this.sky.uniforms.uSkyFog.value = FG.skyFog * (1 - (P.sky.stars >= 1 ? 1 : 0)) + storm * 0.3;
+    if (ZA.k > 0.001) {
+      const mk = ZA.k * ZA.sky;
+      u.uMistCol.value.setRGB(lerp(u.uMistCol.value.r, ZA.fog[0] * ml, mk), lerp(u.uMistCol.value.g, ZA.fog[1] * ml, mk), lerp(u.uMistCol.value.b, ZA.fog[2] * ml, mk));
+    }
+    this.sky.uniforms.uSkyFog.value = Math.min(1, FG.skyFog * (1 - (P.sky.stars >= 1 ? 1 : 0)) + storm * 0.3 + ZA.k * ZA.sky * 0.5);
     // enclosure: under a roof (caves, backrooms, libraries) the open-air mist gives way to a dim indoor haze
     const enc = this._enclosure(dt);
     u.uEnclosed.value = enc;
@@ -574,9 +609,15 @@ export class SurfaceMode {
     const pc = g.inShip ? ship.pos : player.pos;
     this.creatures.update(dt, {
       world: this.world, player: pc, fauna: this.P.fauna, time: g.time, playerInShip: g.inShip,
-      camPos: g.camera.position, camDir: g.camera.getWorldDirection(new THREE.Vector3()), night: this.daylight < 0.3,
+      camPos: g.camera.position, camDir: g.camera.getWorldDirection(new THREE.Vector3()), night: this.daylight < 0.3, zone: this.zoneCur,
       onAttack: (dmg, c) => { this._hurtPlayer(dmg); g.hud.notify(`${c.sp.name} attacks!`); },
       onCreep: () => { g.audio.tone(90, 0.6, 'sawtooth', 0.05, 0.7); g.audio.noiseHit(0.3, 300, 0.08, 'lowpass'); },
+      onRattle: () => g.audio.rattle(),
+      onVanish: (c, seen) => {
+        if (!seen) return;
+        g.audio.distant('thud');
+        if (!g.state.flags.pretaSeen) { g.state.flags.pretaSeen = true; g.hud.setCenter('Was something standing there?', '#d8d0e8'); this.centerT = 3.5; }
+      },
     });
     this.sentinels.update(dt, {
       world: this.world, player: pc, inShip: g.inShip, time: g.time,
@@ -1068,8 +1109,10 @@ export class SurfaceMode {
         else if (def.interact === 'door') { prompt = '<span class="key">E</span>Open the dream door'; action = () => this._dreamDoor(target.hit); }
       } else if (target.kind === 'creature') {
         const c = target.c;
-        prompt = `<span class="key">E</span>Feed ${g.state.discoveries.creatures[c.sp.id] ? c.sp.name : 'creature'} (5 Carbon)`;
-        action = () => this._feed(c);
+        if (c.sp.temper !== 'Watching') {
+          prompt = `<span class="key">E</span>Feed ${g.state.discoveries.creatures[c.sp.id] ? c.sp.name : 'creature'} (5 Carbon)`;
+          action = () => this._feed(c);
+        }
       }
     }
     if (!prompt && this.npcs.length) {

@@ -19,6 +19,19 @@ export const ZONE_INFO = {
   plasticity: { name: 'Plastic District', text: 'Bright, hollow, perfectly clean. Nobody has ever lived here.' },
   lines: { name: 'The Lines', text: 'Straight lines drawn across the sky by something very patient.' },
   backrooms: { name: 'Underground Eden', text: 'Beneath the world: damp carpet, humming lights, no exits.' },
+  naraka: { name: 'Naraka', text: 'The ground is warm and soft. The stones are names. The tall ones are hungry.' },
+};
+
+// Each zone breathes its own air: fog tint (rgb), density multiplier, mist multiplier, light tint
+export const ZONE_ATMOS = {
+  meadow: { fog: [0.93, 0.93, 0.97], dens: 1.25, mist: 1.6, light: [1, 1, 1], sky: 0.3 },
+  poolscape: { fog: [0.97, 0.99, 1.0], dens: 0.85, mist: 0.6, light: [1.05, 1.08, 1.1], sky: 0.35 },
+  tilevoid: { fog: [0.16, 0.14, 0.28], dens: 1.35, mist: 0.3, light: [0.7, 0.72, 0.95], sky: 0.8 },
+  memory: { fog: [0.86, 0.87, 0.92], dens: 1.5, mist: 0.8, light: [0.95, 0.96, 1.0], sky: 0.4 },
+  library: { fog: [0.4, 0.3, 0.22], dens: 1.6, mist: 0.6, light: [0.95, 0.82, 0.68], sky: 0.55 },
+  plasticity: { fog: [0.98, 0.94, 0.92], dens: 1.0, mist: 0.9, light: [1.08, 1.04, 1.0], sky: 0.3 },
+  lines: { fog: [0.82, 0.86, 0.98], dens: 0.8, mist: 0.7, light: [1, 1, 1.05], sky: 0.3 },
+  naraka: { fog: [0.24, 0.03, 0.05], dens: 2.1, mist: 1.4, light: [0.95, 0.45, 0.45], sky: 0.92 },
 };
 
 function cellType(tg, cx, cz) {
@@ -185,6 +198,29 @@ const WRITERS = {
       }
       S(y, id);
     }
+  },
+
+  naraka(tg, S, wx, wz, F) {
+    // rolling warm flesh, rows of onyx graves, black spires
+    const g = Math.round(F + tg.nHill.fbm2(wx * 0.05, wz * 0.05, 2) * 3);
+    clearRange(S, g, Math.min(HEIGHT - 1, g + 44));
+    for (let y = Math.max(1, g - 4); y < g; y++) S(y, B.FLESH);
+    S(Math.max(1, g - 5), B.ONYX);
+    const lx = mod(wx, 5), lz = mod(wz, 4);
+    const gh = hash32(tg.seed, Math.floor(wx / 5), Math.floor(wz / 4), 911);
+    if (lx === 2 && lz === 1 && (gh % 100) < 55) {
+      S(g, B.ONYX); S(g + 1, B.ONYX);
+      if (((gh >>> 8) % 5) === 0) S(g + 2, B.ONYX);
+    }
+    const sx = mod(wx, 23), sz = mod(wz, 23);
+    const sh = hash32(tg.seed, Math.floor(wx / 23), Math.floor(wz / 23), 913);
+    if ((sh % 100) < 45) {
+      const cx = 4 + ((sh >>> 8) % 15), cz = 4 + ((sh >>> 12) % 15);
+      const d = Math.max(Math.abs(sx - cx), Math.abs(sz - cz));
+      const H = 12 + ((sh >>> 16) % 24);
+      if (d <= 1) for (let y = g; y < g + H - d * 7 && y < HEIGHT - 2; y++) S(y, B.ONYX);
+    }
+    if ((hash32(wx, wz, tg.seed, 917) % 500) === 0) S(g - 1, B.EYE);
   },
 
   lines(tg, S, wx, wz, F) {

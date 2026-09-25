@@ -331,6 +331,12 @@ export class AudioSystem {
     else if (kind === 'steps') { for (let i = 0; i < 6; i++) noise(0.09, 500, 0.05, 'bandpass', 1.2, i * 0.55 + Math.random() * 0.05); }
   }
 
+  // dry wooden clicking - a Kodama's head rattling
+  rattle() {
+    if (!this.ctx) return;
+    for (let i = 0; i < 9; i++) setTimeout(() => this.noiseHit(0.025, 2600 + Math.random() * 1400, 0.06, 'bandpass', 6), i * 45 + Math.random() * 20);
+  }
+
   alert() { [0, 1, 0, 1].forEach((s, i) => setTimeout(() => this.tone(s ? 760 : 560, 0.15, 'square', 0.06), i * 180)); }
   warning() { this.tone(440, 0.3, 'square', 0.05); setTimeout(() => this.tone(440, 0.3, 'square', 0.05), 400); }
   craft() { this.tone(660, 0.1, 'triangle', 0.08); setTimeout(() => this.tone(990, 0.15, 'triangle', 0.08), 90); }

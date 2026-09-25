@@ -245,9 +245,10 @@ export function makePlanetParams(seed, biome, opts = {}) {
   };
   // Dream zones: regions of the world that have slipped into liminal space
   const ZONES = {
-    liminal: [['natural', 1.2], ['meadow', 3.2], ['poolscape', 2.2], ['tilevoid', 1.2], ['memory', 0.9], ['library', 1.3], ['plasticity', 1.1], ['lines', 0.7]],
-    exotic: [['natural', 5], ['memory', 1.2], ['tilevoid', 1.2], ['lines', 1.2], ['meadow', 1]],
-    dead: [['natural', 7], ['memory', 1], ['library', 0.7], ['tilevoid', 0.6]],
+    liminal: [['natural', 1.2], ['meadow', 3.2], ['poolscape', 2.2], ['tilevoid', 1.2], ['memory', 0.9], ['library', 1.3], ['plasticity', 1.1], ['lines', 0.7], ['naraka', 0.5]],
+    exotic: [['natural', 5], ['memory', 1.2], ['tilevoid', 1.2], ['lines', 1.2], ['meadow', 1], ['naraka', 1]],
+    dead: [['natural', 7], ['memory', 1], ['library', 0.7], ['tilevoid', 0.6], ['naraka', 1.2]],
+    scorched: rng.chance(0.4) ? [['natural', 9], ['naraka', 1.5]] : null,
   }[biome];
   if (ZONES) P.zones = ZONES;
   else if (rng.chance(0.55)) {
