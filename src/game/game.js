@@ -170,6 +170,7 @@ export class Game {
     this.inventory.addBlock(B.LAMP, 6);
     this.inventory.addBlock(B.DREAM_BLOCK, 8);
     this.player = new Player();
+    if (this.ship) this.ship.model.removeFromParent();
     this.ship = new Ship(seed);
     this.ship.fuel.launch = 40;
     this.ship.fuel.pulse = 70;
@@ -193,6 +194,7 @@ export class Game {
     this.player = new Player();
     if (st.stats) Object.assign(this.player.stats, st.stats);
     if (st.playerUpgrades) Object.assign(this.player.upgrades, st.playerUpgrades);
+    if (this.ship) this.ship.model.removeFromParent();
     this.ship = new Ship(st.seed);
     if (st.shipData) {
       Object.assign(this.ship.fuel, st.shipData.fuel);

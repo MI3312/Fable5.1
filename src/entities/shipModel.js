@@ -27,8 +27,25 @@ export function buildShip(seed = 1) {
   const trim = mat(c2);
   const dark = mat(0x2a2d36);
   const glass = mat(0x9ff3ff, { emissive: 0x2a8fa8, emissiveIntensity: 0.7 });
-  const glow = new THREE.MeshBasicMaterial({ color: 0xffa060 });
+  const glow = new THREE.MeshBasicMaterial({ color: 0xffa060, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
   applyCurvature(glow);
+  const flameGeo = new THREE.ConeGeometry(1, 1, 10, 1, true);
+  flameGeo.translate(0, 0.5, 0);
+  flameGeo.rotateX(-Math.PI / 2);
+  flameGeo.rotateX(Math.PI);
+  const nozzle = new THREE.MeshBasicMaterial({ color: 0xffd0a0 });
+  applyCurvature(nozzle);
+  const addFlame = (x, y, z, r) => {
+    const f = new THREE.Mesh(flameGeo, glow);
+    f.position.set(x, y, z);
+    f.scale.set(r, r, 1);
+    f.name = 'flame';
+    f.userData.baseZ = z;
+    f.renderOrder = 9;
+    g.add(f);
+    box(r * 1.5, r * 1.5, 0.08, nozzle, x, y, z - 0.03, g);
+    return f;
+  };
   const accent = mat(c3, { emissive: c3, emissiveIntensity: 0.35 });
 
   // fuselage
@@ -51,12 +68,10 @@ export function buildShip(seed = 1) {
     box(0.18, 0.18, 1.6, dark, s * (0.9 + wingSpan * 0.6), -0.3, -0.4, g);
     // engines
     box(0.9, 0.9, 2.2, dark, s * 1.15, 0.1, 3.0, g);
-    const flame = box(0.6, 0.6, 0.3, glow, s * 1.15, 0.1, 4.15, g);
-    flame.name = 'flame';
+    addFlame(s * 1.15, 0.1, 4.12, 0.32);
   }
   box(1.0, 1.0, 1.0, dark, 0, 0.1, 3.6, g);
-  const cflame = box(0.7, 0.7, 0.3, glow, 0, 0.1, 4.15, g);
-  cflame.name = 'flame';
+  addFlame(0, 0.1, 4.12, 0.36);
   // tail fin
   box(0.2, 1.4, 1.6, trim, 0, 1.3, 2.4, g);
   box(0.25, 0.3, 1.2, accent, 0, 2.0, 2.6, g);
@@ -81,7 +96,7 @@ export function buildMultitool() {
   const dark = new THREE.MeshLambertMaterial({ color: 0x2c3039, flatShading: true });
   const accent = new THREE.MeshLambertMaterial({ color: 0xff9a4d, emissive: 0x5a1c00, flatShading: true });
   const glowMat = new THREE.MeshBasicMaterial({ color: 0x6ff3ff });
-  const s = 0.55;
+  const s = 0.5;
   const add = (w, h, d, m, x, y, z) => box(w * s, h * s, d * s, m, x * s, y * s, z * s, g);
   add(0.11, 0.12, 0.5, body, 0, 0, 0);          // main body
   add(0.13, 0.05, 0.22, accent, 0, 0.08, 0.02);  // top accent plate

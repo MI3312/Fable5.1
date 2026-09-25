@@ -13,6 +13,8 @@ export class SpaceMode {
     this.scene = this.space.scene;
     this.bolts = new Bolts(this.scene, 80);
     this.debris = new Debris(this.scene, 300, 3.5);
+    this.bolts.mesh.userData.keep = true;
+    this.debris.mesh.userData.keep = true;
     this.builtKey = null;
     this.titleT = 0;
     this.docked = false;
@@ -21,11 +23,10 @@ export class SpaceMode {
   }
 
   buildScene(system) {
-    if (this.builtKey === system.key) return;
+    if (this.builtSystem === system) return;
+    this.game.ship.model.userData.keep = true;
     this.space.build(system);
-    // keep our effect meshes in the rebuilt scene
-    this.scene.add(this.bolts.mesh, this.debris.mesh);
-    this.builtKey = system.key;
+    this.builtSystem = system;
   }
 
   updateTitle(dt) {
@@ -66,10 +67,13 @@ export class SpaceMode {
       const q = this.space.planetWorldQuat(opts.fromPlanet);
       const d = new THREE.Vector3(...(opts.dir || [0, 1, 0])).applyQuaternion(q).normalize();
       ship.pos.copy(pl.group.position).addScaledVector(d, pl.data.radius * 1.32);
-      const look = ship.pos.clone().add(d);
-      const m = new THREE.Matrix4().lookAt(ship.pos, look, new THREE.Vector3(0, 1, 0));
+      // fly off tangentially with the planet below us, climbing slightly
+      const ref = Math.abs(d.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      const tangent = new THREE.Vector3().crossVectors(d, ref).normalize();
+      const fwd = tangent.clone().addScaledVector(d, 0.35).normalize();
+      const m = new THREE.Matrix4().lookAt(ship.pos, ship.pos.clone().add(fwd), d);
       ship.quat.setFromRotationMatrix(m);
-      // lookAt makes -Z face the target (camera convention) -> forward is outward
+      // lookAt makes -Z face the target (camera convention)
       ship.speed = 80; ship.targetSpeed = 80;
     } else if (opts.restore && g.state.shipSpace) {
       const s = g.state.shipSpace;
@@ -298,7 +302,7 @@ export class SpaceMode {
     pu.uWarp.value = ship.pulsing ? 0.25 : Math.max(0, pu.uWarp.value - dt);
     pu.uDream.value = (g.system.isCore ? 1 : 0.3) * g.settings.dreamFx;
     pu.uVignette.value = 0.3 + 0.15 * g.settings.dreamFx;
-    pu.uCA.value = 0.0015 + 0.0045 * g.settings.dreamFx;
+    pu.uCA.value = 0.001 + 0.0025 * g.settings.dreamFx;
     pu.uGrain.value = 0.02 + 0.03 * g.settings.dreamFx;
     this._hud(dt);
   }

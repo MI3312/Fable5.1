@@ -12,7 +12,7 @@ export const TILE = {
   cloud: 42, chest_side: 43, chest_top: 44, chest_front: 45, monolith: 46, terminal: 47,
   obsidian: 48, ash: 49, rust: 50, salt: 51, gravel: 52, pod: 53, lamp: 54,
   dream_tile: 55, marble: 56, neon: 57, coral: 58, pool_deep: 59, eye: 60,
-  sentinel: 61, starry: 62, chest_open: 63, pod_open: 64, acid: 65, dream_water: 66,
+  sentinel: 61, starry: 62, chest_open: 63, pod_open: 64, acid: 65, dream_water: 66, door: 67,
 };
 
 // Tint channels. The palette of each planet supplies an RGB colour per channel.
@@ -35,7 +35,7 @@ export const B = {
   CHEST: 40, MONOLITH: 41, TERMINAL: 42, OBSIDIAN: 43, ASH: 44, RUST: 45, SALT: 46, GRAVEL: 47,
   POD: 48, LAMP: 49, DREAM_TILE: 50, MARBLE: 51, NEON: 52, CORAL: 53, POOL_DEEP: 54, EYE: 55,
   LIT_AIR: 56, SENTINEL_PILLAR: 57, SNOW_GRASS: 58, STARRY: 59, CHEST_OPEN: 60, POD_OPEN: 61,
-  ACID: 62, DREAM_WATER: 63,
+  ACID: 62, DREAM_WATER: 63, DREAM_DOOR: 64,
 };
 
 const T = TILE;
@@ -126,6 +126,7 @@ BLOCKS[B.STARRY] = def('Night Fragment', T.starry, { hardness: 0.8, emissive: 0.
 BLOCKS[B.CHEST_OPEN] = def('Empty Cache', [T.chest_open, T.chest_top, T.chest_side], { hardness: 0.8, drops: [['carbon', 2, 3]], color: [0.7, 0.55, 0.3] });
 BLOCKS[B.POD_OPEN] = def('Spent Pod', [T.metal_plate, T.metal_plate, T.pod_open], { hardness: 1.2, drops: [['ferrite', 2, 4]], color: [0.5, 0.55, 0.6] });
 BLOCKS[B.ACID] = def('Acid', T.acid, { pass: PASS.translucent, solid: false, liquid: true, emissive: 0.4, collect: false, hardness: 0, hazard: 12, color: [0.5, 1.0, 0.2] });
+BLOCKS[B.DREAM_DOOR] = def('Dream Door', [T.dream_tile, T.dream_tile, T.door], { hardness: 999, unbreakable: true, collect: false, interact: 'door', emissive: 0.35, color: [1.0, 0.8, 0.9] });
 BLOCKS[B.DREAM_WATER] = def('Dream Water', T.dream_water, { pass: PASS.translucent, solid: false, liquid: true, emissive: 0.15, collect: false, hardness: 0, color: [0.95, 0.6, 0.85] });
 
 export const BLOCK_COUNT = BLOCKS.length;

@@ -59,9 +59,9 @@ export class Ship {
     const flying = this.state !== 'landed';
     const k = !flying ? 0.05 : this.pulsing ? 5 : this.boosting ? 3 : 0.8 + this.speed / 120;
     for (const f of flames) {
-      f.scale.z = k * (0.9 + Math.sin(t * 40 + f.position.x) * 0.1) * 6;
-      f.position.z = 4.1 + f.scale.z * 0.15;
-      f.material.color.setHex(this.pulsing ? 0x9fd8ff : 0xffa060);
+      f.scale.z = k * (0.85 + Math.sin(t * 43 + f.position.x * 7) * 0.15) * 2.2;
+      f.visible = f.scale.z > 0.2;
+      f.material.color.setHex(this.pulsing ? 0x8fc8ff : this.boosting ? 0xffc080 : 0xff9050);
     }
   }
 

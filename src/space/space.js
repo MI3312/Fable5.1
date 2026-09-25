@@ -168,7 +168,7 @@ export class SpaceScene {
     this.planets = [];
     this.asteroids = null;
     this.asteroidData = [];
-    this.ambient = new THREE.AmbientLight(0x404050, 0.6);
+    this.ambient = new THREE.AmbientLight(0x505068, 1.1);
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.6);
     this.scene.add(this.ambient, this.sunLight, this.sunLight.target);
     this.time = 0;
@@ -210,7 +210,7 @@ export class SpaceScene {
     // dispose old
     const keep = new Set([this.ambient, this.sunLight, this.sunLight.target, this.dust]);
     for (const c of [...this.scene.children]) {
-      if (keep.has(c)) continue;
+      if (keep.has(c) || c.userData.keep) continue;
       this.scene.remove(c);
       c.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     }

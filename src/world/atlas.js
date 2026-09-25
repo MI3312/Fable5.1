@@ -141,9 +141,10 @@ function paintTiles() {
   });
   t('leaves', (p) => {
     p.fill((x, y, r) => {
-      if (r.next() < 0.14) return [0, 0, 0, 0];
-      const n = (r.next() - 0.5) * 0.35;
-      return [0.8 + n, 0.8 + n, 0.8 + n, 255];
+      if (r.next() < 0.07) return [0, 0, 0, 0];
+      const n = (r.next() - 0.5) * 0.22;
+      const cl = ((x * 7 + y * 3) % 5 === 0) ? 0.12 : 0;
+      return [0.84 + n + cl, 0.84 + n + cl, 0.84 + n + cl, 255];
     });
   });
   const ore = (name, color, glow = 0) => t(name, (p) => {
@@ -478,6 +479,18 @@ function paintTiles() {
       const n = (r.next() - 0.5) * 0.06;
       return [0.55 + w + n, 1.0, 0.25 + w, UNT];
     });
+  });
+  t('door', (p) => {
+    p.fill((x, y, r) => {
+      const n = (r.next() - 0.5) * 0.03;
+      const frame = x <= 1 || x >= 14;
+      const panel = (x >= 4 && x <= 11) && (y >= 2 && y <= 13);
+      const inset = panel && (x === 4 || x === 11 || y === 2 || y === 13);
+      if (frame) return [0.98, 0.9, 0.95, UNT];
+      if (inset) return [0.82 + n, 0.62 + n, 0.78 + n, UNT];
+      return [0.92 + n, 0.74 + n, 0.88 + n, UNT];
+    });
+    p.set(12, 1, 1.0, 0.85, 0.35, UNT);
   });
   t('dream_water', (p) => {
     p.fill((x, y, r) => {

@@ -179,6 +179,11 @@ const STAMPERS = {
         clearAbove(ctx, x, F + H - 1, z, 4, B.AIR);
       }
     }
+    // a lone door standing in the room, leading somewhere else
+    if (rng.chance(0.6)) {
+      const lx = X + rng.int(3, W - 4), lz = Z + rng.int(3, D - 4);
+      if (!inPool(lx, lz)) { ctx.set(lx, F, lz, B.DREAM_DOOR); ctx.set(lx, F + 1, lz, B.DREAM_DOOR); ctx.set(lx, F + 2, lz, wallTile); }
+    }
     // loot
     ctx.set(X + 2, F, Z + 2, B.CHEST);
     if (rng.chance(0.5)) ctx.set(X + W - 3, F, Z + D - 3, B.CHEST);
@@ -249,6 +254,12 @@ const STAMPERS = {
       ctx.set(x, F + H - 1, z, perim ? B.WALLPAPER : B.CEILING_TILE);
       clearAbove(ctx, x, F + H, z, 3);
     }
+    // a dream door somewhere on an inner wall line
+    {
+      const gx = rng.int(1, NC - 1), gz = rng.int(0, NC - 1);
+      const dx = X + gx * CELL, dz = Z + gz * CELL + 2;
+      ctx.set(dx, F, dz, B.DREAM_DOOR); ctx.set(dx, F + 1, dz, B.DREAM_DOOR);
+    }
     // chests in random cells
     for (let i = 0; i < 2; i++) {
       const cx = rng.int(0, NC - 1), cz = rng.int(0, NC - 1);
@@ -272,7 +283,7 @@ const STAMPERS = {
       for (let y = F; y < F + H - 1; y++) {
         let id = side ? wallB : B.LIT_AIR;
         // doors to nowhere along the walls
-        if (side && along % 6 === 3 && y < F + 3) id = B.PLANKS;
+        if (side && along % 6 === 3 && y < F + 3) id = (across === 4 && Math.abs(along - (alongX ? W : D) / 2) < 3 && y < F + 2) ? B.DREAM_DOOR : B.PLANKS;
         if (side && along % 6 === 3 && y === F + 1 && across === 0) id = B.LAMP;
         ctx.set(x, y, z, id);
       }
@@ -339,7 +350,7 @@ const STAMPERS = {
       ctx.set(tx, ty - 1, Z + 1 + k, mat);
       for (let y = ty; y < ty + 4; y++) {
         const frame = k === -1 || k === 2 || y === ty + 3;
-        ctx.set(tx, y, Z + 1 + k, frame ? B.DREAM_TILE : (rng.chance(0.5) ? B.STARRY : B.LIT_AIR));
+        ctx.set(tx, y, Z + 1 + k, frame ? B.DREAM_TILE : (y < ty + 2 ? B.DREAM_DOOR : B.STARRY));
       }
     }
     ctx.set(tx, ty + 4, Z + 2, B.LAMP);

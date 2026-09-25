@@ -38,6 +38,7 @@ export class SurfaceMode {
   constructor(game) {
     this.game = game;
     this.scene = new THREE.Scene();
+    this.scene.fog = new THREE.Fog(0xffffff, 40, 110);
     this.atlas = createAtlasTexture();
     this.materials = createVoxelMaterials(this.atlas);
     this.world = new World(this.scene, this.materials);
@@ -378,6 +379,9 @@ export class SurfaceMode {
     const far = this.fogFar || 110;
     u.uFogFar.value = far * (1 - storm * 0.45) * (P.biome === 'toxic' || P.biome === 'radioactive' ? 0.85 : 1);
     u.uFogNear.value = u.uFogFar.value * (0.3 - storm * 0.15);
+    this.scene.fog.color.setRGB(hor[0], hor[1], hor[2]);
+    this.scene.fog.near = u.uFogNear.value;
+    this.scene.fog.far = u.uFogFar.value * 1.1;
     // three.js lights (ship, creatures, drones)
     this.sunLight.position.copy(sunDir).multiplyScalar(100);
     this.sunLight.intensity = 0.2 + daylight * 1.1;
@@ -441,6 +445,10 @@ export class SurfaceMode {
       this._updateShip(dt, ctl);
       focus = ship.pos;
       player.pos.copy(ship.pos);
+    } else if (this.teleport) {
+      focus = player.pos;
+      this.teleport.t += dt;
+      if (this.world.loadedAround(player.pos.x, player.pos.z, 1) >= 1 || this.teleport.t > 15) this._finishTeleport();
     } else {
       const grav = this.P.gravity;
       const ev = player.update(dt, input, this.world, grav, ctl);
@@ -545,7 +553,7 @@ export class SurfaceMode {
     }
     pu.uDream.value = (this.P.sky.dream || 0) * g.settings.dreamFx;
     pu.uVignette.value = 0.3 + 0.15 * g.settings.dreamFx;
-    pu.uCA.value = 0.0015 + 0.0045 * g.settings.dreamFx;
+    pu.uCA.value = 0.001 + 0.0025 * g.settings.dreamFx;
     pu.uGrain.value = 0.02 + 0.03 * g.settings.dreamFx;
     void ambientDark;
   }
@@ -672,7 +680,7 @@ export class SurfaceMode {
     // interaction prompt
     this._interaction(target);
 
-    const muzzle = cam.localToWorld(new THREE.Vector3(0.2, -0.17, -0.8));
+    const muzzle = cam.localToWorld(new THREE.Vector3(0.26, -0.2, -0.95));
     const lmb = ctl && input.mouseDown(0);
     let beamOn = false;
     if (this.visor) {
@@ -729,7 +737,7 @@ export class SurfaceMode {
     // viewmodel animation
     const t = this.tool;
     const bob = player.bob;
-    t.position.set(0.24 + Math.cos(bob * 0.5) * 0.01, -0.2 + Math.sin(bob) * 0.012 - this.recoil * 0.015, -0.52 + this.recoil * 0.05);
+    t.position.set(0.3 + Math.cos(bob * 0.5) * 0.01, -0.25 + Math.sin(bob) * 0.012 - this.recoil * 0.015, -0.72 + this.recoil * 0.05);
     t.rotation.set(0.03 + this.recoil * 0.2, 0.08, 0);
     t.userData.glowMat.color.set(this.overheated ? 0xff4020 : TOOL_COLORS[mode]);
     if (beamOn) t.position.x += (Math.random() - 0.5) * 0.004;
@@ -892,6 +900,7 @@ export class SurfaceMode {
         else if (def.interact === 'monolith') { prompt = '<span class="key">E</span>Touch the monolith'; action = () => this._monolith(target.hit); }
         else if (def.interact === 'terminal') { prompt = '<span class="key">E</span>Access terminal'; action = () => this._terminal(target.hit); }
         else if (def.interact === 'pod') { prompt = '<span class="key">E</span>Open exosuit pod'; action = () => this._pod(target.hit); }
+        else if (def.interact === 'door') { prompt = '<span class="key">E</span>Open the dream door'; action = () => this._dreamDoor(target.hit); }
       } else if (target.kind === 'creature') {
         const c = target.c;
         prompt = `<span class="key">E</span>Feed ${g.state.discoveries.creatures[c.sp.id] ? c.sp.name : 'creature'} (5 Carbon)`;
@@ -980,6 +989,43 @@ export class SurfaceMode {
     this.world.setBlock(hit.x, hit.y, hit.z, B.POD_OPEN);
     g.hud.toast('Exosuit Upgraded', `Cargo capacity increased to ${g.inventory.capacity} slots`);
     g.audio.discover();
+  }
+
+  _dreamDoor(hit) {
+    const g = this.game;
+    const list = this._listStructures(hit.x, hit.z, 1400).filter((s) => s.liminal && s.dist > 150);
+    if (!list.length) { g.hud.notify('The door opens onto a wall. It closes again.'); return; }
+    const dest = list[hash32(this.planet.seed, hit.x, hit.y, hit.z) % list.length];
+    g.audio.tone(220, 1.5, 'sine', 0.1, 3);
+    g.fade(0.6, () => {
+      const p = g.player;
+      p.pos.set(dest.cx + 0.5, dest.y + 1, dest.cz + 0.5);
+      p.vel.set(0, 0, 0);
+      this.teleport = { dest, t: 0 };
+      g.hud.toast(dest.name, 'You step through, and the door is gone behind you.');
+    }, 0xfff0fa);
+  }
+
+  _finishTeleport() {
+    const tp = this.teleport, W = this.world, p = this.game.player;
+    const s = tp.dest;
+    // find standing room inside the structure
+    for (let r = 0; r < 14; r++) {
+      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const x = Math.floor(s.cx) + dx, z = Math.floor(s.cz) + dz;
+        for (let y = s.y - 1; y <= s.y + 16; y++) {
+          const b0 = W.getBlock(x, y, z), b1 = W.getBlock(x, y + 1, z), below = W.getBlock(x, y - 1, z);
+          if (IS_AIRLIKE[b0] && IS_AIRLIKE[b1] && below > 0 && IS_SOLID[below]) {
+            p.pos.set(x + 0.5, y, z + 0.5);
+            this.teleport = null;
+            return;
+          }
+        }
+      }
+    }
+    p.pos.y = W.groundAt(p.pos.x, p.pos.z) + 1;
+    this.teleport = null;
   }
 
   _feed(c) {

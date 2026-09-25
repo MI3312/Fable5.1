@@ -33,6 +33,7 @@ varying vec3 vTint;
 varying vec3 vLight;
 varying vec3 vWorld;
 varying float vDist;
+varying float vDist3;
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vWorld = wp.xyz;
@@ -43,7 +44,9 @@ void main() {
   wp.y -= dot(cd, cd) * uCurve;
   vec4 mv = viewMatrix * wp;
   gl_Position = projectionMatrix * mv;
-  vDist = length(mv.xyz);
+  // fog by horizontal distance hides the chunk streaming edge but lets you see the ground from altitude
+  vDist = length(cd);
+  vDist3 = length(mv.xyz);
   vUvl = uvl;
   vTint = tint;
   vLight = light;
@@ -68,6 +71,7 @@ varying vec3 vTint;
 varying vec3 vLight;
 varying vec3 vWorld;
 varying float vDist;
+varying float vDist3;
 void main() {
   vec3 uvl = vUvl;
   if (uLiquid > 0.0) uvl.xy += vec2(uTime * 0.04, uTime * 0.025);
@@ -96,6 +100,7 @@ void main() {
   vec3 fogDir = normalize(vec3(viewDir.x, max(viewDir.y, 0.02), viewDir.z));
   vec3 fogCol = skyGradient(fogDir);
   float fog = smoothstep(uFogNear, uFogFar, vDist);
+  fog = max(fog, (1.0 - exp(-vDist3 * 0.0022)) * 0.55);
   col = mix(col, fogCol, fog);
   gl_FragColor = vec4(col, alpha);
 }

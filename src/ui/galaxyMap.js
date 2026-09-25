@@ -41,7 +41,7 @@ export class GalaxyMap {
       this.drag = null;
     });
     this.canvas.addEventListener('wheel', (e) => { this.zoom = Math.max(0.4, Math.min(3, this.zoom * (e.deltaY > 0 ? 0.9 : 1.1))); e.preventDefault(); }, { passive: false });
-    this.stars = g.universe.neighbors(cur.gx, cur.gy, cur.gz, 9).map((s) => ({ ...s, p: g.universe.mapPosition(s.gx, s.gy, s.gz), sys: g.universe.getSystem(s.gx, s.gy, s.gz) }));
+    this.stars = g.universe.neighbors(cur.gx, cur.gy, cur.gz, 7.5).map((s) => ({ ...s, p: g.universe.mapPosition(s.gx, s.gy, s.gz), sys: g.universe.getSystem(s.gx, s.gy, s.gz) }));
     this.renderPanel();
   }
 
@@ -171,7 +171,9 @@ export class GalaxyMap {
       s.scr = pr;
       const col = s.sys.star.color;
       const rgb = `${Math.round(col[0] * 255)},${Math.round(col[1] * 255)},${Math.round(col[2] * 255)}`;
-      const size = Math.max(1.5, pr.s * 0.09);
+      const size = Math.max(1.2, pr.s * 0.06);
+      const far = Math.hypot(s.gx - cur.gx, s.gy - cur.gy, s.gz - cur.gz) > g.hyperdriveRange() + 0.01;
+      ctx.globalAlpha = far ? 0.45 : 1;
       const grd = ctx.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, size * 4);
       grd.addColorStop(0, `rgba(${rgb},0.9)`);
       grd.addColorStop(1, `rgba(${rgb},0)`);
@@ -192,11 +194,14 @@ export class GalaxyMap {
         ctx.strokeRect(pr.x - size - 9, pr.y - size - 9, (size + 9) * 2, (size + 9) * 2);
         ctx.beginPath(); ctx.moveTo(center.x, center.y); ctx.lineTo(pr.x, pr.y); ctx.stroke();
       }
-      if (pr.s > 30 || this.sel === s || isCur) {
+      const dist = Math.hypot(s.gx - cur.gx, s.gy - cur.gy, s.gz - cur.gz);
+      const inRange = dist <= g.hyperdriveRange() + 0.01;
+      if (this.sel === s || isCur || (inRange && pr.s > 36) || (visited && pr.s > 28) || pr.s > 90) {
         ctx.fillStyle = 'rgba(255,255,255,0.75)';
         ctx.font = '500 12px Rajdhani, sans-serif';
         ctx.fillText(s.sys.name, pr.x + size + 6, pr.y - size - 2);
       }
+      ctx.globalAlpha = 1;
     }
   }
 }

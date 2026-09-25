@@ -187,14 +187,22 @@ export class Clouds {
           f = f * f * (3.0 - 2.0 * f);
           return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
         }
+        float occ(vec2 cell) {
+          float n = noise(cell * 0.18) * 0.65 + noise(cell * 0.5) * 0.35;
+          return step(1.0 - uCover, n);
+        }
         void main() {
           vec2 p = vWorld.xz + vec2(uTime * 2.0, uTime * 0.7);
           vec2 cell = floor(p / 12.0);
-          float n = noise(cell * 0.18) * 0.65 + noise(cell * 0.5) * 0.35;
-          if (n < 1.0 - uCover) discard;
+          if (occ(cell) < 0.5) discard;
           vec2 f = fract(p / 12.0);
-          float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
-          float shade = 0.88 + 0.12 * smoothstep(0.0, 0.2, edge);
+          float e = 1.0;
+          if (occ(cell + vec2(1.0, 0.0)) < 0.5) e = min(e, 1.0 - f.x);
+          if (occ(cell - vec2(1.0, 0.0)) < 0.5) e = min(e, f.x);
+          if (occ(cell + vec2(0.0, 1.0)) < 0.5) e = min(e, 1.0 - f.y);
+          if (occ(cell - vec2(0.0, 1.0)) < 0.5) e = min(e, f.y);
+          float shade = 0.8 + 0.2 * smoothstep(0.0, 0.12, e);
+          if (cameraPosition.y < vWorld.y) shade *= 0.86;
           vec3 col = uCloudCol * shade * (0.25 + 0.75 * uDaylight);
           float fade = 1.0 - smoothstep(350.0, 680.0, vDist);
           col = mix(uHorizon, col, 0.6 + 0.4 * fade);
