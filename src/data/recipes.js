@@ -17,6 +17,7 @@ export const RECIPES = [
   { id: 'r_oxygen_carbon', type: 'refine', in: [['oxygen', 1]], out: ['carbon', 2] },
   // ---- crafting ----
   { id: 'c_plating', type: 'craft', in: [['ferrite', 50]], out: ['metal_plating', 1] },
+  { id: 'c_plating_pure', type: 'craft', in: [['pure_ferrite', 25]], out: ['metal_plating', 1] },
   { id: 'c_nanotubes', type: 'craft', in: [['carbon', 50]], out: ['carbon_nanotubes', 1] },
   { id: 'c_jelly', type: 'craft', in: [['dihydrogen', 40]], out: ['dihydrogen_jelly', 1] },
   { id: 'c_launch_fuel', type: 'craft', in: [['dihydrogen_jelly', 1], ['metal_plating', 1]], out: ['launch_fuel', 1] },

@@ -401,14 +401,19 @@ export class SurfaceMode {
     }
     u.uZenith.value.setRGB(zen[0], zen[1], zen[2]);
     u.uHorizon.value.setRGB(hor[0], hor[1], hor[2]);
+    u.uSunset.value = P.sky.stars >= 1 ? 0 : sunset * (1 - storm * 0.7);
+    if (P.biome === 'liminal') u.uSunsetCol.value.setRGB(1.0, 0.55, 0.78);
+    else if (P.biome === 'toxic' || P.biome === 'radioactive') u.uSunsetCol.value.setRGB(1.0, 0.75, 0.3);
+    else u.uSunsetCol.value.setRGB(1.0, 0.48, 0.28);
     u.uGroundCol.value.setRGB(hor[0] * 0.55, hor[1] * 0.55, hor[2] * 0.6);
     u.uSunColor.value.setRGB(S.sun[0], S.sun[1] * (1 - sunset * 0.3), S.sun[2] * (1 - sunset * 0.5));
     // lighting for voxels
     const dream = P.biome === 'liminal' ? 1 : 0;
-    const amb = lerp(0.08, 0.4, daylight);
+    const amb = lerp(0.15, 0.4, daylight);
     u.uAmbient.value.setRGB(amb * (1 + dream * 0.1) + hor[0] * 0.08, amb + hor[1] * 0.08, amb * (1 + dream * 0.15) + hor[2] * 0.1 + (1 - daylight) * 0.05);
-    const sk = lerp(0.1, 0.78, daylight) * (1 - storm * 0.3);
-    u.uSkyLight.value.setRGB(sk * lerp(1, 1.1, sunset), sk * lerp(1, 0.85, sunset), sk * lerp(1.05, 0.75, sunset));
+    const sk = lerp(0.2, 0.78, daylight) * (1 - storm * 0.3);
+    const moon = 1 - daylight;
+    u.uSkyLight.value.setRGB(sk * lerp(1, 1.1, sunset) * (1 - moon * 0.25), sk * lerp(1, 0.85, sunset) * (1 - moon * 0.1), sk * lerp(1.05, 0.75, sunset) * (1 + moon * 0.25));
     const far = this.fogFar || 110;
     u.uFogFar.value = far * (1 - storm * 0.45) * (P.biome === 'toxic' || P.biome === 'radioactive' ? 0.85 : 1);
     u.uFogNear.value = u.uFogFar.value * (0.3 - storm * 0.15);
@@ -417,6 +422,7 @@ export class SurfaceMode {
     this.scene.fog.far = u.uFogFar.value * 1.1;
     if (this.interior) {
       u.uDaylight.value = 0;
+      u.uSunset.value = 0;
       this.daylight = 1;
       u.uAmbient.value.setRGB(0.5, 0.48, 0.55);
       u.uSkyLight.value.setRGB(0.62, 0.6, 0.64);
@@ -595,6 +601,9 @@ export class SurfaceMode {
       this.tool.visible = !this.visor;
     }
     g.camera.updateMatrixWorld();
+    const lf = this.interior ? 1 : 0.3 + 0.7 * (this.daylight ?? 1);
+    this.viewScene.children[1].intensity = 0.6 * Math.PI * lf;
+    this.viewLight.intensity = 0.9 * Math.PI * lf;
     this.sky.update(g.camera);
     this.clouds.update(g.camera);
     voxelUniforms.uTime.value = g.time;

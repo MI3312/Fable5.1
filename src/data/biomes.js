@@ -73,7 +73,7 @@ export function makePlanetParams(seed, biome, opts = {}) {
       setTint(T.water, hsl(wh, 0.65, 0.45));
       const sky = hsl(rng.range(0.53, 0.62) + (rng.chance(0.2) ? rng.range(-0.3, 0.3) : 0), 0.6, 0.55);
       P.sky.zenith = sky; P.sky.horizon = mixColor(sky, [1, 1, 1], 0.55);
-      P.flora = { trees: [['round', 3], ['pine', 1], ['palm', 1], ['tall', 1]], treeDensity: rng.range(0.008, 0.025), plants: [[B.TALLGRASS, 10], [B.FLOWER, 3], [B.OXYGEN_PLANT, 1], [B.SODIUM_PLANT, 0.7], [B.SPECIAL_PLANT, 0.6], [B.DIHYDRO, 0.25]], plantDensity: rng.range(0.12, 0.3), boulders: 0.0015, crystals: 0 };
+      P.flora = { trees: [['round', 3], ['pine', 1], ['palm', 1], ['tall', 1]], treeDensity: rng.range(0.008, 0.025), plants: [[B.TALLGRASS, 10], [B.FLOWER, 3], [B.OXYGEN_PLANT, 1], [B.SODIUM_PLANT, 0.7], [B.SPECIAL_PLANT, 0.6], [B.DIHYDRO, 0.6]], plantDensity: rng.range(0.12, 0.3), boulders: 0.0035, crystals: 0 };
       P.terrain.hillAmp = rng.range(6, 16); P.terrain.mountAmp = rng.range(15, 45); P.terrain.overhang = rng.chance(0.3) ? rng.range(4, 10) : 0;
       P.temperature = rng.int(12, 32); P.hazard.level = 0;
       P.stormChance = 0.15;

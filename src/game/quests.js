@@ -3,13 +3,13 @@
 export const QUESTS = [
   {
     id: 'awaken', title: 'Awaken',
-    desc: 'You wake beside your crashed starship. Mine rocks with the Mining Beam (hold LMB) to gather 50 Ferrite Dust.',
-    check: (g) => g.inventory.count('ferrite') >= 50 || g.inventory.count('metal_plating') > 0 || g.ship.thrustersRepaired,
+    desc: 'You wake beside your crashed starship. Mine grey rocks, boulders and exposed stone with the Mining Beam (hold LMB) to gather 50 Ferrite Dust.',
+    check: (g) => g.inventory.count('ferrite') >= 50 || g.inventory.count('pure_ferrite') >= 25 || g.inventory.count('metal_plating') > 0 || g.ship.thrustersRepaired,
     progress: (g) => `Ferrite Dust ${Math.min(50, g.inventory.count('ferrite'))}/50`,
   },
   {
     id: 'plating', title: 'Metal Plating',
-    desc: 'Open your inventory (Tab) → Fabricate → Products, and craft Metal Plating from 50 Ferrite Dust.',
+    desc: 'Open your inventory (Tab) → Fabricate → Products, and craft Metal Plating from 50 Ferrite Dust (or 25 Pure Ferrite).',
     check: (g) => g.inventory.count('metal_plating') > 0 || g.ship.thrustersRepaired,
   },
   {

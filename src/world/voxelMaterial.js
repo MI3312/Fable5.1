@@ -18,6 +18,8 @@ export const voxelUniforms = {
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uSunColor: { value: new THREE.Color(1, 1, 1) },
   uDaylight: { value: 1 },
+  uSunset: { value: 0 },
+  uSunsetCol: { value: new THREE.Color(1, 0.5, 0.3) },
   uCurve: curvatureUniforms.uCurve,
 };
 

@@ -15,6 +15,8 @@ export class Sky {
       uSunDir: voxelUniforms.uSunDir,
       uSunColor: voxelUniforms.uSunColor,
       uDaylight: voxelUniforms.uDaylight,
+      uSunset: voxelUniforms.uSunset,
+      uSunsetCol: voxelUniforms.uSunsetCol,
       uTime: voxelUniforms.uTime,
       uStars: { value: 0 },
       uDream: { value: 0 },
