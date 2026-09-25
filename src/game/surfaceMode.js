@@ -1186,7 +1186,7 @@ export class SurfaceMode {
       const sp = target.c.sp;
       const known = !!d.creatures[sp.id];
       key = 'c:' + sp.id;
-      info = known ? { title: sp.name, latin: sp.latin, rows: [['Temperament', sp.temper], ['Diet', sp.diet], ['Height', (sp.size * 1.3).toFixed(1) + 'm'], ['Rarity', sp.rarity], ['Notes', sp.note]] }
+      info = known ? { title: g.nameOf(sp), latin: sp.latin, rows: [['Temperament', sp.temper], ['Diet', sp.diet], ['Height', (sp.size * 1.3).toFixed(1) + 'm'], ['Rarity', sp.rarity], ['Notes', sp.note]] }
         : { title: 'Unknown Fauna', rows: [['Status', 'Hold LMB to analyse'], ['Distance', Math.round(target.dist) + 'u']] };
       if (!known) onDone = () => {
         d.creatures[sp.id] = { name: sp.name, planet: this.planet.name };
@@ -1413,7 +1413,7 @@ export class SurfaceMode {
     conds.push(`Sentinels: ${['None', 'Low', 'Standard', 'Aggressive'][P.sentinels]}`);
     conds.push(`${this.daylight > 0.5 ? '☀' : '☾'} ${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
     if (this.interior) hud.setLocation(this.planet.name, `${g.system.name} system · Docked`, ['Pressurised', 'Sentinels: None', 'Trade · Tech · Services']);
-    else hud.setLocation(this.planet.name, `${P.adjective} ${this.planet.biomeLabel} · ${g.system.name}`, conds);
+    else hud.setLocation(g.nameOf(this.planet), `${P.adjective} ${this.planet.biomeLabel} · ${g.system.name}`, conds);
     // markers
     for (const m of this.markers) m.t -= dt;
     this.markers = this.markers.filter((m) => m.t > 0);

@@ -9,7 +9,7 @@ export class GalaxyMap {
     this.el = null;
     this.yaw = 0.6;
     this.pitch = 0.55;
-    this.zoom = 1;
+    this.zoom = 1.7;
     this.sel = null;
     this.drag = null;
   }

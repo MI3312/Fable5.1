@@ -144,6 +144,7 @@ export class Game {
       inventory: null,
       discoveries: { planets: {}, creatures: {}, flora: {}, systems: {}, structures: {} },
       used: {},
+      names: {},
       edits: {},
       alchemyKnown: [],
       lore: [],
@@ -585,6 +586,21 @@ export class Game {
       inv.add('nanites', 5);
     }
     this.audio.alchemy(true);
+  }
+
+  nameOf(obj) {
+    return (this.state && this.state.names && this.state.names[obj.id]) || obj.name;
+  }
+
+  rename(obj, name) {
+    if (!this.state.names) this.state.names = {};
+    this.state.names[obj.id] = name.slice(0, 28);
+    const d = this.state.discoveries;
+    if (d.planets[obj.id]) d.planets[obj.id].custom = this.state.names[obj.id];
+    if (d.creatures[obj.id]) d.creatures[obj.id].custom = this.state.names[obj.id];
+    this.inventory.add('units', 250);
+    this.hud.notify(`Discovery uploaded as "${this.state.names[obj.id]}" (+250 units)`);
+    this.audio.discover();
   }
 
   addLore(text) {

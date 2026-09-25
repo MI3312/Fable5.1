@@ -445,7 +445,7 @@ export class SpaceMode {
     };
     for (const p of this.space.planets) {
       const d = p.group.position.distanceTo(ship.pos);
-      if (d > p.data.radius * 1.8) add(p.group.position, '◯', `${p.data.name} · ${p.data.biomeLabel}`, g.state.discoveries.planets[p.data.id] ? '#7ef0ff' : '#ffffff');
+      if (d > p.data.radius * 1.8) add(p.group.position, '◯', `${g.nameOf(p.data)} · ${p.data.biomeLabel}`, g.state.discoveries.planets[p.data.id] ? '#7ef0ff' : '#ffffff');
     }
     add(this.space.station.position, '⌂', 'Space Station', '#ffd35a');
     for (const e of this.enemies) add(e.pos, '◆', '', '#ff5fa8');

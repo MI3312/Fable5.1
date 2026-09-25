@@ -131,6 +131,17 @@ export class Menus {
     }
   }
 
+  prompt(title, value, onOk, back) {
+    const inp = h('input', { type: 'text', value: value || '', maxlength: '28', spellcheck: 'false', style: { width: '100%', background: 'rgba(0,0,0,0.35)', color: 'var(--text)', border: '1px solid var(--line)', padding: '10px', fontFamily: 'var(--font)', fontSize: '18px' } });
+    const done = (ok) => { const v = inp.value.trim(); this.closeAll(true); if (ok && v) onOk(v); if (back) back(); };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(true); e.stopPropagation(); });
+    const el = h('div', { class: 'dialog interactive' }, h('div', { class: 'dh' }, title), h('div', { class: 'db' }, inp),
+      h('div', { class: 'dbtns' }, h('button', { class: 'btn small center', onclick: () => done(false) }, 'Cancel'), h('button', { class: 'btn small center primary', onclick: () => done(true) }, 'Upload name')));
+    this._overlay(el);
+    this.open = 'dialog';
+    setTimeout(() => { inp.focus(); inp.select(); }, 30);
+  }
+
   // ---------------- pause ----------------
   openPause() {
     const g = this.game;
@@ -402,10 +413,15 @@ export class Menus {
     const info = g.discoveryInfo();
     const left = h('div', { class: 'col grow' });
     if (info.planet) {
-      left.appendChild(h('div', { class: 'section-title' }, `${info.planet.name} · ${info.planet.params.adjective} ${info.planet.biomeLabel}`));
+      const back = () => this.openInventory('discoveries');
+      left.appendChild(h('div', { class: 'row-flex' }, h('div', { class: 'section-title grow' }, `${g.nameOf(info.planet)} · ${info.planet.params.adjective} ${info.planet.biomeLabel}`),
+        info.planet.isStation ? null : h('button', { class: 'btn small', onclick: () => this.prompt('Rename planet', g.nameOf(info.planet), (v) => g.rename(info.planet, v), back) }, 'Rename')));
       left.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Fauna'), h('span', { class: 'muted' }, `${info.fauna.filter((f) => f.found).length}/${info.fauna.length}`)));
       for (const f of info.fauna) {
-        left.appendChild(h('div', { class: 'list-row' }, h('span', {}, f.found ? f.sp.name : '??????'), h('span', { class: 'muted' }, f.found ? `${f.sp.temper} · ${f.sp.diet} · ${f.sp.rarity}` : 'Undiscovered')));
+        const back = () => this.openInventory('discoveries');
+        left.appendChild(h('div', { class: 'list-row' }, h('span', {}, f.found ? g.nameOf(f.sp) : '??????'),
+          h('span', { class: 'row-flex' }, h('span', { class: 'muted' }, f.found ? `${f.sp.temper} · ${f.sp.diet} · ${f.sp.rarity}` : 'Undiscovered'),
+            f.found ? h('button', { class: 'btn small', onclick: () => this.prompt('Rename species', g.nameOf(f.sp), (v) => g.rename(f.sp, v), back) }, '✎') : null)));
       }
       left.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Flora'), h('span', { class: 'muted' }, `${info.flora.filter((f) => f.found).length}/${info.flora.length}`)));
       for (const f of info.flora) left.appendChild(h('div', { class: 'list-row' }, h('span', {}, f.found ? f.name : '??????'), h('span', { class: 'muted' }, f.found ? f.kind : 'Undiscovered')));
@@ -420,7 +436,7 @@ export class Menus {
     right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Distance to Dream Core'), h('span', { class: 'muted' }, g.coreDistanceLabel())));
     right.appendChild(h('div', { class: 'section-title' }, 'Planets'));
     const planets = Object.values(g.state.discoveries.planets).slice(-12).reverse();
-    for (const p of planets) right.appendChild(h('div', { class: 'list-row' }, h('span', {}, p.name), h('span', { class: 'muted' }, p.biome)));
+    for (const p of planets) right.appendChild(h('div', { class: 'list-row' }, h('span', {}, p.custom || p.name), h('span', { class: 'muted' }, p.biome)));
     b.append(left, right);
   }
 

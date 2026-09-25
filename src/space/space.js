@@ -212,7 +212,13 @@ export class SpaceScene {
     for (const c of [...this.scene.children]) {
       if (keep.has(c) || c.userData.keep) continue;
       this.scene.remove(c);
-      c.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      c.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          for (const m of mats) { if (m.map) m.map.dispose(); m.dispose(); }
+        }
+      });
     }
     this.system = system;
     this.planets = [];
