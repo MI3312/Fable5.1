@@ -7,7 +7,7 @@ import { getBlockIcon } from '../world/atlas.js';
 import { RECIPES, ALCHEMY, UPGRADES, outLabel } from '../data/recipes.js';
 
 const TABS = [
-  ['exosuit', 'Exosuit'], ['blocks', 'Blocks'], ['fabricate', 'Fabricate'], ['alchemy', 'Alchemy'],
+  ['exosuit', 'Exosuit'], ['blocks', 'Blocks'], ['fabricate', 'Fabricate'], ['alchemy', 'Apotheosis'],
   ['tech', 'Technology'], ['discoveries', 'Discoveries'], ['journey', 'Journey'],
 ];
 
@@ -361,7 +361,7 @@ export class Menus {
       hints.appendChild(h('div', { class: 'lore' }, '“' + r.hint + '”'));
     }
     b.appendChild(h('div', { class: 'col grow' },
-      h('div', { class: 'section-title' }, 'Dream Alchemy - combine two things and see what they become'), bench,
+      h('div', { class: 'section-title' }, 'Apotheosis - fuse any two things and see what they become. No recipe book: just dream.'), bench,
       h('div', { class: 'section-title' }, 'Your ingredients (click to place)'), pick));
     b.appendChild(h('div', { class: 'detail' }, h('div', { class: 'dc' }, `Remembered ${known.size}/${ALCHEMY.length}`), disc, h('div', { class: 'section-title' }, 'Whispers'), hints));
   }

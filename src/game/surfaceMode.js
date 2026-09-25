@@ -292,7 +292,7 @@ export class SurfaceMode {
     for (let r = 0; r < 12; r++) {
       for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-        const gy = W.groundAt(x + dx, z + dz);
+        const gy = W.groundBelow(x + dx, W.terrain.heightAt(x + dx, z + dz) + 7, z + dz);
         const top = W.getBlock(x + dx, gy, z + dz);
         if (soil.has(top) && W.getBlock(x + dx, gy + 1, z + dz) <= 0 || (soil.has(top) && IS_AIRLIKE[W.getBlock(x + dx, gy + 1, z + dz)])) {
           return { x: x + dx, y: gy + 1, z: z + dz };
@@ -302,13 +302,13 @@ export class SurfaceMode {
     return { x, y: W.groundAt(x, z) + 1, z };
   }
 
-  _shipGround(x, z, yaw) {
+  _shipGround(x, z, yaw, refY) {
     const W = this.world;
     let maxG = -1;
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     for (const [a, b] of [[0, 0], [3, 0], [-3, 0], [0, 2], [0, -2], [2.5, 1.5], [-2.5, 1.5]]) {
       const px = x + fx * a + fz * b, pz = z + fz * a - fx * b;
-      maxG = Math.max(maxG, W.groundAt(px, pz));
+      maxG = Math.max(maxG, refY != null ? W.groundBelow(px, refY, pz) : W.groundAt(px, pz));
     }
     return maxG;
   }
@@ -320,7 +320,7 @@ export class SurfaceMode {
       const a = (i / 12) * Math.PI * 2;
       const x = pos.x + Math.cos(a) * dist, z = pos.z + Math.sin(a) * dist;
       const yaw = a + Math.PI / 2;
-      const g = this._shipGround(x, z, yaw);
+      const g = this._shipGround(x, z, yaw, pos.y + 5);
       const top = this.world.getBlock(x, g, z);
       if (IS_LIQUID[top]) continue;
       const d = Math.abs(g - pos.y);
@@ -521,7 +521,9 @@ export class SurfaceMode {
     const pc = g.inShip ? ship.pos : player.pos;
     this.creatures.update(dt, {
       world: this.world, player: pc, fauna: this.P.fauna, time: g.time, playerInShip: g.inShip,
+      camPos: g.camera.position, camDir: g.camera.getWorldDirection(new THREE.Vector3()), night: this.daylight < 0.3,
       onAttack: (dmg, c) => { this._hurtPlayer(dmg); g.hud.notify(`${c.sp.name} attacks!`); },
+      onCreep: () => { g.audio.tone(90, 0.6, 'sawtooth', 0.05, 0.7); g.audio.noiseHit(0.3, 300, 0.08, 'lowpass'); },
     });
     this.sentinels.update(dt, {
       world: this.world, player: pc, inShip: g.inShip, time: g.time,
@@ -1127,6 +1129,12 @@ export class SurfaceMode {
     c.fed = 90;
     c.provoked = false;
     c.state = 'follow'; c.timer = 8;
+    if (c.sp.plan !== 'manikin') {
+      const comps = this.creatures.list.filter((q) => q.companion);
+      if (comps.length >= 3) comps[0].companion = false;
+      c.companion = true;
+      g.hud.notify(`${g.state.discoveries.creatures[c.sp.id] ? c.sp.name : 'The creature'} will follow you now`);
+    }
     this.debris.spawn(c.pos.clone().add(new THREE.Vector3(0, c.sp.size + 0.5, 0)), [1, 0.5, 0.8], 10, 1.5, 1.2, true);
     this.feeding.push({ t: 2.5, item: c.sp.produce, name: c.sp.name });
     g.audio.tone(700, 0.2, 'sine', 0.08, 1.4);
@@ -1273,6 +1281,8 @@ export class SurfaceMode {
             arches: 'Arches that frame nothing, and everything.',
             stairs: 'It leads up. That is all it does.',
             watcher: 'It has been watching the horizon for a very long time.',
+            plastic_city: 'Everything is smooth, bright and hollow. Nobody has ever lived here.',
+            warehouse: 'Rows of shelves vanish into fluorescent haze. Something was stored here once.',
             monolith: 'An ancient stone, humming with memory.',
             outpost: 'Someone left in a hurry. The terminal is still on.',
             pod: 'A drop pod. Something useful inside.',
@@ -1409,6 +1419,7 @@ export class SurfaceMode {
     };
     if (!g.inShip) addM(ship.pos.clone().add(new THREE.Vector3(0, 3, 0)), '▲', 'Starship', '#ff9f5a');
     for (const m of this.markers) addM(m.pos, m.icon, m.label, m.color);
+    for (const c of this.creatures.list) if (c.companion) addM(c.pos.clone().add(new THREE.Vector3(0, c.sp.size * 1.6 + 0.6, 0)), '♥', '', '#ff9bd6');
     hud.updateMarkers(cam, list, g.width, g.height);
     const f = cam.getWorldDirection(_v);
     const heading = (Math.atan2(f.x, -f.z) * 180 / Math.PI + 360) % 360;

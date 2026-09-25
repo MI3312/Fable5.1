@@ -48,6 +48,11 @@ export const RECIPES = [
   { id: 'b_neon', type: 'block', in: [['chroma_shard', 1], ['sodium', 6]], out: ['block:' + B.NEON, 4] },
   { id: 'b_starry', type: 'block', in: [['chroma_shard', 2], ['cobalt', 4]], out: ['block:' + B.STARRY, 4] },
   { id: 'b_cloud', type: 'block', in: [['oxygen', 6], ['dihydrogen', 6]], out: ['block:' + B.CLOUD, 6] },
+  { id: 'b_plastic_r', type: 'block', in: [['carbon', 8], ['dihydrogen', 4]], out: ['block:' + B.PLASTIC_R, 8] },
+  { id: 'b_plastic_y', type: 'block', in: [['carbon', 8], ['sodium', 2]], out: ['block:' + B.PLASTIC_Y, 8] },
+  { id: 'b_plastic_b', type: 'block', in: [['carbon', 8], ['cobalt', 1]], out: ['block:' + B.PLASTIC_B, 8] },
+  { id: 'b_plastic_w', type: 'block', in: [['carbon', 8], ['silicate', 4]], out: ['block:' + B.PLASTIC_W, 8] },
+  { id: 'b_concrete', type: 'block', in: [['silicate', 10], ['ferrite', 2]], out: ['block:' + B.CONCRETE, 8] },
   { id: 'b_obsidian', type: 'block', in: [['ferrite', 6], ['carbon', 6]], out: ['block:' + B.OBSIDIAN, 4] },
 ];
 

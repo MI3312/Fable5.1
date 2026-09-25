@@ -240,6 +240,20 @@ export class World {
     return 0;
   }
 
+  // First solid (or liquid) block at or below y in a column; falls back to the column top
+  groundBelow(x, y, z) {
+    x = Math.floor(x); z = Math.floor(z);
+    const c = this.getChunkAt(x, z);
+    if (!c || !c.data) return Math.floor(this.fallbackHeight(x, z));
+    const px = x - c.cx * CHUNK + 1, pz = z - c.cz * CHUNK + 1;
+    const y0 = Math.min(HEIGHT - 1, Math.floor(y));
+    for (let yy = y0; yy >= 0 && yy > y0 - 24; yy--) {
+      const id = c.data[px + PW * (pz + PW * yy)];
+      if (IS_SOLID[id] || IS_LIQUID[id]) return yy;
+    }
+    return this.groundAt(x, z);
+  }
+
   // Top of any non-air block (incl. water), used for ship altitude
   surfaceAt(x, z) { return this.groundAt(x, z); }
 

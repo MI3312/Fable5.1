@@ -13,6 +13,8 @@ export const STRUCTURE_INFO = {
   arches: { name: 'Reverie Arches', icon: '∩', liminal: true },
   stairs: { name: 'Stairway to Nowhere', icon: '⌂', liminal: true },
   watcher: { name: 'Watcher Shrine', icon: '◉', liminal: true },
+  plastic_city: { name: 'Plastic City', icon: '▣', liminal: true },
+  warehouse: { name: 'Abandoned Warehouse', icon: '▤', liminal: true },
   monolith: { name: 'Ancient Monolith', icon: '▮', liminal: false },
   outpost: { name: 'Abandoned Outpost', icon: '⌂', liminal: false },
   pod: { name: 'Drop Pod', icon: '◈', liminal: false },
@@ -21,7 +23,7 @@ export const STRUCTURE_INFO = {
 
 const SIZES = {
   poolrooms: () => [0, 0], backrooms: () => [25, 25], hallway: () => [0, 0], arches: () => [17, 17],
-  stairs: () => [16, 6], watcher: () => [11, 11], monolith: () => [13, 13], outpost: () => [9, 9], pod: () => [5, 5], sentinel: () => [5, 5],
+  stairs: () => [16, 6], watcher: () => [11, 11], plastic_city: () => [34, 34], warehouse: () => [30, 22], monolith: () => [13, 13], outpost: () => [9, 9], pod: () => [5, 5], sentinel: () => [5, 5],
 };
 
 // Decide which structure (if any) lives in region (rx, rz)
@@ -33,7 +35,7 @@ export function planStructure(seed, params, terrain, rx, rz) {
   if (rng.next() > p) return null;
   let type;
   if (rng.next() < st.liminal / (st.liminal + st.nms)) {
-    type = rng.weighted([['poolrooms', 3], ['backrooms', 3], ['hallway', 2], ['arches', 2], ['stairs', 2], ['watcher', 1]]);
+    type = rng.weighted([['poolrooms', 3], ['backrooms', 3], ['hallway', 2], ['arches', 2], ['stairs', 2], ['watcher', 1], ['plastic_city', 2], ['warehouse', 2]]);
   } else {
     const opts = [['monolith', 2], ['outpost', 3], ['pod', 2]];
     if (params.sentinels > 0) opts.push(['sentinel', 1.2]);
@@ -374,6 +376,95 @@ const STAMPERS = {
     }
     ctx.set(cx, F + H, cz, B.LAMP);
     ctx.set(cx + 3, F, cz, B.CHEST);
+  },
+
+  plastic_city(ctx, s, rng) {
+    const { x: X, z: Z, w: W, d: D } = s;
+    const F = s.y;
+    const PL = [B.PLASTIC_R, B.PLASTIC_Y, B.PLASTIC_B, B.PLASTIC_W];
+    // ground: concrete streets with painted dashes, cleared sky
+    for (let z = Z; z < Z + D; z++) for (let x = X; x < X + W; x++) {
+      foundation(ctx, x, F - 2, z, B.STONE, 10);
+      const lx = x - X, lz = z - Z;
+      const dash = ((lx % 12 === 11 || lx % 12 === 0) && lz % 3 === 0) || ((lz % 12 === 11 || lz % 12 === 0) && lx % 3 === 0);
+      ctx.set(x, F - 1, z, dash ? B.PLASTIC_Y : B.CONCRETE);
+      clearAbove(ctx, x, F, z, 18);
+    }
+    // 3x3 lots
+    for (let gz = 0; gz < 3; gz++) for (let gx = 0; gx < 3; gx++) {
+      const lot = rng.next();
+      const bx = X + 1 + gx * 12, bz = Z + 1 + gz * 12;
+      if (lot < 0.15) { // tiny plaza with a lamp and a strange sphere
+        ctx.set(bx + 4, F, bz + 4, B.MARBLE); ctx.set(bx + 4, F + 1, bz + 4, B.LAMP);
+        const col = rng.pick(PL);
+        for (let dy = 0; dy < 3; dy++) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+          if (Math.abs(dx) + Math.abs(dz) + Math.abs(dy - 1) <= 2) ctx.set(bx + 7 + dx, F + dy, bz + 7 + dz, col);
+        }
+        continue;
+      }
+      const w = rng.int(6, 9), d = rng.int(6, 9), h = rng.int(4, 12);
+      const wall = rng.pick(PL), trim = rng.pick(PL);
+      const door = rng.int(0, 3);
+      for (let y = F; y < F + h; y++) for (let dz = 0; dz < d; dz++) for (let dx = 0; dx < w; dx++) {
+        const edge = dx === 0 || dz === 0 || dx === w - 1 || dz === d - 1;
+        const top = y === F + h - 1;
+        let id = B.LIT_AIR;
+        if (top) id = (dx % 3 === 1 && dz % 3 === 1) ? B.LIGHT_PANEL : trim;
+        else if (edge) {
+          id = wall;
+          const along = (dx === 0 || dx === w - 1) ? dz : dx;
+          if ((y - F) % 3 === 1 && along % 2 === 1 && along > 0 && along < Math.max(w, d) - 1) id = B.GLASS;
+          const isDoor = (door === 0 && dz === 0 && (dx === 2 || dx === 3)) || (door === 1 && dz === d - 1 && (dx === 2 || dx === 3)) ||
+            (door === 2 && dx === 0 && (dz === 2 || dz === 3)) || (door === 3 && dx === w - 1 && (dz === 2 || dz === 3));
+          if (isDoor && y < F + 2) id = B.LIT_AIR;
+        }
+        ctx.set(bx + dx, y, bz + dz, id);
+      }
+      if (rng.chance(0.35)) ctx.set(bx + 1, F, bz + 1, B.CHEST);
+      if (rng.chance(0.2)) { ctx.set(bx + w - 2, F, bz + d - 2, B.DREAM_DOOR); ctx.set(bx + w - 2, F + 1, bz + d - 2, B.DREAM_DOOR); }
+    }
+    // street lamps
+    for (const lx of [11, 23]) for (const lz of [5, 17, 29]) {
+      ctx.set(X + lx, F, Z + lz, B.PLASTIC_W); ctx.set(X + lx, F + 1, Z + lz, B.PLASTIC_W); ctx.set(X + lx, F + 2, Z + lz, B.LAMP);
+    }
+  },
+
+  warehouse(ctx, s, rng) {
+    const { x: X, z: Z, w: W, d: D } = s;
+    const F = s.y;
+    const H = 11;
+    const doorSide = rng.chance(0.5) ? 0 : 1;
+    for (let z = Z - 1; z <= Z + D; z++) for (let x = X - 1; x <= X + W; x++) {
+      const out = x < X || z < Z || x >= X + W || z >= Z + D;
+      foundation(ctx, x, F - 2, z, B.STONE, 12);
+      ctx.set(x, F - 1, z, B.CONCRETE);
+      if (out) { clearAbove(ctx, x, F, z, 6); continue; }
+      const lx = x - X, lz = z - Z;
+      const wall = lx === 0 || lz === 0 || lx === W - 1 || lz === D - 1;
+      for (let y = F; y < F + H - 1; y++) {
+        let id = B.LIT_AIR;
+        if (wall) {
+          id = y >= F + H - 4 && y < F + H - 2 && (lx + lz) % 4 !== 0 ? B.GLASS : B.METAL_PANEL;
+          const doorway = (doorSide === 0 ? lx === 0 : lx === W - 1) && lz >= D / 2 - 3 && lz <= D / 2 + 2 && y < F + 6;
+          if (doorway) id = B.LIT_AIR;
+        } else {
+          // shelving rows running along x, aisles every 5 blocks
+          const row = lz % 5 === 2 && lz > 1 && lz < D - 2;
+          const inRow = lx > 3 && lx < W - 4 && lx !== Math.floor(W / 2);
+          if (row && inRow && y < F + 4) id = B.SHELF;
+          if (!row && lz % 5 === 0 && lx % 7 === 3 && y < F + 1 + ((lx + lz) % 3)) id = B.PLANKS;
+        }
+        ctx.set(x, y, z, id);
+      }
+      ctx.set(x, F + H - 1, z, (lz % 5 === 0 && lx % 3 === 1) ? B.LIGHT_PANEL : B.CONCRETE);
+      clearAbove(ctx, x, F + H, z, 3);
+    }
+    ctx.set(X + W - 3, F, Z + 2, B.CHEST);
+    ctx.set(X + 2, F, Z + D - 3, B.CHEST);
+    if (rng.chance(0.5)) {
+      const dx = doorSide === 0 ? X + W - 2 : X + 1;
+      ctx.set(dx, F, Z + Math.floor(D / 2), B.DREAM_DOOR); ctx.set(dx, F + 1, Z + Math.floor(D / 2), B.DREAM_DOOR);
+    }
   },
 
   monolith(ctx, s, rng) {

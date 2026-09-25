@@ -35,7 +35,7 @@ export const QUESTS = [
   },
   {
     id: 'warpcell', title: 'A Way Between Stars',
-    desc: 'Fabricate a Warp Cell (Antimatter + Antimatter Housing), buy one at a station - or dream a Lucid Core through Alchemy.',
+    desc: 'Fabricate a Warp Cell (Antimatter + Antimatter Housing), buy one at a station - or dream a Lucid Core through Apotheosis (Tab).',
     check: (g) => g.inventory.count('warp_cell') + g.inventory.count('lucid_core') > 0 || g.state.jumps > 0,
   },
   {

@@ -492,6 +492,36 @@ function paintTiles() {
     });
     p.set(12, 1, 1.0, 0.85, 0.35, UNT);
   });
+  const plastic = (name, c) => t(name, (p) => {
+    p.fill((x, y, r) => {
+      const n = (r.next() - 0.5) * 0.02;
+      const hl = (x + y === 5 || x + y === 6) && x < 6 ? 0.25 : 0;
+      const edge = x === 15 || y === 15 ? -0.08 : 0;
+      return [c[0] + n + hl + edge, c[1] + n + hl + edge, c[2] + n + hl + edge, UNT];
+    });
+  });
+  plastic('plastic_r', [0.88, 0.18, 0.2]);
+  plastic('plastic_y', [0.97, 0.8, 0.18]);
+  plastic('plastic_b', [0.2, 0.42, 0.92]);
+  plastic('plastic_w', [0.93, 0.93, 0.95]);
+  t('concrete', (p) => {
+    p.noise([0.62, 0.62, 0.6], 0.05, UNT);
+    p.speckle([0.52, 0.52, 0.5], 0.08);
+    p.fill((x, y) => (y === 0 && x % 8 < 7) ? [0.56, 0.56, 0.54, UNT] : null);
+  });
+  t('shelf', (p) => {
+    p.fill((x, y, r) => {
+      const post = x <= 1 || x >= 14;
+      const board = y % 8 === 0 || y % 8 === 1;
+      const n = (r.next() - 0.5) * 0.05;
+      if (post) return [0.35, 0.37, 0.42, UNT];
+      if (board) return [0.7 + n, 0.55 + n, 0.35 + n, UNT];
+      // boxes on the shelf
+      const bx = Math.floor(x / 4), by = Math.floor(y / 8);
+      if ((bx + by) % 3 === 0) return [0.1, 0.09, 0.08, UNT];
+      return [0.72 + n, 0.6 + n, 0.42 + n, UNT];
+    });
+  });
   t('dream_water', (p) => {
     p.fill((x, y, r) => {
       const w = Math.sin((x - y * 0.5) * 0.7) * 0.06;

@@ -38,9 +38,11 @@ strongly recommended.
 - From orbit, planets are voxel-shaded spheres with oceans, ice caps, atmospheres and rings. Where you enter a planet decides where you land and what time of day it is there.
 
 **Lucid Blocks side**
-- Liminal structures generated on every world: **Poolrooms** (tiled halls with still water), **The Backrooms** (maze generator, damp carpet, humming lights), **Endless Hallways**, **Reverie Arches**, **Stairways to Nowhere** and **Watcher Shrines**.
+- Liminal structures generated on every world: **Poolrooms** (tiled halls with still water), **The Backrooms** (maze generator, damp carpet, humming lights), **Endless Hallways**, **Plastic Cities**, **Abandoned Warehouses**, **Reverie Arches**, **Stairways to Nowhere** and **Watcher Shrines**.
+- **Dream Doors** stand in liminal places. Step through one and you come out somewhere else on the planet.
+- Dream-horror fauna: **Manikins** only move while you aren't looking at them, and **Colossal Spiders** have legs longer than they should be. Feed a creature and it becomes a **companion** that follows you.
 - Builder mode: break any block to carry it in your block bag, then place it anywhere in the galaxy. Placed blocks take on the colours of whichever world they are placed in.
-- **Dream Alchemy**: combine two items to discover 26 hidden recipes, such as Liquid Light, Somnium Sand, Echo Shells, Dream Lenses and Lucid Cores. Some recipes make blocks or bring back memories.
+- **Apotheosis (dream alchemy)**: fuse any two items to discover 26 hidden recipes, such as Liquid Light, Somnium Sand, Echo Shells, Dream Lenses and Lucid Cores. Some recipes make blocks or bring back memories.
 - A pastel dream filter (chromatic fringe, grain, vignette), dream aurora skies, whispers on liminal worlds, and a generative ambient score.
 
 **No Man's Sky side**
@@ -48,7 +50,9 @@ strongly recommended.
 - Survival: health, shield, hazard protection (heat, cold, toxic, radiation, vacuum), life support and jetpack. Storms and shelter both matter.
 - Procedural creatures with six body plans and passive, skittish, curious or aggressive temperaments. You can feed them, and they will give you resources in return.
 - Sentinel drones get suspicious of heavy mining. They attack when provoked and follow a 3-star wanted system.
-- Your starship lands, takes off, flies in atmosphere, leaves the planet and uses a pulse drive in space. Its cannons break asteroids for Tritium, and it docks at space stations to trade, buy upgrades and use services.
+- Your starship lands, takes off, flies in atmosphere, leaves the planet and uses a pulse drive in space. Its cannons break asteroids for Tritium.
+- **Walkable space stations**: dock, land in the hangar and walk through a liminal lobby with a pool, marble columns, fluorescent ceilings, windows onto space and NPC travellers. Terminals handle trade, supplies, a tech merchant, services and the save archive.
+- **Nightmares**: hostile dream-ships ambush you in space and block your pulse drive. Shoot them down, or lose your hull and get towed back to the station.
 - A refiner and fabricator with more than 40 recipes, plus technology upgrades for the exosuit and ship.
 - Galaxy map with hyperdrive warps powered by Warp Cells (or dreamed Lucid Cores).
 - Points of interest: monoliths with lore, terminals, drop pods (inventory slots), dream caches and Sentinel pillars.
