@@ -131,3 +131,41 @@ export function buildSentinelDrone() {
   g.userData.eyeMat = eyeMat;
   return g;
 }
+
+// A station traveller NPC: a boxy humanoid in a pastel suit with a glowing visor
+export function buildTraveller(seed = 1) {
+  const rng = new RNG(seed);
+  const g = new THREE.Group();
+  const suit = mat(new THREE.Color().setRGB(...hsl(rng.next(), rng.range(0.3, 0.6), rng.range(0.55, 0.75))));
+  const trim = mat(new THREE.Color().setRGB(...hsl(rng.next(), 0.5, 0.35)));
+  const skin = mat(new THREE.Color().setRGB(...hsl(rng.next(), rng.range(0.2, 0.6), rng.range(0.45, 0.7))));
+  const visorCol = new THREE.Color().setRGB(...hsl(rng.next(), 0.9, 0.65));
+  const visor = applyCurvature(new THREE.MeshBasicMaterial({ color: visorCol }));
+  const body = new THREE.Group();
+  g.add(body);
+  box(0.55, 0.75, 0.32, suit, 0, 1.25, 0, body);
+  box(0.58, 0.14, 0.34, trim, 0, 0.92, 0, body);
+  const head = new THREE.Group();
+  head.position.set(0, 1.85, 0);
+  body.add(head);
+  const hs = rng.range(0.38, 0.5);
+  box(hs, hs * rng.range(0.9, 1.3), hs, skin, 0, 0, 0, head);
+  box(hs * 0.8, 0.12, 0.05, visor, 0, 0.02, -hs / 2 - 0.02, head);
+  if (rng.chance(0.5)) box(0.08, 0.3, 0.08, trim, hs * 0.3, hs * 0.7, 0, head);
+  if (rng.chance(0.4)) box(hs * 1.3, 0.08, hs * 1.3, trim, 0, hs * 0.55, 0, head);
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Group();
+    arm.position.set(s * 0.36, 1.58, 0);
+    body.add(arm);
+    box(0.16, 0.62, 0.16, suit, 0, -0.3, 0, arm);
+    box(0.17, 0.12, 0.17, skin, 0, -0.64, 0, arm);
+    arm.userData.side = s;
+    const leg = box(0.2, 0.86, 0.22, trim, s * 0.14, 0.43, 0, g);
+    leg.userData.side = s;
+  }
+  box(0.5, 0.5, 0.18, trim, 0, 1.3, 0.24, body); // backpack
+  g.userData.head = head;
+  g.userData.body = body;
+  g.userData.arms = body.children.filter((c) => c.userData.side);
+  return g;
+}

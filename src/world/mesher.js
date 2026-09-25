@@ -104,10 +104,14 @@ export function meshChunk(data, heights, tints, ox, oz) {
     return IS_OPAQUE[data[px + PW * (pz + PW * y)]];
   };
 
+  // highest non-air block in the padded chunk (cross plants, glass, lit rooms included)
   let maxY = 0;
-  for (let i = 0; i < PWW; i++) if (heights[i] > maxY) maxY = heights[i];
-  // structures (floating islands, lit rooms) can sit above the sky height, scan conservatively
-  maxY = HEIGHT - 1;
+  for (let pz = 0; pz < PW; pz++) for (let px = 0; px < PW; px++) {
+    for (let y = HEIGHT - 1; y > maxY; y--) {
+      if (!IS_AIRLIKE[data[px + PW * (pz + PW * y)]]) { maxY = y; break; }
+    }
+  }
+  void PWW;
 
   for (let y = 0; y <= maxY; y++) {
     for (let pz = 1; pz <= CHUNK; pz++) {

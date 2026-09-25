@@ -438,13 +438,14 @@ export class Menus {
   }
 
   // ---------------- station ----------------
-  openStation() {
+  openStation(tab) {
+    if (tab) this.stationTab = tab;
     this.stationTab = this.stationTab || 'sell';
     const head = h('div', { class: 'panel-head' }, h('div', { class: 'ptitle' }, this.game.system.station.name.toUpperCase()));
     for (const [id, label] of [['sell', 'Sell'], ['buy', 'Buy'], ['tech', 'Tech Merchant'], ['services', 'Services']]) {
       head.appendChild(h('div', { class: 'tab' + (this.stationTab === id ? ' on' : ''), onclick: () => { this.stationTab = id; this.openStation(); } }, label));
     }
-    head.appendChild(h('div', { class: 'panel-close', onclick: () => { this.game.undock(); } }, 'UNDOCK [E]'));
+    head.appendChild(h('div', { class: 'panel-close', onclick: () => { this.game.closeStationMenu(); } }, 'CLOSE [ESC]'));
     this.body = h('div', { class: 'panel-body' });
     this._overlay(h('div', { class: 'panel interactive' }, head, this.body));
     this.open = 'station';

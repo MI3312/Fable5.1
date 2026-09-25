@@ -5,6 +5,7 @@ import { hash32, RNG, smoothstep } from '../core/rng.js';
 import { B, IS_SOLID, IS_AIRLIKE, IS_LIQUID } from './blocks.js';
 import { CHUNK, HEIGHT, PW, MARGIN, GW } from '../config.js';
 import { stampStructures } from './structures.js';
+import { stationBlockAt } from './station.js';
 
 const CS = 4; // coarse sampling step for 3D noise
 const CGX = GW / CS + 1; // 7
@@ -40,6 +41,7 @@ export class TerrainGen {
 
   // Terrain surface height (float) at a world column, ignoring 3D features
   heightAt(x, z) {
+    if (this.p.interior) return 39;
     const t = this.p.terrain;
     const warp = t.warp;
     const wx = x + this.nWarp.n2(x * 0.004, z * 0.004) * warp;
@@ -109,6 +111,7 @@ export class TerrainGen {
   }
 
   generate(cx, cz, edits) {
+    if (this.p.interior === 'station') return this._generateStation(cx, cz, edits);
     const P = this.p;
     const T = P.terrain;
     const S = P.surface;
@@ -256,6 +259,17 @@ export class TerrainGen {
         data[edits[i] + PW * (edits[i + 2] + PW * edits[i + 1])] = edits[i + 3];
       }
     }
+    return data;
+  }
+
+  _generateStation(cx, cz, edits) {
+    const data = new Uint8Array(PW * PW * HEIGHT);
+    const ox = cx * CHUNK - 1, oz = cz * CHUNK - 1;
+    if (ox + PW < -30 || ox > 30 || oz + PW < -44 || oz > 44) return data;
+    for (let y = 30; y < 64; y++) for (let pz = 0; pz < PW; pz++) for (let px = 0; px < PW; px++) {
+      data[px + PW * (pz + PW * y)] = stationBlockAt(ox + px, y, oz + pz);
+    }
+    if (edits) for (let i = 0; i < edits.length; i += 4) data[edits[i] + PW * (edits[i + 2] + PW * edits[i + 1])] = edits[i + 3];
     return data;
   }
 

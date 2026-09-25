@@ -121,7 +121,7 @@ export class Game {
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
-    const pr = Math.min(window.devicePixelRatio || 1, 2);
+    const pr = Math.min(window.devicePixelRatio || 1, 1.5);
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
@@ -206,6 +206,7 @@ export class Game {
     this.system = this.universe.getSystem(s.gx, s.gy, s.gz);
     this.menus.closeAll(true);
     if (st.mode === 'space') this.enterSpace({ restore: true });
+    else if (st.mode === 'station') this.enterStation();
     else this.enterSurface(st.planetIndex, { spawn: 'restore' });
   }
 
@@ -227,7 +228,10 @@ export class Game {
     this.mode = 'surface';
     this.hud.show(!this.hudHidden);
     const p = this.planet;
-    if (!this.state.discoveries.planets[p.id]) {
+    if (p.isStation) {
+      this.hud.toast(p.name, 'Docked · Walk to the terminals to trade, upgrade and rest');
+      this.audio.setMood('station', this.system.seed);
+    } else if (!this.state.discoveries.planets[p.id]) {
       this.state.discoveries.planets[p.id] = { name: p.name, biome: p.biomeLabel, system: this.system.name };
       this.inventory.add('units', 1500);
       this.hud.toast('Planet Discovered', `${p.name} · ${p.params.adjective} ${p.biomeLabel} · +1,500 units`);
@@ -235,7 +239,7 @@ export class Game {
     } else {
       this.hud.toast(p.name, `${p.params.adjective} ${p.biomeLabel} · ${this.system.name}`);
     }
-    this.input.lock();
+    if (!this.input.locked) this.resume();
   }
 
   enterSpace(opts = {}) {
@@ -249,7 +253,32 @@ export class Game {
     if (!this.state.flags.reachedSpace && opts.fromPlanet != null) {
       this.state.flags.reachedSpace = true;
     }
-    this.input.lock();
+    if (!this.input.locked) this.resume();
+  }
+
+  // Dock: walk around the station interior
+  enterStation() {
+    this.inStation = true;
+    const sp = this.universe.stationPlanet(this.system);
+    this.mode = 'loading';
+    this.planet = sp;
+    this.state.mode = 'station';
+    curvatureUniforms.uCurve.value = 0;
+    this.menus.showLoading('Docking', `${sp.name} · ${this.system.name}`);
+    this.hud.show(false);
+    this.galaxy.close();
+    this.surface.enter(sp, { spawn: 'dock' });
+    curvatureUniforms.uCurve.value = 0;
+  }
+
+  launchFromStation() {
+    this.fade(0.5, () => {
+      this.surface.leave();
+      this.inStation = false;
+      this.planet = null;
+      this.enterSpace({ fromStation: true });
+      this.saveGame(false);
+    });
   }
 
   // Leave planet -> space (called by surface mode)
@@ -340,6 +369,7 @@ export class Game {
 
   locationLabel() {
     if (this.mode === 'space') return `${this.system.name} system · Space`;
+    if (this.inStation) return `${this.system.station.name} · ${this.system.name}`;
     if (this.planet) return `${this.planet.name} · ${this.system.name}`;
     return '';
   }
@@ -645,7 +675,6 @@ export class Game {
     if (this.isPlaying() && !this.transition) {
       if (input.rawHit('Escape') && this.time - (this.pauseOpenedAt || -9) > 0.35) {
         if (this.galaxy.isOpen()) { this.galaxy.close(); this.resume(); }
-        else if (this.menus.open === 'station') { /* undock with E */ }
         else if (this.menus.anyOpen()) { this.menus.closeAll(true); this.resume(); }
         else this.openPause();
       }
@@ -658,7 +687,6 @@ export class Game {
         else if (!this.menus.anyOpen()) { this.input.unlock(); this.galaxy.open(); this.audio.ui(); }
       }
       if (input.rawHit('F2')) { this.hudHidden = !this.hudHidden; this.hud.show(!this.hudHidden); }
-      if (this.menus.open === 'station' && input.rawHit('KeyE')) this.undock();
     }
     const paused = this.menus.anyOpen() || this.galaxy.isOpen();
     // Input is only live while pointer-locked and nothing is open
@@ -702,10 +730,8 @@ export class Game {
     }
   }
 
-  undock() {
-    if (this.menus.open !== 'station') return;
+  closeStationMenu() {
     this.menus.closeAll(true);
-    this.space.undock();
     this.resume();
   }
 }

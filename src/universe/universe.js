@@ -2,6 +2,7 @@
 import { RNG, hash32, hsl } from '../core/rng.js';
 import { systemName, planetName } from '../core/names.js';
 import { makePlanetParams, BIOMES } from '../data/biomes.js';
+import { hash32 as _h } from '../core/rng.js';
 
 export const STAR_CLASSES = [
   { cls: 'M', color: [1.0, 0.55, 0.35], label: 'Red dwarf', w: 4 },
@@ -134,6 +135,44 @@ export class Universe {
     // Warp arrival point: between the station and the star
     sys.arrival = [sys.station.position[0] * 1.25 + 2500, sys.station.position[1] + 400, sys.station.position[2] * 1.25 + 2500];
     return sys;
+  }
+
+  // A walkable station interior, presented to the voxel engine as a tiny "planet"
+  stationPlanet(sys) {
+    const seed = _h(sys.seed, 5150);
+    const params = makePlanetParams(seed, 'dead');
+    params.interior = 'station';
+    params.name = sys.station.name;
+    params.gravity = 1;
+    params.fauna = 0;
+    params.sentinels = 0;
+    params.hazard = { type: 'none', level: 0 };
+    params.temperature = 21;
+    params.weather = 'none';
+    params.stormChance = 0;
+    params.liquid = 0;
+    params.structures = { liminal: 0, nms: 0 };
+    params.flora = { trees: [], treeDensity: 0, plants: [], plantDensity: 0, boulders: 0, crystals: 0 };
+    params.tints = new Array(36).fill(1);
+    params.tints[15] = 0.35; params.tints[16] = 0.75; params.tints[17] = 0.95; // pool water
+    params.tints[6] = 0.95; params.tints[7] = 0.8; params.tints[8] = 0.95;    // planter leaves
+    params.tints[21] = 0.9; params.tints[22] = 0.85; params.tints[23] = 0.95; // pastel wood
+    params.sky.zenith = [0.0, 0.0, 0.01]; params.sky.horizon = [0.03, 0.02, 0.06];
+    params.sky.nightZenith = [0, 0, 0]; params.sky.nightHorizon = [0.03, 0.02, 0.06];
+    params.sky.stars = 1; params.sky.cloudCover = 0; params.sky.dream = 0.6;
+    params.adjective = 'Orbital';
+    return {
+      id: `${sys.key}/station`,
+      index: -1,
+      seed,
+      name: sys.station.name,
+      biome: 'station',
+      biomeLabel: 'Space Station',
+      params,
+      radius: 200,
+      position: sys.station.position,
+      isStation: true,
+    };
   }
 
   // Planet surface coordinates <-> direction on the planet sphere

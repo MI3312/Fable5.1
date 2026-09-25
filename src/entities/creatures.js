@@ -16,7 +16,7 @@ export function generateSpecies(planet, index) {
   let plan = rng.weighted(PLANS);
   if (planet.biome === 'liminal' && rng.chance(0.3)) plan = 'floater';
   const baseHue = rng.next();
-  const pal = planet.biome === 'liminal' ? [0.72, 0.8] : [0.45, 0.65];
+  const pal = planet.biome === 'liminal' ? [0.78, 0.86] : [0.6, 0.75];
   const sp = {
     id: `${planet.id}#${index}`,
     index,

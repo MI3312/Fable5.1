@@ -168,8 +168,8 @@ export class SpaceScene {
     this.planets = [];
     this.asteroids = null;
     this.asteroidData = [];
-    this.ambient = new THREE.AmbientLight(0x505068, 1.1);
-    this.sunLight = new THREE.DirectionalLight(0xffffff, 1.6);
+    this.ambient = new THREE.AmbientLight(0x505068, 1.3 * Math.PI);
+    this.sunLight = new THREE.DirectionalLight(0xffffff, 1.5 * Math.PI);
     this.scene.add(this.ambient, this.sunLight, this.sunLight.target);
     this.time = 0;
     this.dust = this._makeDust();

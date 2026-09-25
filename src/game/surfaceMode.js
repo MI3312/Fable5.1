@@ -12,7 +12,9 @@ import { Sky, Clouds, Weather } from '../surface/sky.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
-import { buildMultitool } from '../entities/shipModel.js';
+import { buildMultitool, buildTraveller } from '../entities/shipModel.js';
+import { STATION_FLOOR, STATION_PAD, STATION_TERMINALS, STATION_NPCS } from '../world/station.js';
+import { STATION_CHATTER } from '../data/lore.js';
 import { Universe } from '../universe/universe.js';
 import { ITEMS } from '../data/items.js';
 import { MONOLITH, TERMINAL, DREAM_WHISPERS } from '../data/lore.js';
@@ -61,8 +63,8 @@ export class SurfaceMode {
     this.viewCamera = new THREE.PerspectiveCamera(62, 1, 0.01, 20);
     this.tool = buildMultitool();
     this.viewScene.add(this.tool);
-    this.viewScene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    this.viewLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    this.viewScene.add(new THREE.AmbientLight(0xffffff, 0.6 * Math.PI));
+    this.viewLight = new THREE.DirectionalLight(0xffffff, 0.9 * Math.PI);
     this.viewLight.position.set(0.5, 1, 0.8);
     this.viewScene.add(this.viewLight);
 
@@ -91,6 +93,8 @@ export class SurfaceMode {
     this.dayT = 0.35;
     this.leaving = false;
     this.feeding = [];
+    this.npcs = [];
+    this.interior = false;
   }
 
   setRenderDistance(d) {
@@ -108,6 +112,7 @@ export class SurfaceMode {
     const g = this.game;
     this.planet = planet;
     this.P = planet.params;
+    this.interior = !!this.P.interior;
     this.active = true;
     this.loading = true;
     this.loadTime = 0;
@@ -156,7 +161,22 @@ export class SurfaceMode {
     this.dayT = st.dayTime[planet.id] ?? 0.32;
     this.spawnMode = opts.spawn;
     const player = g.player;
-    if (opts.spawn === 'crash') {
+    this._clearNPCs();
+    if (this.interior) {
+      STATION_NPCS.forEach((n, i) => {
+        const m = buildTraveller(hash32(planet.seed, i));
+        m.position.set(n.x + 0.5, STATION_FLOOR, n.z + 0.5);
+        m.rotation.y = n.face;
+        m.userData.face = n.face;
+        m.userData.line = STATION_CHATTER[(i + (planet.seed % 5)) % STATION_CHATTER.length];
+        this.scene.add(m);
+        this.npcs.push(m);
+      });
+    }
+    if (opts.spawn === 'dock') {
+      this.target = { x: STATION_PAD.x, z: STATION_PAD.z };
+      g.inShip = true;
+    } else if (opts.spawn === 'crash') {
       const sp = this._findSpawn(0, 0);
       this.target = { x: sp.x, z: sp.z };
       g.inShip = false;
@@ -179,6 +199,11 @@ export class SurfaceMode {
     player.vel.set(0, 0, 0);
     player.frozen = true;
     this.world.update(this.target.x, this.target.z, 0);
+  }
+
+  _clearNPCs() {
+    for (const n of this.npcs) this.scene.remove(n);
+    this.npcs = [];
   }
 
   _findSpawn(x0, z0) {
@@ -216,7 +241,14 @@ export class SurfaceMode {
     this.loading = false;
     player.frozen = false;
     const mode = this.spawnMode;
-    if (mode === 'crash') {
+    if (mode === 'dock') {
+      ship.pos.set(STATION_PAD.x + 0.5, STATION_FLOOR + 1.7, STATION_PAD.z + 0.5);
+      ship.setLevel(0);
+      ship.state = 'landed';
+      ship.speed = 0;
+      g.inShip = true;
+      player.pos.copy(ship.pos);
+    } else if (mode === 'crash') {
       const s = this._settle(this.target.x, this.target.z);
       player.pos.set(s.x + 0.5, s.y, s.z + 0.5);
       player.yaw = Math.PI * 0.25;
@@ -303,6 +335,7 @@ export class SurfaceMode {
   leave() {
     if (!this.active) return;
     this.active = false;
+    this._clearNPCs();
     this.world.clear();
     this.creatures.clear();
     this.sentinels.clear();
@@ -328,7 +361,7 @@ export class SurfaceMode {
 
   writeState(st) {
     const p = this.game.player, s = this.game.ship;
-    st.mode = 'surface';
+    st.mode = this.interior ? 'station' : 'surface';
     st.player = { x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch };
     st.inShip = this.game.inShip;
     st.shipSurface = { x: s.pos.x, y: s.pos.y, z: s.pos.z, yaw: s.yaw(), state: s.state === 'landed' ? 'landed' : 'flying' };
@@ -382,13 +415,29 @@ export class SurfaceMode {
     this.scene.fog.color.setRGB(hor[0], hor[1], hor[2]);
     this.scene.fog.near = u.uFogNear.value;
     this.scene.fog.far = u.uFogFar.value * 1.1;
+    if (this.interior) {
+      u.uDaylight.value = 0;
+      this.daylight = 1;
+      u.uAmbient.value.setRGB(0.5, 0.48, 0.55);
+      u.uSkyLight.value.setRGB(0.62, 0.6, 0.64);
+      u.uFogFar.value = 400; u.uFogNear.value = 300;
+      u.uZenith.value.setRGB(0, 0, 0.01); u.uHorizon.value.setRGB(0.03, 0.02, 0.06);
+      u.uSunDir.value.copy(this.starDir);
+      this.scene.fog.near = 300; this.scene.fog.far = 400;
+      this.sunLight.position.copy(this.starDir).multiplyScalar(100);
+      this.sunLight.intensity = 0.9 * Math.PI;
+      this.hemi.intensity = 0.9 * Math.PI;
+      this.hemi.color.setRGB(1, 0.95, 1); this.hemi.groundColor.setRGB(0.5, 0.5, 0.6);
+      this.sky.setBodies(this.bodies.map((b) => ({ dir: [b.dir.x, b.dir.y, b.dir.z], size: b.size, color: b.color })));
+      return;
+    }
     // three.js lights (ship, creatures, drones)
     this.sunLight.position.copy(sunDir).multiplyScalar(100);
-    this.sunLight.intensity = 0.2 + daylight * 1.1;
+    this.sunLight.intensity = (0.15 + daylight * 0.95) * Math.PI;
     this.sunLight.color.setRGB(S.sun[0], S.sun[1], S.sun[2]);
     this.hemi.color.setRGB(zen[0] * 0.6 + 0.3, zen[1] * 0.6 + 0.3, zen[2] * 0.6 + 0.3);
     this.hemi.groundColor.setRGB(hor[0] * 0.4, hor[1] * 0.4, hor[2] * 0.4);
-    this.hemi.intensity = 0.35 + daylight * 0.5;
+    this.hemi.intensity = (0.3 + daylight * 0.45) * Math.PI;
     // bodies rotate with the fake sun
     _q.setFromUnitVectors(this.starDir, sunDir);
     this.sky.setBodies(this.bodies.map((b) => {
@@ -482,6 +531,16 @@ export class SurfaceMode {
       },
     });
     g.hud.setWanted(this.sentinels.wanted, this.sentinels.heat);
+    for (const n of this.npcs) {
+      const d = n.position.distanceTo(pc);
+      const want = d < 7 ? Math.atan2(-(pc.x - n.position.x), -(pc.z - n.position.z)) : n.userData.face;
+      let dy = want - n.rotation.y;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      n.rotation.y += dy * Math.min(1, dt * 3);
+      n.userData.body.position.y = Math.sin(g.time * 1.5 + n.position.x) * 0.02;
+      for (const a of n.userData.arms) a.rotation.x = Math.sin(g.time * 1.2 + n.position.z + a.userData.side) * 0.08;
+    }
     // projectiles
     this.bolts.update(dt, (b, prev) => this._boltHit(b, prev));
     this.debris.update(dt);
@@ -563,7 +622,10 @@ export class SurfaceMode {
     const g = this.game, ship = g.ship, input = g.input;
     const W = this.world;
     const groundAt = (x, z) => W.groundAt(x, z);
-    if (ship.state === 'landed') {
+    if (ship.state === 'landed' && this.interior) {
+      if (input.hit('Space') || (input.hit('KeyW') && ctl)) { if (!this.leaving) { this.leaving = true; g.launchFromStation(); } }
+      else if (input.hit('KeyE')) { this._exitShip(); return; }
+    } else if (ship.state === 'landed') {
       if (input.hit('Space') || (input.hit('KeyW') && ctl)) {
         const err = ship.tryTakeoff();
         if (err) { g.hud.notify(err); g.audio.warning(); }
@@ -745,6 +807,7 @@ export class SurfaceMode {
 
   _mineBlock(hit, dt, how) {
     const g = this.game;
+    if (this.interior) { g.hud.setCenter('Station hull is protected', '#9fd8ff'); this.centerT = 1; return; }
     const def = BLOCKS[hit.id];
     if (!def || def.unbreakable || hit.id === B.BEDROCK) {
       this.game.hud.setCenter(def && def.interact ? '' : 'This will not break', '#ff9f9f');
@@ -805,6 +868,7 @@ export class SurfaceMode {
 
   _placeBlock(hit) {
     const g = this.game, W = this.world, inv = g.inventory, p = g.player;
+    if (this.interior) { g.hud.setCenter('Building is not permitted aboard the station', '#9fd8ff'); this.centerT = 1; return; }
     const id = inv.hotbar[g.selectedHot || 0];
     if (!id || !isPlaceable(id)) { g.hud.notify('Select a block (1-9)'); return; }
     if (inv.blockCount(id) <= 0) { g.hud.notify(`No ${BLOCKS[id].name} left - collect or fabricate more`); return; }
@@ -898,13 +962,31 @@ export class SurfaceMode {
         const def = BLOCKS[target.hit.id];
         if (def.interact === 'chest') { prompt = '<span class="key">E</span>Open dream cache'; action = () => this._openChest(target.hit); }
         else if (def.interact === 'monolith') { prompt = '<span class="key">E</span>Touch the monolith'; action = () => this._monolith(target.hit); }
-        else if (def.interact === 'terminal') { prompt = '<span class="key">E</span>Access terminal'; action = () => this._terminal(target.hit); }
+        else if (def.interact === 'terminal') {
+          const t = this.interior ? STATION_TERMINALS.find((q) => q.x === target.hit.x && q.z === target.hit.z) : null;
+          prompt = `<span class="key">E</span>${t ? t.label : 'Access terminal'}`;
+          action = () => this._terminal(target.hit);
+        }
         else if (def.interact === 'pod') { prompt = '<span class="key">E</span>Open exosuit pod'; action = () => this._pod(target.hit); }
         else if (def.interact === 'door') { prompt = '<span class="key">E</span>Open the dream door'; action = () => this._dreamDoor(target.hit); }
       } else if (target.kind === 'creature') {
         const c = target.c;
         prompt = `<span class="key">E</span>Feed ${g.state.discoveries.creatures[c.sp.id] ? c.sp.name : 'creature'} (5 Carbon)`;
         action = () => this._feed(c);
+      }
+    }
+    if (!prompt && this.npcs.length) {
+      const cam = g.camera;
+      const dir = cam.getWorldDirection(new THREE.Vector3());
+      for (const n of this.npcs) {
+        const c = n.position.clone().add(new THREE.Vector3(0, 1.4, 0));
+        const toN = c.clone().sub(cam.position);
+        const d = toN.length();
+        if (d < 4.5 && toN.normalize().dot(dir) > 0.93) {
+          prompt = '<span class="key">E</span>Talk to traveller';
+          action = () => { g.input.unlock(); g.menus.dialog('Traveller', n.userData.line); g.audio.ui(); };
+          break;
+        }
       }
     }
     if (this.toolMode === 0 && this.overheated) prompt = prompt || 'Mining beam cooling…';
@@ -964,6 +1046,16 @@ export class SurfaceMode {
 
   _terminal(hit) {
     const g = this.game, key = this._usedKey(hit.x, hit.z) + 't';
+    if (this.interior) {
+      const t = STATION_TERMINALS.find((q) => q.x === hit.x && q.z === hit.z);
+      g.input.unlock();
+      if (!t || t.kind === 'archive') {
+        g.saveGame(true);
+        g.menus.dialog('Dream Archive', 'Your journey has been recorded in the station archive.\nThe archive hums, pleased.');
+      } else g.menus.openStation(t.kind);
+      g.audio.ui();
+      return;
+    }
     const text = TERMINAL[hash32(this.planet.seed, hit.x, hit.z) % TERMINAL.length];
     let extra = '';
     if (!g.state.used[key]) {
@@ -1222,6 +1314,14 @@ export class SurfaceMode {
       const sh = this.world.skyHeightAt(pl.pos.x, pl.pos.z);
       sheltered = sh > pl.pos.y + 1.7;
     }
+    if (this.interior) {
+      st.hazard = Math.min(100, st.hazard + dt * 20);
+      st.life = Math.min(100, st.life + dt * 10);
+      st.shield = Math.min(100, st.shield + dt * 10);
+      g.post.uniforms.uHazard.value = 0;
+      if (this.centerT > 0) { this.centerT -= dt; if (this.centerT <= 0) g.hud.setCenter(''); }
+      return;
+    }
     const lvl = P.hazard.level;
     const storm = this.stormK || 0;
     if (lvl > 0 && !sheltered) {
@@ -1292,7 +1392,8 @@ export class SurfaceMode {
     if (this.storm.on) conds.push('⚡ Storm');
     conds.push(`Sentinels: ${['None', 'Low', 'Standard', 'Aggressive'][P.sentinels]}`);
     conds.push(`${this.daylight > 0.5 ? '☀' : '☾'} ${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
-    hud.setLocation(this.planet.name, `${P.adjective} ${this.planet.biomeLabel} · ${g.system.name}`, conds);
+    if (this.interior) hud.setLocation(this.planet.name, `${g.system.name} system · Docked`, ['Pressurised', 'Sentinels: None', 'Trade · Tech · Services']);
+    else hud.setLocation(this.planet.name, `${P.adjective} ${this.planet.biomeLabel} · ${g.system.name}`, conds);
     // markers
     for (const m of this.markers) m.t -= dt;
     this.markers = this.markers.filter((m) => m.t > 0);
@@ -1326,7 +1427,7 @@ export class SurfaceMode {
     if (g.inShip) {
       hud.updateShip(ship, ship.pos.y - this.world.groundAt(ship.pos.x, ship.pos.z), false);
       hud.setCrosshair('dot');
-      if (ship.state === 'landed') hud.setPrompt('<span class="key">SPACE</span>Take off  <span class="key">E</span>Exit ship');
+      if (ship.state === 'landed') hud.setPrompt(this.interior ? '<span class="key">SPACE</span>Launch  <span class="key">E</span>Exit ship' : '<span class="key">SPACE</span>Take off  <span class="key">E</span>Exit ship');
       else if (ship.state === 'flying') {
         const alt = ship.pos.y - this.world.groundAt(ship.pos.x, ship.pos.z);
         hud.setPrompt(alt < 55 ? '<span class="key">E</span>Land' : null);

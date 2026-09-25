@@ -214,9 +214,9 @@ function paintTiles() {
   });
   t('glass', (p) => {
     p.fill((x, y) => {
-      const edge = x === 0 || y === 0 || x === 15 || y === 15;
-      if (edge) return [0.85, 0.92, 0.98, UNT];
-      if ((x === y + 3 || x === y + 4) && x > 3 && x < 12) return [0.95, 0.98, 1.0, UNT];
+      const edge = x === 0 || y === 0;
+      if (edge) return [0.82, 0.9, 0.97, UNT];
+      if ((x === 3 && y >= 3 && y <= 5) || (y === 3 && x >= 3 && x <= 5)) return [0.95, 0.98, 1.0, UNT];
       return [0, 0, 0, 0];
     });
   });

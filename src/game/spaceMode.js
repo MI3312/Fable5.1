@@ -75,6 +75,8 @@ export class SpaceMode {
       ship.quat.setFromRotationMatrix(m);
       // lookAt makes -Z face the target (camera convention)
       ship.speed = 80; ship.targetSpeed = 80;
+    } else if (opts.fromStation) {
+      this.undock();
     } else if (opts.restore && g.state.shipSpace) {
       const s = g.state.shipSpace;
       ship.pos.set(s.x, s.y, s.z);
@@ -163,23 +165,23 @@ export class SpaceMode {
 
   dock() {
     const g = this.game;
+    if (this.docked) return;
     this.docked = true;
     g.ship.speed = 0;
     g.state.flags.docked = true;
-    g.audio.setMood('station', g.system.seed);
     g.audio.setLoop('engine', false);
-    g.fade(0.4, () => {
-      g.input.unlock();
-      g.menus.openStation();
-      g.hud.toast(g.system.station.name, 'Docked · Trade, upgrade and rest');
-    });
+    g.fade(0.6, () => {
+      this.leave();
+      g.enterStation();
+    }, 0xf4e8ff);
   }
 
   undock() {
     const g = this.game, ship = g.ship;
     const bay = this._bayPoint();
     const out = bay.clone().sub(this.space.station.position).normalize();
-    ship.pos.copy(bay).addScaledVector(out, 160);
+    ship.pos.copy(bay).addScaledVector(out, 320);
+    this.dockCooldown = 5;
     const m = new THREE.Matrix4().lookAt(ship.pos, ship.pos.clone().add(out), new THREE.Vector3(0, 1, 0));
     ship.quat.setFromRotationMatrix(m);
     ship.speed = 50; ship.targetSpeed = 50;
@@ -270,7 +272,8 @@ export class SpaceMode {
     const bay = this._bayPoint();
     const dBay = ship.pos.distanceTo(bay);
     let prompt = null;
-    if (dBay < 260) {
+    this.dockCooldown = Math.max(0, (this.dockCooldown || 0) - dt);
+    if (dBay < 260 && this.dockCooldown <= 0) {
       prompt = '<span class="key">E</span>Dock with station';
       if (input.hit('KeyE')) this.dock();
     }
