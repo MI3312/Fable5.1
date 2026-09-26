@@ -1,8 +1,8 @@
-// Procedural starship + multi-tool models, assembled from boxes (a voxel-toy aesthetic).
+// Procedural starship (a signed-distance hull, voxelised) and other small machines built from boxes.
 import * as THREE from 'three';
 import { RNG, hsl } from '../core/rng.js';
 import { applyCurvature } from '../core/shaderlib.js';
-import { voxelize, ellipsoid, sphere, capsule, smin, fbm3 } from './sdfModel.js';
+import { voxelize, voxelLitMaterial, ellipsoid, sphere, capsule, smin, fbm3 } from './sdfModel.js';
 
 function mat(color, opts = {}) {
   const m = new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts });
@@ -16,7 +16,22 @@ function box(w, h, d, material, x = 0, y = 0, z = 0, parent) {
   return m;
 }
 
-// Ship faces -Z (forward), +Y up. Roughly 9 units long.
+function sdBox(p, cx, cy, cz, bx, by, bz, r = 0) {
+  const qx = Math.abs(p[0] - cx) - bx + r, qy = Math.abs(p[1] - cy) - by + r, qz = Math.abs(p[2] - cz) - bz + r;
+  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) - r;
+}
+const shipGeoCache = new Map();
+function shipGeo(key, spec) {
+  if (!shipGeoCache.has(key)) shipGeoCache.set(key, voxelize(spec));
+  return shipGeoCache.get(key);
+}
+let _canopyMat = null;
+function canopyMat() {
+  if (!_canopyMat) _canopyMat = applyCurvature(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x1d6f86, emissiveIntensity: 0.9 }));
+  return _canopyMat;
+}
+
+// Ship faces -Z (forward), +Y up. Roughly 11 units long.
 export function buildShip(seed = 1) {
   const rng = new RNG(seed);
   const g = new THREE.Group();
@@ -24,10 +39,7 @@ export function buildShip(seed = 1) {
   const c1 = new THREE.Color().setRGB(...hsl(hue, 0.35, 0.72));
   const c2 = new THREE.Color().setRGB(...hsl(hue + 0.5, 0.55, 0.5));
   const c3 = new THREE.Color().setRGB(...hsl(hue + rng.range(0.1, 0.3), 0.7, 0.6));
-  const hull = mat(c1);
-  const trim = mat(c2);
   const dark = mat(0x2a2d36);
-  const glass = mat(0x9ff3ff, { emissive: 0x2a8fa8, emissiveIntensity: 0.7 });
   const glow = new THREE.MeshBasicMaterial({ color: 0xffa060, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
   applyCurvature(glow);
   const flameGeo = new THREE.ConeGeometry(1, 1, 10, 1, true);
@@ -47,35 +59,93 @@ export function buildShip(seed = 1) {
     box(r * 1.5, r * 1.5, 0.08, nozzle, x, y, z - 0.03, g);
     return f;
   };
-  const accent = mat(c3, { emissive: c3, emissiveIntensity: 0.35 });
-
-  // fuselage
-  box(1.8, 1.2, 6.5, hull, 0, 0, 0, g);
-  box(1.4, 0.9, 2.0, hull, 0, -0.05, -4.1, g);
-  box(0.9, 0.6, 1.2, trim, 0, -0.1, -5.5, g);
-  box(1.2, 0.7, 2.2, glass, 0, 0.75, -1.4, g); // cockpit canopy
-  box(1.9, 0.4, 3.0, trim, 0, 0.8, 1.2, g);
-  box(2.0, 0.25, 6.0, dark, 0, -0.65, 0.2, g);
-  // wings
+  // Hull: one signed distance field (fuselage, swept wings, nacelles, spine, fin) voxelised finely
+  // with baked occlusion, panel seams and livery painted by the colour function.
   const wingSpan = rng.range(3.5, 5.0);
   const wingStyle = rng.int(0, 2);
-  for (const s of [-1, 1]) {
-    const w = box(wingSpan, 0.22, 2.4, hull, s * (0.9 + wingSpan / 2), -0.1, 1.2, g);
-    if (wingStyle === 1) w.rotation.z = s * 0.25;
-    if (wingStyle === 2) w.rotation.z = -s * 0.18;
-    box(0.4, 0.3, 2.6, trim, s * (0.9 + wingSpan), -0.1 + (wingStyle === 1 ? 0.6 : wingStyle === 2 ? -0.5 : 0), 1.2, g);
-    box(0.25, 0.9, 1.0, accent, s * (0.9 + wingSpan), 0.4 + (wingStyle === 1 ? 0.6 : wingStyle === 2 ? -0.5 : 0), 1.8, g);
-    // wing cannons
-    box(0.18, 0.18, 1.6, dark, s * (0.9 + wingSpan * 0.6), -0.3, -0.4, g);
-    // engines
-    box(0.9, 0.9, 2.2, dark, s * 1.15, 0.1, 3.0, g);
-    addFlame(s * 1.15, 0.1, 4.12, 0.32);
-  }
-  box(1.0, 1.0, 1.0, dark, 0, 0.1, 3.6, g);
-  addFlame(0, 0.1, 4.12, 0.36);
-  // tail fin
-  box(0.2, 1.4, 1.6, trim, 0, 1.3, 2.4, g);
-  box(0.25, 0.3, 1.2, accent, 0, 2.0, 2.6, g);
+  const sweep = rng.range(0.6, 1.8);
+  const noseLen = rng.range(2.6, 3.4);
+  const tipRise = wingStyle === 1 ? 0.6 : wingStyle === 2 ? -0.5 : 0;
+  const trio = rng.chance(0.5);
+  const C1 = [c1.r, c1.g, c1.b], C2 = [c2.r, c2.g, c2.b], C3 = [c3.r, c3.g, c3.b], DK = [0.16, 0.17, 0.2];
+  const shade = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
+  const parts = (p) => {
+    const ax = Math.abs(p[0]);
+    const body = smin(
+      ellipsoid(p, 0, 0.05, -0.4, 1.02, 0.66, 4.6),
+      capsule(p, 0, -0.02, -3.2, 0, -0.08, -3.2 - noseLen, 0.62, 0.1), 0.5);
+    const tailBlock = sdBox(p, 0, 0.05, 2.5, 0.95, 0.58, 1.3, 0.25);
+    const fus = smin(body, tailBlock, 0.4);
+    const spine = capsule(p, 0, 0.6, -0.6, 0, 0.72, 3.0, 0.2, 0.28);
+    // swept, tapered wing with dihedral / anhedral
+    const t = Math.min(1, Math.max(0, (ax - 0.8) / wingSpan));
+    const chord = 2.7 - t * 1.6, zc = 1.1 + t * sweep, yc = -0.12 + t * tipRise, th = 0.15 - t * 0.07;
+    const wing = Math.max(Math.abs(p[2] - zc) - chord / 2, Math.abs(p[1] - yc) - th, ax - (0.8 + wingSpan), 0.6 - ax) - 0.02;
+    const tipX = 0.8 + wingSpan, tipZ = 1.1 + sweep;
+    const tip = capsule([ax, p[1], p[2]], tipX, -0.12 + tipRise - 0.1, tipZ - 0.9, tipX, -0.12 + tipRise + 0.55, tipZ + 0.5, 0.14, 0.09);
+    const nac = Math.min(
+      capsule([ax, p[1], p[2]], 1.2, 0.08, 0.6, 1.2, 0.08, 3.85, 0.46, 0.5),
+      trio ? capsule(p, 0, 0.12, 2.2, 0, 0.12, 3.95, 0.5, 0.52) : 99);
+    const nozzleCut = Math.min(
+      capsule([ax, p[1], p[2]], 1.2, 0.08, 3.9, 1.2, 0.08, 4.6, 0.33),
+      trio ? capsule(p, 0, 0.12, 4.0, 0, 0.12, 4.6, 0.36) : 99);
+    const fin = Math.max(sdBox(p, 0, 1.25, 2.9 + (p[1] - 0.7) * 0.7, 0.07, 0.62, 0.62, 0.03), -(p[1] - 0.55));
+    const gun = capsule([ax, p[1], p[2]], 0.8 + wingSpan * 0.55, -0.3 + t * tipRise * 0, -1.4, 0.8 + wingSpan * 0.55, -0.3, 1.2, 0.09);
+    const intake = sdBox([ax, p[1], p[2]], 1.02, -0.02, -0.9, 0.18, 0.28, 0.6, 0.1);
+    return { fus, spine, wing, tip, nac, nozzleCut, fin, gun, intake };
+  };
+  const hullSdf = (p) => {
+    const q = parts(p);
+    let d = smin(q.fus, q.spine, 0.2);
+    d = smin(d, q.wing, 0.35);
+    d = smin(d, q.nac, 0.25);
+    d = Math.min(d, q.tip, q.fin, q.gun);
+    d = smin(d, q.intake, 0.1);
+    d = Math.max(d, -q.nozzleCut);
+    // cockpit well (the canopy sits in it)
+    d = Math.max(d, -ellipsoid(p, 0, 0.58, -1.65, 0.56, 0.36, 1.15));
+    return d;
+  };
+  const hullCol = (p) => {
+    const q = parts(p);
+    const ax = Math.abs(p[0]);
+    let base = C1;
+    const m = Math.min(q.fus, q.spine, q.wing, q.tip, q.nac, q.fin, q.gun, q.intake);
+    if (m === q.nac || m === q.gun || m === q.intake) base = DK;
+    else if (m === q.tip || m === q.fin) base = C3;
+    else if (m === q.spine) base = C2;
+    else if (m === q.wing) {
+      // livery stripe near the tips, dark leading edge
+      const t = (ax - 0.8) / wingSpan;
+      if (t > 0.62 && t < 0.74) base = C2;
+      if (p[2] < 1.1 + t * sweep - (2.7 - t * 1.6) / 2 + 0.18) base = shade(C1, 0.72);
+    } else {
+      // fuselage: belly darker, side stripe, nose tip in trim
+      if (p[1] < -0.35) base = shade(C1, 0.62);
+      if (Math.abs(p[1] - 0.05) < 0.08 && ax > 0.7) base = C2;
+      if (p[2] < -3.2 - noseLen + 0.9) base = C2;
+    }
+    // panel seams
+    const seamZ = Math.abs(((p[2] + 10) % 1.15) - 0.575) > 0.54;
+    const seamX = m === q.wing && Math.abs(((ax + 10) % 1.3) - 0.65) > 0.62;
+    if ((seamZ && m !== q.gun) || seamX) base = shade(base, 0.72);
+    return shade(base, 0.92 + fbm3(p[0] * 3, p[1] * 3, p[2] * 3, 2) * 0.08);
+  };
+  const hullMesh = new THREE.Mesh(shipGeo('hull' + seed, {
+    min: [-(1.2 + wingSpan), -1.0, -3.4 - noseLen], max: [1.2 + wingSpan, 2.05, 4.7], step: 0.085,
+    sdf: hullSdf, color: hullCol,
+  }), voxelLitMaterial());
+  g.add(hullMesh);
+  // glass canopy with a glint band
+  const canopy = new THREE.Mesh(shipGeo('canopy', {
+    min: [-0.6, 0.2, -2.9], max: [0.6, 1.1, -0.4], step: 0.06,
+    sdf: (p) => ellipsoid(p, 0, 0.6, -1.65, 0.52, 0.42, 1.1),
+    color: (p) => (Math.abs(p[2] + 1.2 - p[1] * 0.6) < 0.07 ? [0.85, 1.0, 1.0] : [0.32, 0.72, 0.85]),
+  }), canopyMat());
+  g.add(canopy);
+  for (const s of [-1, 1]) addFlame(s * 1.2, 0.08, 4.05, 0.32);
+  if (trio) addFlame(0, 0.12, 4.1, 0.34);
+
   // landing gear
   const gear = new THREE.Group();
   gear.name = 'gear';
@@ -84,21 +154,16 @@ export function buildShip(seed = 1) {
     box(0.6, 0.12, 0.6, dark, x, -1.65, z, gear);
   }
   g.add(gear);
-  // panel lines, an antenna and blinking navigation lights
-  const seam = mat(0x1d2027);
-  for (const z of [-2.2, -0.2, 1.8]) box(1.84, 0.04, 0.05, seam, 0, 0.6, z, g);
-  box(0.05, 0.05, 5.8, seam, 0.91, 0.1, 0, g);
-  box(0.05, 0.05, 5.8, seam, -0.91, 0.1, 0, g);
-  box(0.06, 0.9, 0.06, dark, 0.5, 0.95, 0.9, g);
+  // blinking navigation lights
   const nav = [];
   const navLight = (color, x, y, z, phase) => {
     const m = applyCurvature(new THREE.MeshBasicMaterial({ color }));
-    nav.push({ l: box(0.22, 0.22, 0.22, m, x, y, z, g), phase });
+    nav.push({ l: box(0.16, 0.16, 0.16, m, x, y, z, g), phase });
   };
-  const tipY = -0.1 + (wingStyle === 1 ? 0.6 : wingStyle === 2 ? -0.5 : 0);
-  navLight(0xff2a2a, -(0.9 + wingSpan), tipY + 0.05, 0.1, 0);
-  navLight(0x2aff5a, 0.9 + wingSpan, tipY + 0.05, 0.1, 0);
-  navLight(0xffffff, 0, 2.25, 3.2, 0.5);
+  const tipY = -0.12 + tipRise;
+  navLight(0xff2a2a, -(0.8 + wingSpan), tipY + 0.62, 1.1 + sweep + 0.5, 0);
+  navLight(0x2aff5a, 0.8 + wingSpan, tipY + 0.62, 1.1 + sweep + 0.5, 0);
+  navLight(0xffffff, 0, 1.9, 3.35, 0.5);
   g.userData.nav = nav;
   g.userData.flames = g.children.filter((c) => c.name === 'flame');
   g.userData.gear = gear;
