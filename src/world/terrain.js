@@ -30,6 +30,10 @@ export class TerrainGen {
     this.n3b = new Noise(s + 71);
     this.n3c = new Noise(s + 83);
     this.nSpike = new Noise(s + 97);
+    this.nRiver = new Noise(s + 131);
+    this.nReg = new Noise(s + 137);
+    this.nRock = new Noise(s + 139);
+    this.nPatch = new Noise(s + 149);
     this.gen = new Uint8Array(GW * GW * HEIGHT);
     this.hf = new Float32Array(GW * GW);
     this.top = new Int16Array(GW * GW);
@@ -81,6 +85,19 @@ export class TerrainGen {
         const d = Math.hypot(x - cx, z - cz) / r;
         if (d < 1) h -= (1 - d * d) * r * 0.45;
         else if (d < 1.4) h += (1 - Math.abs(d - 1.15) / 0.25) * r * 0.08;
+      }
+    }
+    // rivers: a warped noise line carved down to the sea (or into a dry canyon)
+    if (this.p.rivers) {
+      const rv = Math.abs(this.nRiver.fbm2(wx * 0.0019 + 17.3, wz * 0.0019 - 41.9, 3));
+      const Wd = 0.04;
+      if (rv < Wd * 2.4) {
+        const sea = this.p.seaLevel;
+        const dry = this.p.rivers === 'dry';
+        const bed = dry ? h - 10 : sea - 2.5;
+        let k = 1 - smoothstep(Wd * 0.45, Wd * 2.4, rv);
+        if (!dry) k *= smoothstep(sea + 70, sea + 34, h);
+        if (k > 0 && bed < h) h += (bed - h) * k * k * (3 - 2 * k);
       }
     }
     const zi = zoneAt(this, x, z);
@@ -228,7 +245,11 @@ export class TerrainGen {
             if (underLiquid || y < sea - 1) block = S.underwater;
             else if (liquid && y <= sea + 1 && v === 1) block = S.beach;
             else if (y + snowJ > snowLine) block = S.snowBlock;
-            else block = S.top;
+            else {
+              // patches: bare earth and rock breaking through the ground cover
+              const pn = this.nPatch.n2(wx * 0.06, wz * 0.06) + this.nRock.n2(wx * 0.004, wz * 0.004) * 0.45;
+              block = pn > 0.78 ? S.sub : pn < -0.82 ? S.stone : S.top;
+            }
           } else if (depth <= S.subDepth) {
             block = (underLiquid || y < sea - 1) && depth < 2 ? S.underwater : S.sub;
           } else {
@@ -363,7 +384,25 @@ export class TerrainGen {
       if (above !== 0) continue; // underwater or covered
       const wx = wx0 + gx, wz = wz0 + gz;
       const h = hash32(this.seed, wx, wz, 5);
+      // ruins of something older, now and then
+      if (P.ruins && (h >>> 20) === 0 && ground !== B.SAND) {
+        this._ruin(gx, top, gz, new RNG(h ^ 0x5ee), setAny, setIfFree);
+        continue;
+      }
+      // regions: forests, clearings, rocky badlands
+      const reg = this.nReg.fbm2(wx * 0.0055, wz * 0.0055, 2);
+      const rock = this.nRock.n2(wx * 0.009 + 33, wz * 0.009 - 12);
+      const treeK = reg > 0.28 ? 2.8 : reg < -0.3 ? 0.12 : 1;
+      const rockK = rock > 0.45 ? 4.5 : 1;
       let r = (h & 0xffffff) / 0x1000000;
+      // rescale the roll so the region multipliers apply to trees and boulders
+      if (r < densSum * 3) {
+        const td = dens[0] * treeK * (rock > 0.45 ? 0.3 : 1), bd = dens[1] * rockK;
+        if (r < td) r = r / td * dens[0] * 0.999;
+        else if (r < td + bd) r = dens[0] + (r - td) / bd * dens[1] * 0.999;
+        else if (r < td + bd + dens[2] + dens[3]) r = dens[0] + dens[1] + (r - td - bd);
+        else r = densSum + (r - td - bd - dens[2] - dens[3]);
+      }
       const rng = r < densSum ? new RNG(h) : null;
       const y = top + 1;
       // trees
@@ -418,6 +457,24 @@ export class TerrainGen {
       const d = Math.sqrt(dx * dx + dy * dy * 1.3 + dz * dz);
       if (d <= rad - rng.next() * 0.35) set(gx + dx, gy + dy, gz + dz, id);
     }
+  }
+
+  // An old building: broken walls, a doorway, sometimes something left inside
+  _ruin(gx, top, gz, rng, setAny, setIfFree) {
+    const rx = rng.int(2, 3), rz = rng.int(2, 3);
+    const wall = rng.chance(0.5) ? B.BRICK : this.p.surface.stone;
+    const door = rng.int(0, 3);
+    for (let dz = -rz; dz <= rz; dz++) for (let dx = -rx; dx <= rx; dx++) {
+      const edge = Math.abs(dx) === rx || Math.abs(dz) === rz;
+      setAny(gx + dx, top, gz + dz, rng.chance(0.2) ? B.GRAVEL : wall);
+      if (!edge) continue;
+      const isDoor = (door === 0 && dz === -rz && dx === 0) || (door === 1 && dz === rz && dx === 0) || (door === 2 && dx === -rx && dz === 0) || (door === 3 && dx === rx && dz === 0);
+      if (isDoor) continue;
+      const hgt = rng.chance(0.25) ? 0 : rng.int(1, 3);
+      for (let y = 1; y <= hgt; y++) setAny(gx + dx, top + y, gz + dz, y === hgt && rng.chance(0.4) ? B.LEAVES : wall);
+    }
+    if (rng.chance(0.3)) setIfFree(gx, top + 1, gz, B.CHEST);
+    else if (rng.chance(0.3)) setIfFree(gx, top + 1, gz, B.LAMP);
   }
 
   _tree(style, gx, y, gz, rng, setF, setA) {

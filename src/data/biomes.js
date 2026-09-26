@@ -256,6 +256,9 @@ export function makePlanetParams(seed, biome, opts = {}) {
     P.zones = [['natural', 12], ['meadow', 1.4], ['poolscape', 0.8], ['library', 0.5], ['plasticity', 0.5], ['memory', 0.3]];
   }
   P.underlayer = biome === 'liminal' || (biome === 'exotic' && rng.chance(0.5));
+  // rivers wind across most worlds with a liquid; drier worlds keep their empty canyons
+  P.rivers = P.liquid ? rng.chance(0.8) : (['barren', 'dead', 'scorched'].includes(biome) && rng.chance(0.45)) ? 'dry' : false;
+  P.ruins = biome !== 'dead' && rng.chance(0.75);
   if (P.liquid === B.LAVA) setTint(T.water, [1, 1, 1]);
   if (!P.sky.cloudCover && P.sky.cloudCover !== 0) P.sky.cloudCover = 0.4;
   // sun tint shifts slightly with sky
