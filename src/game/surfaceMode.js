@@ -679,6 +679,7 @@ export class SurfaceMode {
     this._survival(dt);
     this._structures(dt);
     this._whispers(dt);
+    this._doorsBehind(dt);
     this._updateHUD(dt);
   }
 
@@ -1524,6 +1525,38 @@ export class SurfaceMode {
       this.whisperTimer = 60 + Math.random() * 90;
       this.game.hud.setCenter(DREAM_WHISPERS[Math.floor(Math.random() * DREAM_WHISPERS.length)], '#ffd6f4');
       this.centerT = 5;
+    }
+  }
+
+  // Now and then, on dream worlds, a door is standing behind you that was not there before.
+  _doorsBehind(dt) {
+    const g = this.game, P = this.P;
+    const dreamy = P.biome === 'liminal' || P.biome === 'exotic' || !!this.zoneCur;
+    if (!dreamy || this.interior || g.inShip || this.teleport) return;
+    this.doorT = (this.doorT ?? 150 + Math.random() * 120) - dt;
+    if (this.doorT > 0) return;
+    this.doorT = 60;
+    const W = this.world, pl = g.player.pos;
+    const dir = g.camera.getWorldDirection(_v);
+    const behind = Math.atan2(dir.x, dir.z) + Math.PI;
+    const free = (id) => id === B.AIR || id === B.LIT_AIR || IS_CROSS[id];
+    for (let t = 0; t < 10; t++) {
+      const a = behind + (Math.random() - 0.5) * 1.4, r = 9 + Math.random() * 5;
+      const x = Math.floor(pl.x + Math.sin(a) * r), z = Math.floor(pl.z + Math.cos(a) * r);
+      const y = W.groundBelow(x + 0.5, pl.y + 4, z + 0.5) + 1;
+      if (Math.abs(y - pl.y) > 2.5) continue;
+      let ok = true;
+      for (let dx = -1; dx <= 1 && ok; dx++) {
+        if (!IS_SOLID[W.getBlock(x + dx, y - 1, z)] || IS_LIQUID[W.getBlock(x + dx, y - 1, z)]) ok = false;
+        for (let dy = 0; dy < 3 && ok; dy++) if (!free(W.getBlock(x + dx, y + dy, z))) ok = false;
+      }
+      if (!ok) continue;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = 0; dy < 3; dy++) {
+        W.setBlock(x + dx, y + dy, z, dx === 0 && dy < 2 ? B.DREAM_DOOR : B.DREAM_TILE);
+      }
+      g.audio.distant('door');
+      this.doorT = 200 + Math.random() * 220;
+      return;
     }
   }
 
