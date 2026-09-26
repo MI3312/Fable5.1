@@ -108,6 +108,7 @@ function worleyT(u, v, N, seed) {
   }
   return [f1, f2, id];
 }
+const smooth01 = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 // evaluate a field per pixel centre
 function field(p, fn) { return p.fill((x, y) => fn((x + 0.5) / S, (y + 0.5) / S, x, y)); }
@@ -624,6 +625,31 @@ function paintTiles() {
     const n = fbmT(u, v, 4, 2, 73) * 0.04;
     return [0.05 + n, 0.045 + n, 0.07 + n * 1.4, UNT];
   }));
+  t('void', (p) => field(p, (u, v, x, y) => {
+    const star = th(x, y, 91) > 0.975 ? 0.12 : 0;
+    const n = fbmT(u, v, 2, 3, 93) * 0.02;
+    return [0.008 + n + star, 0.006 + n + star, 0.014 + n * 1.5 + star, UNT];
+  }));
+  t('emergency', (p) => field(p, (u, v, x, y) => {
+    const d = Math.min(x, y, 15 - x, 15 - y);
+    if (d === 0) return [0.2, 0.05, 0.05, UNT];
+    const k = 0.75 + (1 - Math.hypot(u - 0.5, v - 0.5) * 1.4) * 0.3;
+    return [1.0 * k, 0.16 * k, 0.1 * k, UNT];
+  }));
+  t('hull', (p) => field(p, (u, v, x, y) => {
+    const streak = fbmT(u, v, 4, 3, 101, 1);
+    const rust = smooth01(fbmT(u, v, 2, 3, 103) * 1.6 - 0.55) * streak;
+    const seam = (y === 0 || x === 7) ? -0.07 : 0;
+    const rivet = ((x === 2 || x === 12) && (y === 3 || y === 12)) ? 0.08 : 0;
+    const g0 = 0.26 + fbmT(u, v, 8, 1, 105) * 0.06 + seam + rivet;
+    return [g0 + rust * 0.28, g0 + rust * 0.1, g0 + rust * 0.02, UNT];
+  }));
+  t('grate', (p) => field(p, (u, v, x, y) => {
+    const hole = (x % 4 !== 0) && (y % 4 !== 0);
+    const k = hole ? 0.07 : 0.34 + fbmT(u, v, 4, 2, 107) * 0.08;
+    return [k, k * 1.02, k * 1.08, UNT];
+  }));
+  t('missing', (p) => field(p, (u, v, x, y) => (((x >> 3) + (y >> 3)) & 1 ? [0.98, 0.0, 0.98, UNT] : [0.02, 0.0, 0.02, UNT])));
   t('dream_water', (p) => {
     p.fill((x, y, r) => {
       const w = Math.sin((x - y * 0.5) * 0.7) * 0.06;

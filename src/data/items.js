@@ -54,6 +54,10 @@ export const ITEMS = {
   lucid_core: { name: 'Lucid Core', symbol: 'LC', color: '#ffffff', cat: 'dream', value: 25000, stack: 5, desc: 'Pure lucidity. Stabilises hyperdrive jumps - a warp cell of the mind.' },
   void_egg: { name: 'Void Egg', symbol: 'VE', color: '#39204f', cat: 'dream', value: 8000, stack: 5, desc: 'Something is dreaming inside.' },
   static_bloom: { name: 'Static Bloom', symbol: 'St', color: '#d8d8d8', cat: 'dream', value: 700, stack: 20, desc: 'A flower made of television snow.' },
+  // --- derelicts and the broken dream ---
+  salvage: { name: 'Salvaged Data', symbol: 'SD', color: '#9fd0ff', cat: 'product', value: 3200, stack: 20, desc: 'Encrypted records from a dead ship. Stations pay well and ask no questions.' },
+  crew_tag: { name: 'Crew Tag', symbol: 'CT', color: '#d8c9a8', cat: 'dream', value: 1500, stack: 20, desc: 'A name stamped in metal. The name keeps changing when you are not reading it.' },
+  null_shard: { name: 'Null Shard', symbol: '∅', color: '#101014', cat: 'dream', value: 0, stack: 10, desc: 'A piece of nothing. It is heavier than it should be. It is warm.' },
   // --- vermin materials ---
   kodama_rattle: { name: 'Kodama Rattle', symbol: 'Kr', color: '#f2f6ee', cat: 'dream', value: 950, stack: 20, desc: 'A small pale thing that rattles only when nobody is near. A gift.' },
   gel_core: { name: 'Gel Core', symbol: 'Gc', color: '#a8ff8a', cat: 'dream', value: 520, stack: 20, desc: 'The glowing heart of a Gel. Still wobbling. Still warm.' },

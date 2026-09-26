@@ -265,3 +265,20 @@ button { font-family: var(--font); }
 
 #title-screen .subtitle.wrong { color: #ff9a9a; letter-spacing: 0.6em; text-shadow: 2px 0 rgba(255, 0, 40, 0.6), -2px 0 rgba(0, 200, 255, 0.4); filter: blur(0.3px); }
 .loading .lh { margin-top: 26px; max-width: 520px; text-align: center; font-family: var(--font-dream); font-size: 15px; color: rgba(220, 210, 230, 0.55); font-style: italic; }
+
+/* chat console, bottom-left like the old games */
+#hud .chat { position: absolute; left: 22px; bottom: 132px; width: min(460px, 60vw); display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
+#hud .chat.open { pointer-events: auto; }
+#hud .chat-log { display: flex; flex-direction: column; gap: 2px; }
+#hud .chat-line { font-family: 'Courier New', monospace; font-size: 15px; color: #f2f2f2; background: rgba(0, 0, 0, 0.42); padding: 2px 8px; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8); transition: opacity 0.8s; }
+#hud .chat-line.faded { opacity: 0; }
+#hud .chat-line.system { color: #f4e36a; }
+#hud .chat-line.null .who { color: #ffffff; }
+#hud .chat-line.you .who { color: #cfe9ff; }
+#hud .chat-line .obf { color: #ffffff; letter-spacing: 1px; }
+#hud .chat-input { font-family: 'Courier New', monospace; font-size: 15px; background: rgba(0, 0, 0, 0.62); color: #fff; border: none; outline: none; padding: 6px 8px; }
+#hud.corrupt .location, #hud.corrupt .stats, #hud.corrupt .compass { animation: hudShake 0.08s infinite; filter: url(#none) contrast(1.4); }
+#hud.corrupt .location .name { color: #fff; text-shadow: 3px 0 #f0f, -3px 0 #0ff; }
+@keyframes hudShake { 0% { transform: translate(0, 0) skewX(0); } 33% { transform: translate(-3px, 1px) skewX(8deg); } 66% { transform: translate(2px, -2px) skewX(-5deg); } }
+.fake-crash { position: absolute; inset: 0; background: #000; z-index: 50; padding: 36px 44px; pointer-events: auto; cursor: none; }
+.fake-crash pre { font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.45; color: #cfcfcf; white-space: pre-wrap; margin: 0; }

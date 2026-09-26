@@ -151,6 +151,74 @@ export class HUD {
 
   show(v) { this.root.classList.toggle('hidden', !v); }
 
+  // ---------------- chat ----------------
+  _buildChat() {
+    this.chatLog = h('div', { class: 'chat-log' });
+    this.chatInput = h('input', { class: 'chat-input hidden', type: 'text', maxlength: '80', spellcheck: 'false', autocomplete: 'off' });
+    this.chatEl = h('div', { class: 'chat' }, this.chatLog, this.chatInput);
+    this.root.appendChild(this.chatEl);
+    this.chatLines = [];
+    this.chatOpen = false;
+  }
+
+  // text may contain §k...§r (scrambled) segments. kind: 'player' | 'system' | 'null' | 'you'
+  chat(name, text, kind = 'player') {
+    if (!this.chatLog) this._buildChat();
+    const line = h('div', { class: 'chat-line ' + kind });
+    if (name) line.appendChild(h('span', { class: 'who' }, kind === 'system' ? '' : `<${name}> `));
+    const parts = String(text).split(/(§k[^§]*§r)/);
+    for (const part of parts) {
+      if (!part) continue;
+      if (part.startsWith('§k')) {
+        const n = part.length - 4;
+        const sp = h('span', { class: 'obf' }, 'x'.repeat(Math.max(1, n)));
+        sp.dataset.n = String(Math.max(1, n));
+        line.appendChild(sp);
+      } else line.appendChild(document.createTextNode(part));
+    }
+    this.chatLog.appendChild(line);
+    this.chatLines.push({ el: line, t: 12 });
+    while (this.chatLines.length > 14) this.chatLines.shift().el.remove();
+  }
+
+  openChat(onSend, onClose) {
+    if (!this.chatLog) this._buildChat();
+    this.chatOpen = true;
+    this.chatEl.classList.add('open');
+    const inp = this.chatInput;
+    inp.classList.remove('hidden');
+    inp.value = '';
+    setTimeout(() => inp.focus(), 0);
+    inp.onkeydown = (e) => {
+      if (e.code === 'Enter') { const v = inp.value.trim(); this.closeChat(); if (v) onSend(v); onClose(); e.preventDefault(); }
+      else if (e.code === 'Escape') { this.closeChat(); onClose(); e.preventDefault(); }
+      e.stopPropagation();
+    };
+  }
+
+  closeChat() {
+    if (!this.chatLog) return;
+    this.chatOpen = false;
+    this.chatEl.classList.remove('open');
+    this.chatInput.classList.add('hidden');
+    this.chatInput.blur();
+  }
+
+  // ---------------- the interface does not behave ----------------
+  glitch(t) { this.glitchT = Math.max(this.glitchT || 0, t); }
+
+  showCrash(lines) {
+    if (!this.crashEl) {
+      this.crashEl = h('div', { class: 'fake-crash hidden' });
+      (this.root.parentNode || document.body).appendChild(this.crashEl);
+    }
+    clear(this.crashEl);
+    this.crashEl.appendChild(h('pre', {}, lines.join('\n')));
+    this.crashEl.classList.remove('hidden');
+  }
+
+  hideCrash() { if (this.crashEl) this.crashEl.classList.add('hidden'); }
+
   set(el, key, text) {
     if (this.cache[key] !== text) { this.cache[key] = text; el.textContent = text; }
   }
@@ -365,6 +433,29 @@ export class HUD {
   }
 
   update(dt) {
+    // chat lines fade unless the chat is open; scrambled text keeps scrambling
+    if (this.chatLines) {
+      for (const l of this.chatLines) {
+        l.t -= dt;
+        l.el.classList.toggle('faded', !this.chatOpen && l.t <= 0);
+      }
+      const G = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789#%&@$';
+      for (const sp of this.chatLog.querySelectorAll('.obf')) {
+        let o = '';
+        for (let i = 0; i < Number(sp.dataset.n); i++) o += G[Math.floor(Math.random() * G.length)];
+        sp.textContent = o;
+      }
+    }
+    if (this.glitchT > 0) {
+      this.glitchT -= dt;
+      const on = this.glitchT > 0;
+      this.root.classList.toggle('corrupt', on);
+      if (on) {
+        const G = '∅█▓▒░#?!';
+        this.locName.textContent = Math.random() < 0.5 ? 'null' : Array.from({ length: 8 }, () => G[Math.floor(Math.random() * G.length)]).join('');
+        for (const k of Object.keys(this.stats)) this.stats[k].val.textContent = String(Math.floor(Math.random() * 999));
+      } else { this.cache.locName = null; for (const k of Object.keys(this.stats)) this.cache['val_' + k] = null; }
+    }
     for (const n of this.notes) {
       n.t -= dt;
       if (n.t < 0.6 && !n.dying) { n.dying = true; n.el.classList.add('fade'); }

@@ -19,6 +19,7 @@ import { MEMORIES, STATION_CHATTER, ENDING } from '../data/lore.js';
 import { B, BLOCKS } from '../world/blocks.js';
 import { Ship } from '../entities/ship.js';
 import { Player } from '../entities/player.js';
+import { Corruption } from './corruption.js';
 import { SurfaceMode } from './surfaceMode.js';
 import { SpaceMode } from './spaceMode.js';
 import { floraName } from '../core/names.js';
@@ -54,6 +55,7 @@ export class Game {
     this.inventory = new Inventory(24);
     this.inventory.onChange = () => { this.invDirty = true; };
     this.ship = new Ship(1);
+    this.corruption = new Corruption(this);
     this.surface = new SurfaceMode(this);
     this.space = new SpaceMode(this);
 
@@ -74,7 +76,7 @@ export class Game {
     this.questIndex = 0;
 
     this.input.onLockChange = (locked) => {
-      if (!locked && this.isPlaying() && !this.menus.anyOpen() && !this.galaxy.isOpen() && !this.transition) {
+      if (!locked && this.isPlaying() && !this.menus.anyOpen() && !this.galaxy.isOpen() && !this.transition && !this.chatOpen && !this.crashing) {
         this.openPause();
       }
       this.menus.showClickToPlay(false);
@@ -283,6 +285,72 @@ export class Game {
     this.galaxy.close();
     this.surface.enter(sp, { spawn: 'dock' });
     curvatureUniforms.uCurve.value = 0;
+  }
+
+  // ---------------- pocket spaces ----------------
+  _enterPocket(pl, spawn, title, sub, color) {
+    this.mode = 'loading';
+    this.planet = pl;
+    curvatureUniforms.uCurve.value = 0;
+    this.menus.showLoading(title, sub);
+    this.hud.show(false);
+    this.galaxy.close();
+    this.surface.enter(pl, { spawn });
+    curvatureUniforms.uCurve.value = 0;
+    void color;
+  }
+
+  // The Void: touched through a void block, left the same way. Your ship stays behind.
+  enterVoid() {
+    if (this.inPocket || this.transition) return;
+    const p = this.player, sh = this.ship;
+    this.pocketReturn = {
+      planetIndex: this.state.planetIndex, pos: p.pos.clone(), yaw: p.yaw,
+      ship: { x: sh.pos.x, y: sh.pos.y, z: sh.pos.z, yaw: sh.yaw(), state: sh.state },
+    };
+    this.surface.exportEdits();
+    this.state.flags.voidVisits = (this.state.flags.voidVisits || 0) + 1;
+    this.fade(0.25, () => {
+      this.surface.leave();
+      this.inPocket = 'void';
+      this.ship.model.visible = false;
+      this._enterPocket(this.universe.pocketPlanet('void', this.system, 404), 'void', '', '');
+    }, 0x000000);
+  }
+
+  exitVoid() {
+    if (this.inPocket !== 'void' || this.transition) return;
+    const R = this.pocketReturn;
+    this.fade(0.25, () => {
+      this.surface.exportEdits();
+      this.surface.leave();
+      this.inPocket = null;
+      this.ship.model.visible = true;
+      this.state.player = { x: R.pos.x, y: R.pos.y, z: R.pos.z, yaw: R.yaw + Math.PI, pitch: 0 };
+      this.state.inShip = false;
+      this.state.shipSurface = R.ship;
+      this.enterSurface(R.planetIndex, { spawn: 'restore' });
+    }, 0x000000);
+  }
+
+  // Derelict freighters: docked from space, like a station
+  enterDerelict(seed) {
+    if (this.inPocket) return;
+    this.inPocket = 'derelict';
+    this.derelictSeed = seed;
+    const dp = this.universe.pocketPlanet('derelict', this.system, seed);
+    this._enterPocket(dp, 'derelict', 'Docking', `${dp.name} · no life signs`);
+  }
+
+  leaveDerelict() {
+    this.fade(0.5, () => {
+      this.surface.exportEdits();
+      this.surface.leave();
+      this.inPocket = null;
+      this.planet = null;
+      this.enterSpace({ fromStation: true });
+      this.saveGame(false);
+    });
   }
 
   shipDestroyed() {
@@ -731,10 +799,27 @@ export class Game {
         else if (!this.menus.anyOpen()) { this.input.unlock(); this.galaxy.open(); this.audio.ui(); }
       }
       if (input.rawHit('F2')) { this.hudHidden = !this.hudHidden; this.hud.show(!this.hudHidden); }
+      // chat: somebody might answer
+      if ((input.rawHit('Enter') || input.rawHit('Slash')) && this.mode === 'surface' && !this.menus.anyOpen() && !this.galaxy.isOpen() && !this.chatOpen && !this.crashing) {
+        this.chatOpen = true;
+        this.input.unlock();
+        this.hud.openChat((text) => this.corruption.onChat(text), () => { this.chatOpen = false; this.resume(); });
+      }
     }
-    const paused = this.menus.anyOpen() || this.galaxy.isOpen();
+    // a crash that is not a crash
+    if (this.crashT > 0) {
+      this.crashing = true;
+      this.crashT -= dt;
+      if (this.crashT <= 0) {
+        this.crashing = false;
+        const f = this.onCrashEnd; this.onCrashEnd = null;
+        if (f) f();
+        this.resume();
+      }
+    }
+    const paused = this.menus.anyOpen() || this.galaxy.isOpen() || this.crashing;
     // Input is only live while pointer-locked and nothing is open
-    input.enabled = !paused;
+    input.enabled = !paused && !this.chatOpen;
 
     if (this.mode === 'title') {
       this.space.updateTitle(dt);
@@ -768,6 +853,9 @@ export class Game {
   }
 
   render() {
+    // sometimes the picture simply stops
+    const C = this.corruption;
+    if (C && C.freezeT > 0) { C.freezeT -= 1 / 60; return; }
     if (this.mode === 'surface' || (this.mode === 'loading' && this.surface.active)) {
       this.post.render(this.surface.renderPasses());
     } else {

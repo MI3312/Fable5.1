@@ -41,9 +41,10 @@ export class Horror {
     const P = planet.params;
     this.P = P;
     const zones = P.zones ? P.zones.map((z) => z[0]) : [];
-    this.dreamWorld = !P.interior && (['liminal', 'exotic', 'dead'].includes(planet.biome) || zones.includes('naraka'));
+    this.pocketKind = P.interior && P.interior !== 'station' ? P.interior : null;
+    this.dreamWorld = !!this.pocketKind || (!P.interior && (['liminal', 'exotic', 'dead'].includes(planet.biome) || zones.includes('naraka')));
     this.anyZones = zones.length > 0;
-    this.interior = !!P.interior;
+    this.interior = P.interior === 'station';
   }
 
   get fogMul() { return 1 + this.surge.k * 1.9 + this.longNightK * 0.5; }
@@ -122,7 +123,7 @@ export class Horror {
   // ------------------------------------------------------------------ events: fog surges, wrong nights
   _events(dt, ctx) {
     const S = this.surge;
-    const canSurge = this.dreamWorld || this.anyZones || ctx.daylight < 0.3;
+    const canSurge = !this.pocketKind && (this.dreamWorld || this.anyZones || ctx.daylight < 0.3);
     if (S.phase === 'none') {
       if (canSurge) S.next -= dt;
       if (S.next <= 0 && !ctx.inShip) {
@@ -187,7 +188,8 @@ export class Horror {
   _hollowActive(ctx) {
     if (ctx.interior) return false;
     const dark = ctx.daylight < 0.35;
-    const deep = ctx.zone === 'backrooms' || ctx.zone === 'naraka';
+    if (this.pocketKind === 'void') return false;
+    const deep = ctx.zone === 'backrooms' || ctx.zone === 'naraka' || this.pocketKind === 'derelict';
     if (this.longNight && dark) return true;
     return this.dreamWorld && (dark || deep || this.surge.k > 0.6);
   }
@@ -366,7 +368,7 @@ export class Horror {
     const T = ctx.world.terrain;
     const pl = ctx.player;
     if (!this.walker) {
-      const can = !ctx.interior && (this.dreamWorld || this.surge.k > 0.4 || this.longNight) && (this.P.fog.density > 1 / 110 || this.surge.k > 0.4);
+      const can = !ctx.interior && !this.pocketKind && (this.dreamWorld || this.surge.k > 0.4 || this.longNight) && (this.P.fog.density > 1 / 110 || this.surge.k > 0.4);
       if (!can) return;
       this.timers.walker -= dt * (this.surge.k > 0.4 ? 3 : 1);
       if (this.timers.walker > 0) return;
@@ -467,7 +469,7 @@ export class Horror {
   _updateChoir(dt, ctx) {
     const pl = ctx.player;
     if (!this.choir) {
-      if (ctx.inShip || !(this.dreamWorld || this.dread > 0.45 || this.longNight)) return;
+      if (ctx.inShip || this.pocketKind || !(this.dreamWorld || this.dread > 0.45 || this.longNight)) return;
       this.timers.choir -= dt;
       if (this.timers.choir > 0) return;
       this.timers.choir = rnd(200, 420);
@@ -643,7 +645,7 @@ export class Horror {
   _updateVisitor(dt, ctx) {
     const pl = ctx.player;
     if (!this.visitor) {
-      if (ctx.inShip || !(this.dreamWorld || this.anyZones) || ctx.zone === 'backrooms') return;
+      if (ctx.inShip || this.pocketKind || !(this.dreamWorld || this.anyZones) || ctx.zone === 'backrooms') return;
       this.timers.visitor -= dt;
       if (this.timers.visitor > 0) return;
       this.timers.visitor = rnd(260, 520);

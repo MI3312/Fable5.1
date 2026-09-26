@@ -56,3 +56,27 @@ export const ENDING = [
   'Someone says your name. It sounds like waking up.',
   'THANK YOU FOR DREAMING.',
 ];
+
+// Logs left on derelict freighters. Read in any order; together they tell one story.
+export const DERELICT_LOGS = [
+  ['CAPTAIN', 'Day 1 of the long haul. Cargo: sixty tonnes of Somnium Sand for the core worlds. Crew in good spirits. Nobody sleeps well in the Somnium hold, but nobody sleeps well anywhere out here.'],
+  ['CAPTAIN', 'Day 9. Navigator reports an extra name on the crew manifest. Nobody recognises it. It is just the word "null". Probably a data fault. I have told him to delete it.'],
+  ['NAVIGATOR', 'I deleted it. It came back. Now it is at the top of the list, above the captain.'],
+  ['MEDIC', 'Three of the crew have the same dream: a platform in the dark, a small house, a bridge that goes nowhere. Someone standing at the end of it. I have started sedating them. The dreams continue.'],
+  ['ENGINEER', 'Lights keep failing on deck two. I replace the panels and the new ones fail too. It is not the wiring. It is like the ship does not want to be seen.'],
+  ['CAPTAIN', 'Day 21. Chatter on the internal channel from a terminal that is not connected to anything. It only ever says "hello". I told the crew not to answer.'],
+  ['COOK', 'somebody answered'],
+  ['MEDIC', 'Specimen tanks in the lab were empty when we left port. They are not empty now. I do not know what is sleeping in them. I do not want to know.'],
+  ['NAVIGATOR', 'The stars outside the windows have stopped moving. The instruments say we are still under way. I trust the windows more.'],
+  ['ENGINEER', 'Found a door in the cargo hold that was not on the plans. Black, all the way through. Pressed my hand to it and I was somewhere else for a second. It was very quiet there. I think I heard my name.'],
+  ['CAPTAIN', 'Day ??. Most of the crew are gone. Not dead. Gone. Their bunks are made. If you are reading this, do not look at the far end of the corridors for too long. It notices.'],
+  ['UNKNOWN', 'this is my ship now. you can stay. everyone stays.'],
+];
+
+// What the television in the Void is showing
+export const VOID_TV = [
+  'The screen shows a planet you have walked on. The camera is behind you. You are standing very still.',
+  'Static. Under the static, very quietly, someone is counting your footsteps.',
+  'The screen shows this room. There are two people in it.',
+  'A line of text scrolls past too fast to read. The last word is your ship\'s name.',
+];

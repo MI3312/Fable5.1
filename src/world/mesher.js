@@ -128,7 +128,7 @@ export function meshChunk(data, heights, tints, ox, oz) {
         const buf = bufs[pass];
         const emit = BLOCK_EMIT[id];
         const wx = ox + px - 1, wz = oz + pz - 1;
-        if (emit >= 0.5 && id !== B.LAVA && lights.length < 1024) lights.push(px - 1, y, pz - 1, id);
+        if (emit >= 0.5 && id !== B.LAVA && id !== B.VOID && lights.length < 1024) lights.push(px - 1, y, pz - 1, id);
 
         if (IS_CROSS[id]) {
           emitCross(buf, def, id, px, y, pz, wx, wz, tints, skyAt(px, y, pz), emit, artAt(px, y, pz));

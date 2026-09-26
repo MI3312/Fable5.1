@@ -570,6 +570,7 @@ export class Menus {
       walker: ['THE SKY CAME DOWN', 'Something very large passed over you. It did not notice you at all.'],
       maw: ['THE GROUND WAS HUNGRY', 'You woke far from where it closed. Your legs remember.'],
       visitor: ['IT WAS WAVING', 'It looked like someone you knew. It still does, from far enough away.'],
+      filament: ['DREAM CLOSED', 'It wore the shape of something harmless. It was waiting for you to come closer.'],
     }[why] || ['YOU WOKE UP', 'The dream loosened its grip. You drift back to your starship, lighter than before.'];
     const el = h('div', { class: 'death' + (why ? ' horror' : '') }, h('div', { class: 't' }, T[0]),
       h('div', { class: 'muted', style: { fontFamily: 'var(--font-dream)', fontSize: '17px' } }, T[1]),

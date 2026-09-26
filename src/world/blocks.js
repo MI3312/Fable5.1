@@ -15,6 +15,7 @@ export const TILE = {
   sentinel: 61, starry: 62, chest_open: 63, pod_open: 64, acid: 65, dream_water: 66, door: 67,
   plastic_r: 68, plastic_y: 69, plastic_b: 70, plastic_w: 71, concrete: 72, shelf: 73,
   bookshelf: 74, silver: 75, tv: 76, dark_wood: 77, flesh: 78, onyx: 79,
+  void: 80, emergency: 81, hull: 82, grate: 83, missing: 84,
 };
 
 // Tint channels. The palette of each planet supplies an RGB colour per channel.
@@ -40,6 +41,7 @@ export const B = {
   ACID: 62, DREAM_WATER: 63, DREAM_DOOR: 64,
   PLASTIC_R: 65, PLASTIC_Y: 66, PLASTIC_B: 67, PLASTIC_W: 68, CONCRETE: 69, SHELF: 70,
   BOOKSHELF: 71, SILVER: 72, TV: 73, DARK_WOOD: 74, FLESH: 75, ONYX: 76,
+  VOID: 77, EMERGENCY: 78, HULL: 79, GRATE: 80, MISSING: 81,
 };
 
 const T = TILE;
@@ -144,6 +146,11 @@ BLOCKS[B.DARK_WOOD] = def('Dark Wood', T.dark_wood, { hardness: 0.7, drops: [['c
 BLOCKS[B.FLESH] = def('Flesh', T.flesh, { hardness: 0.4, drops: [['mordite', 1, 2]], color: [0.75, 0.4, 0.42] });
 BLOCKS[B.ONYX] = def('Onyx', T.onyx, { hardness: 1.4, drops: [['ferrite', 1, 2], ['cobalt', 0, 1]], color: [0.08, 0.07, 0.1] });
 BLOCKS[B.DREAM_WATER] = def('Dream Water', T.dream_water, { pass: PASS.translucent, solid: false, liquid: true, emissive: 0.15, collect: false, hardness: 0, color: [0.95, 0.6, 0.85] });
+BLOCKS[B.VOID] = def('Void', T.void, { emissive: 1, unbreakable: true, collect: false, hardness: 99, color: [0.01, 0.01, 0.02] });
+BLOCKS[B.EMERGENCY] = def('Emergency Light', T.emergency, { emissive: 1, hardness: 0.5, drops: [['sodium', 1, 2]], color: [1, 0.15, 0.1] });
+BLOCKS[B.HULL] = def('Derelict Hull', T.hull, { hardness: 1.3, drops: [['ferrite', 1, 3], ['salvage', 0, 1]], color: [0.25, 0.24, 0.26] });
+BLOCKS[B.GRATE] = def('Floor Grating', T.grate, { hardness: 0.9, drops: [['ferrite', 1, 2]], color: [0.3, 0.31, 0.33] });
+BLOCKS[B.MISSING] = def('?', T.missing, { emissive: 0.4, hardness: 0.3, drops: [['memory_fragment', 0, 1]], color: [1, 0, 1] });
 
 export const BLOCK_COUNT = BLOCKS.length;
 

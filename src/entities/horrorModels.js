@@ -332,3 +332,101 @@ export function buildEyes(color, grin = false) {
 }
 
 export { voxelLitMaterial };
+
+// ------------------------------------------------------------------------------------------
+// null: the same size and shape as a person. Entirely black. No face at all.
+let nullMat = null, whiteMat = null;
+const NM = () => nullMat || (nullMat = applyCurvature(new THREE.MeshBasicMaterial({ color: 0x000000 })));
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+function blk(parent, mat, w, h, d, x, y, z) {
+  const m = new THREE.Mesh(boxGeo, mat);
+  m.scale.set(w, h, d);
+  m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
+export function buildNullFigure(eyes = false) {
+  const g = new THREE.Group();
+  const m = NM();
+  blk(g, m, 0.52, 0.72, 0.3, 0, 1.22, 0);
+  const head = new THREE.Group();
+  head.position.set(0, 1.83, 0);
+  g.add(head);
+  blk(head, m, 0.46, 0.46, 0.46, 0, 0, 0);
+  if (eyes) {
+    if (!whiteMat) whiteMat = applyCurvature(new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }));
+    for (const s of [-1, 1]) blk(head, whiteMat, 0.09, 0.05, 0.02, s * 0.1, 0.03, -0.235);
+  }
+  for (const s of [-1, 1]) {
+    blk(g, m, 0.2, 0.72, 0.2, s * 0.37, 1.22, 0);
+    blk(g, m, 0.22, 0.86, 0.22, s * 0.13, 0.43, 0);
+  }
+  g.userData.head = head;
+  return g;
+}
+
+// The Filament: black wire, seven blocks tall, a flat diamond where a head goes.
+export function buildFilament() {
+  const g = new THREE.Group();
+  const m = NM();
+  const body = new THREE.Group();
+  body.position.y = 3.6;
+  g.add(body);
+  blk(body, m, 0.12, 2.3, 0.12, 0, 1.15, 0);
+  blk(body, m, 0.95, 0.08, 0.08, 0, 2.25, 0);
+  const neck = new THREE.Group();
+  neck.position.y = 2.3;
+  body.add(neck);
+  blk(neck, m, 0.06, 0.6, 0.06, 0, 0.3, 0);
+  const head = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), m);
+  head.scale.set(0.62, 1.0, 0.16);
+  head.position.y = 1.1;
+  neck.add(head);
+  const limbs = [];
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Group();
+    arm.position.set(s * 0.47, 2.22, 0);
+    body.add(arm);
+    blk(arm, m, 0.07, 1.9, 0.07, 0, -0.95, 0);
+    const fore = new THREE.Group();
+    fore.position.y = -1.9;
+    arm.add(fore);
+    blk(fore, m, 0.06, 1.7, 0.06, 0, -0.85, 0);
+    for (let f = 0; f < 3; f++) blk(fore, m, 0.025, 0.5, 0.025, (f - 1) * 0.05, -1.9, 0);
+    const leg = new THREE.Group();
+    leg.position.set(s * 0.14, 0, 0);
+    body.add(leg);
+    blk(leg, m, 0.08, 3.6, 0.08, 0, -1.8, 0);
+    limbs.push({ arm, fore, leg, side: s });
+  }
+  g.userData = { body, neck, head, limbs };
+  return g;
+}
+
+// A signpost somebody left. Text on both faces.
+export function buildSign(text) {
+  const g = new THREE.Group();
+  const wood = applyCurvature(new THREE.MeshLambertMaterial({ color: 0x5b4230 }));
+  blk(g, wood, 0.12, 1.3, 0.12, 0, 0.65, 0);
+  blk(g, wood, 1.1, 0.62, 0.07, 0, 1.45, 0);
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 144;
+  const x = c.getContext('2d');
+  x.fillStyle = '#7a5a3e'; x.fillRect(0, 0, 256, 144);
+  x.fillStyle = 'rgba(0,0,0,0.12)';
+  for (let i = 0; i < 9; i++) x.fillRect(0, i * 16, 256, 1);
+  x.fillStyle = '#1b120b';
+  x.font = 'bold 26px monospace';
+  x.textAlign = 'center';
+  const lines = String(text).split('\n').slice(0, 4);
+  lines.forEach((l, i) => x.fillText(l, 128, 36 + i * 30 + (4 - lines.length) * 15));
+  const tex = new THREE.CanvasTexture(c);
+  const face = applyCurvature(new THREE.MeshLambertMaterial({ map: tex }));
+  for (const s of [-1, 1]) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(1.06, 0.58), face);
+    p.position.set(0, 1.45, s * 0.04);
+    if (s < 0) p.rotation.y = Math.PI;
+    g.add(p);
+  }
+  return g;
+}

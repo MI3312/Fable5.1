@@ -6,6 +6,7 @@ import { B, IS_SOLID, IS_AIRLIKE, IS_LIQUID } from './blocks.js';
 import { CHUNK, HEIGHT, PW, MARGIN, GW } from '../config.js';
 import { stampStructures } from './structures.js';
 import { stationBlockAt } from './station.js';
+import { voidBlockAt, derelictBlockAt } from './pockets.js';
 import { zoneAt, zoneFloor, writeZoneColumn, writeUnderlayer, writeManhole, stampProp, PROP_KINDS } from './zones.js';
 
 const CS = 4; // coarse sampling step for 3D noise
@@ -120,7 +121,12 @@ export class TerrainGen {
   }
 
   generate(cx, cz, edits) {
-    if (this.p.interior === 'station') return this._generateStation(cx, cz, edits);
+    if (this.p.interior === 'station') return this._generateInterior(cx, cz, edits, stationBlockAt, 30, 44, 30, 64);
+    if (this.p.interior === 'void') return this._generateInterior(cx, cz, edits, voidBlockAt, 72, 72, 8, 92);
+    if (this.p.interior === 'derelict') {
+      const seed = this.p.derelictSeed;
+      return this._generateInterior(cx, cz, edits, (x, y, z) => derelictBlockAt(x, y, z, seed), 26, 64, 36, 54);
+    }
     const P = this.p;
     const T = P.terrain;
     const S = P.surface;
@@ -289,12 +295,13 @@ export class TerrainGen {
     return data;
   }
 
-  _generateStation(cx, cz, edits) {
+  // Bounded interiors: fill from a block function inside |x| <= rx, |z| <= rz, y0 <= y < y1
+  _generateInterior(cx, cz, edits, blockAt, rx, rz, y0, y1) {
     const data = new Uint8Array(PW * PW * HEIGHT);
     const ox = cx * CHUNK - 1, oz = cz * CHUNK - 1;
-    if (ox + PW < -30 || ox > 30 || oz + PW < -44 || oz > 44) return data;
-    for (let y = 30; y < 64; y++) for (let pz = 0; pz < PW; pz++) for (let px = 0; px < PW; px++) {
-      data[px + PW * (pz + PW * y)] = stationBlockAt(ox + px, y, oz + pz);
+    if (ox + PW < -rx || ox > rx || oz + PW < -rz || oz > rz) return data;
+    for (let y = y0; y < y1; y++) for (let pz = 0; pz < PW; pz++) for (let px = 0; px < PW; px++) {
+      data[px + PW * (pz + PW * y)] = blockAt(ox + px, y, oz + pz);
     }
     if (edits) for (let i = 0; i < edits.length; i += 4) data[edits[i] + PW * (edits[i + 2] + PW * edits[i + 1])] = edits[i + 3];
     return data;

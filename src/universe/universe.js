@@ -183,6 +183,31 @@ export class Universe {
     };
   }
 
+  // Pocket spaces (the Void, derelict freighters) built on the station template
+  pocketPlanet(kind, sys, seed) {
+    const base = this.stationPlanet(sys);
+    const P = base.params;
+    P.interior = kind;
+    P.derelictSeed = seed;
+    P.sky.dream = 0;
+    if (kind === 'void') {
+      P.name = 'null';
+      P.adjective = 'Nowhere';
+      P.sky.zenith = [0, 0, 0]; P.sky.horizon = [0, 0, 0]; P.sky.nightZenith = [0, 0, 0]; P.sky.nightHorizon = [0, 0, 0];
+      P.sky.stars = 0;
+      P.fog = { density: 1 / 55, mistDensity: 0.02, mistBase: 36, mistFalloff: 6, skyFog: 0, mistColor: [0.02, 0.02, 0.03] };
+      P.hazard = { type: 'none', level: 0 };
+      return { ...base, id: 'void', index: -2, seed: 404, name: 'null', biome: 'void', biomeLabel: 'Void', isStation: false, isPocket: 'void' };
+    }
+    P.adjective = 'Derelict';
+    P.fog = { density: 1 / 70, mistDensity: 0.015, mistBase: 38, mistFalloff: 5, skyFog: 0, mistColor: [0.05, 0.04, 0.05] };
+    P.hazard = { type: 'vacuum', level: 2 };
+    P.temperature = -170;
+    const name = `Derelict ${planetName(seed).split(' ')[0]}`;
+    P.name = name;
+    return { ...base, id: `${sys.key}/derelict/${seed}`, index: -3, seed, name, biome: 'derelict', biomeLabel: 'Derelict Freighter', isStation: false, isPocket: 'derelict' };
+  }
+
   // Planet surface coordinates <-> direction on the planet sphere
   static SURFACE_SCALE = 1400; // blocks per radian
 
