@@ -65,7 +65,7 @@ strongly recommended.
 - **Dream Doors** stand in liminal places. Step through one and you come out somewhere else on the planet.
 - Dream-horror fauna: **Manikins** only move while you aren't looking at them, and **Colossal Spiders** have legs longer than they should be. Feed a creature and it becomes a **companion** that follows you.
 - Builder mode: break any block to carry it in your block bag, then place it anywhere in the galaxy. Placed blocks take on the colours of whichever world they are placed in.
-- **Apotheosis (dream alchemy)**: fuse any two items to discover 26 hidden recipes, such as Liquid Light, Somnium Sand, Echo Shells, Dream Lenses and Lucid Cores. Some recipes make blocks or bring back memories.
+- **Apotheosis (dream alchemy)**: fuse any two items to discover 40 hidden recipes, such as Liquid Light, Somnium Sand, Echo Shells, Dream Lenses and Lucid Cores. Some recipes make liminal building blocks (bookshelves, fluorescent panels, carpet, memory silver, flesh, onyx, static televisions) or bring back memories. Vermin materials feed the dream: Gel Cores, Bubble Foam, Table Hide, and Kodama Rattles, which Kodama leave as gifts if you stand still among them.
 - A pastel dream filter (chromatic fringe, grain, vignette), dream aurora skies, whispers on liminal worlds, and a generative ambient score.
 
 **No Man's Sky side**

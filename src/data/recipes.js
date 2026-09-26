@@ -85,6 +85,21 @@ export const ALCHEMY = [
   { a: 'dihydrogen', b: 'chroma_shard', out: ['block:' + B.POOL_TILE, 10], hint: 'Water remembers the pool.' },
   { a: 'ferrite', b: 'chroma_shard', out: ['block:' + B.NEON, 4], hint: 'Metal humming a colour.' },
   { a: 'memory_fragment', b: 'memory_fragment', out: ['lore', 1], hint: 'Two memories, remembered together.' },
+  // vermin materials and the liminal building blocks
+  { a: 'kodama_rattle', b: 'somnium', out: ['echo_shell', 2], hint: 'A rattle, lulled to sleep.' },
+  { a: 'kodama_rattle', b: 'carbon', out: ['block:' + B.BOOKSHELF, 4], hint: 'Wood that whispers stories to itself.' },
+  { a: 'kodama_rattle', b: 'memory_fragment', out: ['lucid_core', 1], hint: 'A gift, and a memory of who gave it.' },
+  { a: 'gel_core', b: 'chroma_shard', out: ['liquid_light', 4], hint: 'A heart of light, dreamed brighter.' },
+  { a: 'gel_core', b: 'ferrite', out: ['block:' + B.LIGHT_PANEL, 4], hint: 'Light that hums, held in a frame.' },
+  { a: 'gel_core', b: 'dihydrogen', out: ['dihydrogen_jelly', 2], hint: 'Jelly, but more so.' },
+  { a: 'bubble_foam', b: 'oxygen', out: ['block:' + B.CLOUD, 10], hint: 'Foam that floats away.' },
+  { a: 'bubble_foam', b: 'sodium', out: ['block:' + B.PLASTIC_W, 8], hint: 'Soap, set hard and bright.' },
+  { a: 'table_hide', b: 'carbon', out: ['block:' + B.CARPET, 8], hint: 'A carpet that remembers walking.' },
+  { a: 'table_hide', b: 'ferrite', out: ['block:' + B.SHELF, 4], hint: 'Flat on one side, useful on the other.' },
+  { a: 'memory_fragment', b: 'mordite', out: ['block:' + B.FLESH, 4], hint: 'A memory that bleeds.' },
+  { a: 'void_egg', b: 'mordite', out: ['block:' + B.ONYX, 6], hint: 'The shell of something that hatched.' },
+  { a: 'static_bloom', b: 'ferrite', out: ['block:' + B.TV, 2], hint: 'A flower of static, framed.' },
+  { a: 'memory_fragment', b: 'ferrite', out: ['block:' + B.SILVER, 6], hint: 'Memories, polished until they shine.' },
 ];
 
 // Technology upgrades (installed from the inventory)

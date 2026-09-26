@@ -39,6 +39,7 @@ const POINT_LIGHT_COLORS = {
   [B.DIHYDRO]: [0.3, 0.55, 1.0], [B.STARRY]: [0.4, 0.3, 0.9], [B.POD]: [0.35, 0.85, 1.0], [B.SENTINEL_PILLAR]: [1.0, 0.18, 0.12],
 };
 
+const VERMIN_DROPS = { kodama: ['kodama_rattle', 1, 1], gel: ['gel_core', 1, 2], bubblebear: ['bubble_foam', 2, 4], wildebeest: ['table_hide', 1, 3], manikin: ['memory_fragment', 1, 1] };
 const ENC_OFFS = [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [7, 7], [-7, -7], [7, -7], [-7, 7]];
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -626,6 +627,11 @@ export class SurfaceMode {
       onAttack: (dmg, c) => { this._hurtPlayer(dmg); g.hud.notify(`${c.sp.name} attacks!`); },
       onCreep: () => { g.audio.tone(90, 0.6, 'sawtooth', 0.05, 0.7); g.audio.noiseHit(0.3, 300, 0.08, 'lowpass'); },
       onRattle: () => g.audio.rattle(),
+      onGift: (c, item) => {
+        g.inventory.add(item, 1); g.hud.notify(null, item, 1); g.audio.rattle(); g.audio.zoneEnter(false);
+        this.debris.spawn(c.pos.clone().add(new THREE.Vector3(0, 1, 0)), [0.95, 1, 0.95], 10, 1.5, 1.2, true);
+        if (!g.state.flags.kodamaGift) { g.state.flags.kodamaGift = true; g.hud.setCenter('The Kodama left you something.', '#eef8ea'); this.centerT = 3.5; }
+      },
       onVanish: (c, seen) => {
         if (!seen) return;
         g.audio.distant('thud');
@@ -1047,6 +1053,8 @@ export class SurfaceMode {
       const n = 2 + Math.floor(Math.random() * 4);
       g.inventory.add('mordite', n);
       g.hud.notify(null, 'mordite', n);
+      const drop = VERMIN_DROPS[c.sp.plan];
+      if (drop) { const k = drop[1] + Math.floor(Math.random() * (drop[2] - drop[1] + 1)); g.inventory.add(drop[0], k); g.hud.notify(null, drop[0], k); }
       g.audio.explosion(0.5);
       if (this.sentinels.raise(1)) { g.hud.toast('Sentinels Alerted', 'Fauna harmed'); g.audio.alert(); }
     }

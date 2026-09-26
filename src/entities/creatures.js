@@ -76,6 +76,8 @@ export function generateSpecies(planet, index, forcePlan) {
       sp.c2 = hsl(baseHue + 0.25, 0.6, 0.62);
     }
     if (V.c1) sp.c1 = V.c1;
+    if (plan === 'gel') sp.produce = 'gel_core';
+    if (plan === 'bubblebear') sp.produce = 'bubble_foam';
   }
   sp.health = Math.round(30 + sp.size * 40);
   if (plan === 'preta') sp.health = 400;
@@ -397,6 +399,7 @@ export class CreatureManager {
       }
     }
     this._spawnWatcher(dt, ctx);
+    this._gifts(dt, ctx);
     const keep = [];
     for (const c of this.list) {
       const dx = c.pos.x - P.x, dz = c.pos.z - P.z;
@@ -434,6 +437,24 @@ export class CreatureManager {
       c.life = 25 + Math.random() * 35;
       c.yaw = Math.atan2(P.x - x, P.z - z);
       return;
+    }
+  }
+
+  // Kodama leave a gift for those who stand still among them.
+  _gifts(dt, ctx) {
+    const P = ctx.player;
+    const lp = this.lastPlayer || (this.lastPlayer = P.clone());
+    const moved = Math.hypot(P.x - lp.x, P.z - lp.z) > 0.04;
+    lp.copy(P);
+    this.stillT = moved || ctx.playerInShip ? 0 : (this.stillT || 0) + dt;
+    if (this.stillT < 6 || !ctx.onGift) return;
+    for (const c of this.list) {
+      if (c.sp.plan !== 'kodama' || c.gifted || c.dead) continue;
+      if (Math.hypot(c.pos.x - P.x, c.pos.z - P.z) > 8) continue;
+      c.gifted = true; c.rattle = 1;
+      ctx.onGift(c, 'kodama_rattle');
+      this.stillT = 3;
+      break;
     }
   }
 

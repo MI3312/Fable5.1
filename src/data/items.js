@@ -54,6 +54,11 @@ export const ITEMS = {
   lucid_core: { name: 'Lucid Core', symbol: 'LC', color: '#ffffff', cat: 'dream', value: 25000, stack: 5, desc: 'Pure lucidity. Stabilises hyperdrive jumps - a warp cell of the mind.' },
   void_egg: { name: 'Void Egg', symbol: 'VE', color: '#39204f', cat: 'dream', value: 8000, stack: 5, desc: 'Something is dreaming inside.' },
   static_bloom: { name: 'Static Bloom', symbol: 'St', color: '#d8d8d8', cat: 'dream', value: 700, stack: 20, desc: 'A flower made of television snow.' },
+  // --- vermin materials ---
+  kodama_rattle: { name: 'Kodama Rattle', symbol: 'Kr', color: '#f2f6ee', cat: 'dream', value: 950, stack: 20, desc: 'A small pale thing that rattles only when nobody is near. A gift.' },
+  gel_core: { name: 'Gel Core', symbol: 'Gc', color: '#a8ff8a', cat: 'dream', value: 520, stack: 20, desc: 'The glowing heart of a Gel. Still wobbling. Still warm.' },
+  bubble_foam: { name: 'Bubble Foam', symbol: 'Bf', color: '#ffc4ea', cat: 'dream', value: 380, stack: 30, desc: 'It pops if you squeeze it too happily.' },
+  table_hide: { name: 'Table Hide', symbol: 'Th', color: '#b59a7a', cat: 'dream', value: 460, stack: 20, desc: 'Shaggy fur from a Wildebeest. Perfectly flat on one side.' },
 };
 
 export const ITEM_IDS = Object.keys(ITEMS);
