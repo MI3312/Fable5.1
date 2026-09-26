@@ -142,7 +142,7 @@ export class Game {
       stats: null, playerUpgrades: null,
       shipData: null,
       inventory: null,
-      discoveries: { planets: {}, creatures: {}, flora: {}, systems: {}, structures: {} },
+      discoveries: { planets: {}, creatures: {}, flora: {}, systems: {}, structures: {}, zones: {} },
       used: {},
       names: {},
       edits: {},

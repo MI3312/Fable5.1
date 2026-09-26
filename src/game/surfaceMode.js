@@ -537,10 +537,20 @@ export class SurfaceMode {
     this.sky.uniforms.uStorm.value = storm;
   }
 
+  // Dream zones bring their own weather; roofs keep it out.
+  _zoneWeather() {
+    const z = this.zoneCur;
+    const W = { naraka: ['ash', 0.5], tilevoid: ['sparkle', 0.35], memory: ['dream', 0.3], meadow: ['dream', 0.2] }[z];
+    const type = W ? W[0] : this.P.weather;
+    if (this.weather.type !== type) this.weather.setType(type);
+    return { zoneBase: W ? W[1] : 0, cover: 1 - (this.encK || 0) };
+  }
+
   _updateWeather(dt) {
     const P = this.P;
     const s = this.storm;
-    if (P.stormChance <= 0 || P.weather === 'none') { this.stormK = 0; this.weather.update(dt, this.game.camera, 0, this.game.time); return; }
+    const zw = this._zoneWeather();
+    if (P.stormChance <= 0 || P.weather === 'none') { this.stormK = 0; this.weather.update(dt, this.game.camera, zw.zoneBase * zw.cover, this.game.time); return; }
     if (s.on) {
       s.t -= dt;
       if (s.t <= 0) { s.on = false; s.next = 150 + Math.random() * 300; this.game.hud.notify('The storm is passing'); }
@@ -557,8 +567,8 @@ export class SurfaceMode {
     }
     this.stormK = clamp((this.stormK || 0) + (s.on ? dt * 0.2 : -dt * 0.15), 0, 1);
     const base = ['snow', 'dream', 'sparkle', 'dust', 'ash'].includes(P.weather) ? 0.25 : 0.0;
-    const underCover = this.game.inShip ? 0.6 : 1;
-    this.weather.update(dt, this.game.camera, (base + this.stormK * 0.75) * underCover, this.game.time);
+    const underCover = (this.game.inShip ? 0.6 : 1) * zw.cover;
+    this.weather.update(dt, this.game.camera, (Math.max(base, zw.zoneBase) + this.stormK * 0.75) * underCover, this.game.time);
     this.game.audio.setLoop('wind', this.stormK > 0.05, this.stormK);
   }
 

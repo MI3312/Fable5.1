@@ -436,6 +436,13 @@ export class Menus {
     right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Species catalogued'), h('span', { class: 'muted' }, String(Object.keys(g.state.discoveries.creatures).length))));
     right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Flora catalogued'), h('span', { class: 'muted' }, String(Object.keys(g.state.discoveries.flora).length))));
     right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Distance to Dream Core'), h('span', { class: 'muted' }, g.coreDistanceLabel())));
+    // the dream places you have wandered into
+    const zones = Object.values(g.state.discoveries.zones || {});
+    right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Dream places entered'), h('span', { class: 'muted' }, String(zones.length))));
+    if (zones.length) {
+      right.appendChild(h('div', { class: 'section-title' }, 'Dream Journal'));
+      for (const z of zones.slice(-8).reverse()) right.appendChild(h('div', { class: 'list-row' }, h('span', {}, z.name), h('span', { class: 'muted' }, z.planet)));
+    }
     right.appendChild(h('div', { class: 'section-title' }, 'Planets'));
     const planets = Object.values(g.state.discoveries.planets).slice(-12).reverse();
     for (const p of planets) right.appendChild(h('div', { class: 'list-row' }, h('span', {}, p.custom || p.name), h('span', { class: 'muted' }, p.biome)));
