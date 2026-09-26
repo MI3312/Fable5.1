@@ -7,6 +7,7 @@ import { IS_LIQUID, IS_SOLID } from '../world/blocks.js';
 import { VERMIN, VERMIN_BUILDERS } from './vermin.js';
 import { ENEMIES, ENEMY_BUILDERS } from './enemies.js';
 import { BEHAVE, HABITS, CreatureFX, assignBehaviour, wrapA } from './behaviours.js';
+import { castShadows } from '../world/shadows.js';
 
 const PLANS = [['quad', 5], ['biped', 3], ['hopper', 2], ['flyer', 2], ['floater', 2], ['crawler', 2]];
 const TEMPERS = [['Passive', 4], ['Skittish', 3], ['Curious', 2], ['Aggressive', 1.4]];
@@ -411,6 +412,7 @@ export class CreatureManager {
       gscale: 1,
     };
     model.position.copy(c.pos);
+    castShadows(model);
     this.group.add(model);
     this.list.push(c);
     return c;

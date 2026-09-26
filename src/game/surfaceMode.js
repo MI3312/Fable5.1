@@ -13,6 +13,7 @@ import { Sky, Clouds, Weather } from '../surface/sky.js';
 import { Giants } from '../surface/giants.js';
 import { Horror } from './horror.js';
 import { Riding } from './riding.js';
+import { SunShadows, castShadows } from '../world/shadows.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
@@ -85,6 +86,7 @@ export class SurfaceMode {
     this.selection = makeSelectionBox();
     this.scene.add(this.selection);
     this.creatures = new CreatureManager(this.scene);
+    this.shadows = new SunShadows(this.game.renderer);
     // what creatures can do to the world and to you
     this.cfx = {
       get player() { return game.player; },
@@ -222,6 +224,12 @@ export class SurfaceMode {
     // ship model belongs to this scene now
     g.ship.model.removeFromParent();
     this.scene.add(g.ship.model);
+    if (!g.ship.model.userData.shadowed) {
+      g.ship.model.userData.shadowed = true;
+      castShadows(g.ship.model);
+      for (const f of g.ship.model.userData.flames || []) f.layers.disable(1);
+      if (g.ship.model.userData.plasma) castShadows(g.ship.model.userData.plasma.group, false);
+    }
     g.ship.camInit = false;
 
     const st = g.state;
@@ -872,7 +880,20 @@ export class SurfaceMode {
   }
 
   // ---------------- main update ----------------
+  // sun shadow map, rendered just before the frame
+  preRender() {
+    if (!this.active || this.loading) return;
+    const g = this.game;
+    const focus = g.inShip ? g.ship.pos : g.player.pos;
+    const d = g.camera.getWorldDirection(_v2).setY(0);
+    if (d.lengthSq() > 1e-4) d.normalize();
+    const center = _v.copy(focus).addScaledVector(d, 18);
+    const sun = voxelUniforms.uSunDir.value;
+    this.shadows.update(this.scene, center, sun, !this.interior && (g.settings.gfx ?? 2) > 0, g.settings.gfx ?? 2, this.lastDt || 1 / 60);
+  }
+
   update(dt, paused) {
+    this.lastDt = dt;
     const g = this.game;
     if (!this.active) return;
     const input = g.input;

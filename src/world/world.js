@@ -193,6 +193,7 @@ export class World {
       mesh3.matrixAutoUpdate = false;
       mesh3.updateMatrix();
       if (i === 2) mesh3.renderOrder = 2;
+      else mesh3.layers.enable(i === 0 ? 1 : 2); // shadow casters (solid / alpha-tested)
       this.group.add(mesh3);
       c.meshes[i] = mesh3;
     }

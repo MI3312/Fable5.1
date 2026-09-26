@@ -36,6 +36,11 @@ export const voxelUniforms = {
   uPLCol: { value: Array.from({ length: MAX_POINT_LIGHTS }, () => new THREE.Color(0, 0, 0)) },
   uPLStrength: { value: 1 },
   uCurve: curvatureUniforms.uCurve,
+  uShadowMap: { value: null },
+  uShadowMatrix: { value: new THREE.Matrix4() },
+  uShadowOn: { value: 0 },
+  uShadowTexel: { value: 1 / 2048 },
+  uShadowDepth: { value: 1 / 500 },
 };
 
 const vert = /* glsl */`
@@ -83,6 +88,30 @@ uniform float uLiquid;
 uniform vec3 uPL[${MAX_POINT_LIGHTS}];
 uniform vec3 uPLCol[${MAX_POINT_LIGHTS}];
 uniform float uPLStrength;
+uniform sampler2D uShadowMap;
+uniform mat4 uShadowMatrix;
+uniform float uShadowOn, uShadowTexel, uShadowDepth;
+const vec2 POISSON[12] = vec2[](
+  vec2(-0.326, -0.406), vec2(-0.840, -0.074), vec2(-0.696, 0.457), vec2(-0.203, 0.621),
+  vec2(0.962, -0.195), vec2(0.473, -0.480), vec2(0.519, 0.767), vec2(0.185, -0.893),
+  vec2(0.507, 0.064), vec2(0.896, 0.412), vec2(-0.322, -0.933), vec2(-0.792, -0.598));
+// soft sun shadow: normal-offset lookup, slope-scaled bias, rotated Poisson PCF, faded at the edge
+float sunShadow(vec3 wp, vec3 n, float ndl) {
+  if (uShadowOn <= 0.0) return 1.0;
+  vec4 sc = uShadowMatrix * vec4(wp + n * 0.07, 1.0);
+  vec3 c = sc.xyz / sc.w;
+  if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  float bias = (0.06 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0))) * uShadowDepth;
+  float a = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+  mat2 R = mat2(cos(a), -sin(a), sin(a), cos(a));
+  float sum = 0.0;
+  for (int i = 0; i < 12; i++) {
+    vec2 o = R * POISSON[i] * uShadowTexel * 1.8;
+    sum += step(c.z - bias, texture(uShadowMap, c.xy + o).x);
+  }
+  vec2 e = abs(c.xy - 0.5) * 2.0;
+  return mix(mix(sum / 12.0, 1.0, smoothstep(0.82, 1.0, max(e.x, e.y))), 1.0, 1.0 - uShadowOn);
+}
 ${SKY_GLSL}
 ${FOG_GLSL}
 varying vec3 vUvl;
@@ -108,7 +137,9 @@ void main() {
   fn = faceforward(fn, viewDir, fn);
   // the sun rakes across faces that turn toward it; the far sides fall into shade
   float ndl = dot(fn, uSunDir);
-  float sunTerm = mix(1.0, 0.7 + 0.55 * max(ndl, 0.0) - 0.08 * max(-ndl, 0.0), uDaylight * 0.9);
+  float direct = max(ndl, 0.0);
+  if (direct > 0.0 && sky > 0.05) direct *= sunShadow(vWorld, fn, ndl);
+  float sunTerm = mix(1.0, 0.64 + 0.62 * direct - 0.08 * max(-ndl, 0.0), uDaylight * 0.9);
   vec3 lightCol = uAmbient + uSkyLight * sky * sunTerm + uArtificial * art;
   // headlamp: a beam where you look, a little spill around you
   vec3 tv = vWorld - uTorch;

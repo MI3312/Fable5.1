@@ -858,6 +858,7 @@ export class Game {
     const C = this.corruption;
     if (C && C.freezeT > 0) { C.freezeT -= 1 / 60; return; }
     if (this.mode === 'surface' || (this.mode === 'loading' && this.surface.active)) {
+      this.surface.preRender();
       this.post.render(this.surface.renderPasses());
     } else {
       this.post.render([{ scene: this.space.scene, camera: this.spaceCamera }], { ao: false, bloom: 0.8 });
