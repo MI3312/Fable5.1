@@ -28,7 +28,7 @@ const SAVE_KEY = 'lucidsky.save.v1';
 const SETTINGS_KEY = 'lucidsky.settings.v1';
 
 const DEFAULT_SETTINGS = {
-  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, hudFade: true, fear: 1,
+  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, hudFade: true, fear: 1, gfx: 2,
 };
 
 function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
@@ -117,6 +117,7 @@ export class Game {
     this.surface.setRenderDistance(s.renderDist);
     this.audio.setVolumes({ master: s.master, music: s.music, sfx: s.sfx });
     if (this.post.scale !== s.renderScale) { this.post.scale = s.renderScale; this.resize(); }
+    this.post.quality = s.gfx ?? 2;
   }
 
   saveSettings() { safeSet(SETTINGS_KEY, JSON.stringify(this.settings)); }
@@ -859,7 +860,7 @@ export class Game {
     if (this.mode === 'surface' || (this.mode === 'loading' && this.surface.active)) {
       this.post.render(this.surface.renderPasses());
     } else {
-      this.post.render([{ scene: this.space.scene, camera: this.spaceCamera }]);
+      this.post.render([{ scene: this.space.scene, camera: this.spaceCamera }], { ao: false, bloom: 0.8 });
     }
   }
 

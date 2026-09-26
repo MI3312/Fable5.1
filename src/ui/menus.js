@@ -197,6 +197,7 @@ export class Menus {
     slider('Render distance', 'renderDist', 3, 12, 1, (v) => v + ' ch');
     slider('Field of view', 'fov', 55, 100, 1, (v) => v + '°');
     slider('Render scale', 'renderScale', 0.35, 1, 0.05, (v) => Math.round(v * 100) + '%');
+    slider('Graphics', 'gfx', 0, 2, 1, (v) => ['Low', 'High (AO + bloom)', 'Ultra'][Number(v)] || 'Ultra');
     slider('Master volume', 'master', 0, 1, 0.05, (v) => Math.round(v * 100));
     slider('Music volume', 'music', 0, 1, 0.05, (v) => Math.round(v * 100));
     slider('Effects volume', 'sfx', 0, 1, 0.05, (v) => Math.round(v * 100));

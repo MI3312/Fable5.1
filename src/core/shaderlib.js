@@ -68,6 +68,9 @@ vec3 applyFog(vec3 col, vec3 wpos, vec3 viewDir, float distH, float dist3, vec3 
   float f = fogAmount(wpos, distH, dist3, mistPart);
   vec3 fogDir = normalize(vec3(viewDir.x, max(viewDir.y, 0.02), viewDir.z));
   vec3 fogCol = mix(skyGradient(fogDir), uMistCol, clamp(mistPart / max(f, 0.001), 0.0, 1.0) * 0.75);
+  // forward scattering: the mist lights up looking toward the sun
+  float sunScat = pow(max(dot(viewDir, uSunDir), 0.0), 5.0) * uDaylight;
+  fogCol += uSunColor * sunScat * 0.35 * clamp(mistPart / max(f, 0.001), 0.0, 1.0);
   fogCol = mix(fogCol, uCaveCol, uEnclosed);
   fogCol += glow * 0.7;
   return mix(col, fogCol, f);

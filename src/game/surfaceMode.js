@@ -450,7 +450,7 @@ export class SurfaceMode {
 
   // Flat, open ground for a landing around (x, z). Prefers spots close to the centre and headings
   // near `yaw`.
-  _findLandingSite(x, z, yaw, maxR = 18, minR = 0) {
+  _findLandingSite(x, z, yaw, maxR = 18, minR = 0, rough = false) {
     const sea = this.P.liquid ? this.P.seaLevel : -99;
     let best = null;
     for (let r = minR; r <= maxR; r += 3) {
@@ -460,8 +460,8 @@ export class SurfaceMode {
         const px = Math.floor(x + Math.cos(a) * r) + 0.5, pz = Math.floor(z + Math.sin(a) * r) + 0.5;
         for (const dy of [0, 0.5, -0.5, Math.PI / 2]) {
           const s = this._siteAt(px, pz, yaw + dy);
-          if (!s || s.obstacles > 10 || s.spread > 2 || s.hi <= sea) continue;
-          const score = s.spread * 3 + r * 0.12 + Math.abs(dy) * 0.6 + s.obstacles * 0.35;
+          if (!s || s.hi <= sea || (!rough && (s.obstacles > 22 || s.spread > 3)) || s.spread > 7) continue;
+          const score = s.spread * 3 + r * 0.12 + Math.abs(dy) * 0.6 + s.obstacles * 0.3;
           if (!best || score < best.score) best = { x: px, z: pz, y: s.hi, yaw: yaw + dy, score, obstacles: s.obstacles };
         }
       }
@@ -1204,9 +1204,10 @@ export class SurfaceMode {
       } else if (alt >= LAND_ALT) this.landSite = null;
       if (input.hit('KeyE')) {
         if (alt < LAND_ALT) {
-          const site = this.landSite || this._findLandingSite(ship.pos.x, ship.pos.z, ship.yaw(), 24);
+          const site = this.landSite || this._findLandingSite(ship.pos.x, ship.pos.z, ship.yaw(), 24)
+            || this._findLandingSite(ship.pos.x, ship.pos.z, ship.yaw(), 42, 0, true);
           if (site) { ship.beginLanding(site, false); this.landSite = null; g.audio.tone(300, 0.5, 'sine', 0.05, 0.6); }
-          else g.hud.notify('No clear ground here - find an open, level spot');
+          else g.hud.notify('Nowhere to set down - there is only water below');
         } else g.hud.notify(`Too high to land - descend below ${LAND_ALT}u`);
       }
       if (input.mouseDown(0) && ship.fireCooldown <= 0) {

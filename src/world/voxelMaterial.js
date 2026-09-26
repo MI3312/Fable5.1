@@ -102,7 +102,14 @@ void main() {
   float sky = vLight.g;
   float emit = vLight.b;
   float art = vLight.a;
-  vec3 lightCol = uAmbient + uSkyLight * sky + uArtificial * art;
+  vec3 viewDir = normalize(vWorld - cameraPosition);
+  // true face normal from screen-space derivatives, turned to face the eye (plants are two-sided)
+  vec3 fn = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+  fn = faceforward(fn, viewDir, fn);
+  // the sun rakes across faces that turn toward it; the far sides fall into shade
+  float ndl = dot(fn, uSunDir);
+  float sunTerm = mix(1.0, 0.7 + 0.55 * max(ndl, 0.0) - 0.08 * max(-ndl, 0.0), uDaylight * 0.9);
+  vec3 lightCol = uAmbient + uSkyLight * sky * sunTerm + uArtificial * art;
   // headlamp: a beam where you look, a little spill around you
   vec3 tv = vWorld - uTorch;
   float td = length(tv);
@@ -123,15 +130,30 @@ void main() {
   lightCol = min(lightCol, vec3(1.0)) + over / (1.0 + over * 2.5);
   vec3 col = base * lightCol * ao;
   col = mix(col, base * (0.85 + 0.25 * ao), emit);
-  vec3 viewDir = normalize(vWorld - cameraPosition);
   float alpha = uAlpha;
   if (uLiquid > 0.0) {
-    vec3 r = reflect(viewDir, vec3(0.0, 1.0, 0.0));
-    float spec = pow(max(dot(r, uSunDir), 0.0), 80.0) * uDaylight;
-    col += uSunColor * spec * 1.5;
-    float fres = pow(1.0 - abs(viewDir.y), 3.0);
-    col = mix(col, skyGradient(r), fres * 0.35 * (1.0 - emit));
-    alpha = mix(uAlpha + fres * 0.2, 1.0, emit);
+    // water: a sum of travelling waves gives the surface normal; fresnel mixes in the sky
+    vec3 n = vec3(0.0, 1.0, 0.0);
+    if (fn.y > 0.5) {
+      vec2 p = vWorld.xz;
+      float t = uTime;
+      vec2 g = vec2(0.8, 0.6) * cos(dot(p, vec2(0.8, 0.6)) * 1.3 + t * 1.7) * 0.10;
+      g += vec2(-0.5, 0.86) * cos(dot(p, vec2(-0.5, 0.86)) * 2.1 + t * 2.3) * 0.07;
+      g += vec2(0.2, -0.98) * cos(dot(p, vec2(0.2, -0.98)) * 3.7 + t * 3.1) * 0.04;
+      g += vec2(-0.9, -0.43) * cos(dot(p, vec2(-0.9, -0.43)) * 6.3 + t * 4.2) * 0.025;
+      g += (vec2(fogNoise(vec3(p * 3.1, t * 0.7)), fogNoise(vec3(p.yx * 3.1 + 7.0, t * 0.7))) - 0.5) * 0.12;
+      n = normalize(vec3(-g.x, 1.0, -g.y));
+    } else n = fn;
+    vec3 r = reflect(viewDir, n);
+    float cosT = clamp(dot(-viewDir, n), 0.0, 1.0);
+    float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
+    vec3 refl = skyGradient(normalize(vec3(r.x, max(r.y, 0.03), r.z))) * (0.55 + 0.45 * uDaylight);
+    vec3 h = normalize(uSunDir - viewDir);
+    float nh = max(dot(n, h), 0.0);
+    float spec = (pow(nh, 260.0) * 4.0 + pow(nh, 30.0) * 0.1) * uDaylight;
+    col = mix(col, refl, clamp(fres * 1.15, 0.0, 0.88) * (1.0 - emit));
+    col += uSunColor * spec * (1.0 - emit);
+    alpha = mix(clamp(uAlpha + fres * 0.4, 0.0, 0.97), 1.0, emit);
   }
   col = applyFog(col, vWorld, viewDir, vDist, vDist3, plGlow * uPLStrength);
   gl_FragColor = vec4(col, alpha);
