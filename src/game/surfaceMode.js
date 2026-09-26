@@ -12,6 +12,7 @@ import { ZONE_INFO, ZONE_ATMOS } from '../world/zones.js';
 import { Sky, Clouds, Weather } from '../surface/sky.js';
 import { Giants } from '../surface/giants.js';
 import { Horror } from './horror.js';
+import { Riding } from './riding.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
@@ -61,6 +62,7 @@ export class SurfaceMode {
     this.sky = new Sky(this.scene);
     this.giants = new Giants(this.scene);
     this.horror = new Horror(this.scene);
+    this.riding = new Riding(this);
     game.corruption.attach(this.scene);
     this.torchSpot = new THREE.SpotLight(0xfff0dd, 0, 40, 0.42, 0.55, 1.1);
     this.scene.add(this.torchSpot);
@@ -383,6 +385,7 @@ export class SurfaceMode {
   leave() {
     if (!this.active) return;
     this.active = false;
+    if (this.riding.c) { this.riding.c.ridden = false; this.riding.c = null; }
     this._clearNPCs();
     this.world.clear();
     this.creatures.clear();
@@ -677,6 +680,10 @@ export class SurfaceMode {
       focus = player.pos;
       this.teleport.t += dt;
       if (this.world.loadedAround(player.pos.x, player.pos.z, 1) >= 1 || this.teleport.t > 15) this._finishTeleport();
+    } else if (this.riding.active) {
+      this.riding.update(dt, ctl);
+      focus = player.pos;
+      this._updateTool(dt, ctl);
     } else {
       const grav = this.P.gravity;
       const ev = player.update(dt, input, this.world, grav, ctl);
@@ -701,7 +708,7 @@ export class SurfaceMode {
     const pc = g.inShip ? ship.pos : player.pos;
     this.creatures.update(dt, {
       world: this.world, player: pc, fauna: this.P.fauna, time: g.time, playerInShip: g.inShip,
-      camPos: g.camera.position, camDir: g.camera.getWorldDirection(new THREE.Vector3()), night: this.daylight < 0.3, zone: this.zoneCur,
+      camPos: g.camera.position, camDir: g.camera.getWorldDirection(new THREE.Vector3()), night: this.daylight < 0.3, zone: this.zoneCur, torch: this.torch && !g.inShip,
       onAttack: (dmg, c) => { this._hurtPlayer(dmg); g.hud.notify(`${c.sp.name} attacks!`); },
       onCreep: () => { g.audio.tone(90, 0.6, 'sawtooth', 0.05, 0.7); g.audio.noiseHit(0.3, 300, 0.08, 'lowpass'); },
       onRattle: () => g.audio.rattle(),
@@ -1005,6 +1012,7 @@ export class SurfaceMode {
 
   _boardShip() {
     const g = this.game;
+    if (this.riding.active) this.riding.dismount();
     g.inShip = true;
     g.ship.camInit = false;
     g.ship.stick.set(0, 0);
@@ -1326,7 +1334,10 @@ export class SurfaceMode {
     const g = this.game, input = g.input, ship = g.ship, p = g.player, hud = g.hud;
     let prompt = null, action = null;
     const dShip = Math.hypot(ship.pos.x - p.pos.x, ship.pos.z - p.pos.z);
-    if (dShip < 6.5 && Math.abs(ship.pos.y - p.pos.y) < 5 && ship.state === 'landed') {
+    if (this.riding.active) {
+      prompt = '<span class="key">E</span>Dismount';
+      action = () => this.riding.dismount();
+    } else if (dShip < 6.5 && Math.abs(ship.pos.y - p.pos.y) < 5 && ship.state === 'landed') {
       prompt = '<span class="key">E</span>Board starship';
       action = () => this._boardShip();
     } else if (target && target.dist < 5.5) {
@@ -1344,7 +1355,10 @@ export class SurfaceMode {
         else if (target.hit.id === B.TV && this.pocket === 'void') { prompt = '<span class="key">E</span>Watch'; action = () => { g.input.unlock(); g.menus.dialog('', VOID_TV[(g.state.flags.voidVisits || 0) % VOID_TV.length]); }; }
       } else if (target.kind === 'creature') {
         const c = target.c;
-        if (c.sp.temper !== 'Watching') {
+        if (this.riding.canRide(c)) {
+          prompt = `<span class="key">E</span>Ride ${g.nameOf(c.sp)}`;
+          action = () => this.riding.mount(c);
+        } else if (c.sp.temper !== 'Watching' || c.sp.plan === 'moth') {
           prompt = `<span class="key">E</span>Feed ${g.state.discoveries.creatures[c.sp.id] ? c.sp.name : 'creature'} (5 Carbon)`;
           action = () => this._feed(c);
         }
@@ -1531,6 +1545,7 @@ export class SurfaceMode {
       if (comps.length >= 3) comps[0].companion = false;
       c.companion = true;
       g.hud.notify(`${g.state.discoveries.creatures[c.sp.id] ? c.sp.name : 'The creature'} will follow you now`);
+      if (c.sp.ride) { g.hud.setCenter('It trusts you. Look at it and press E to ride.', '#e8f4ff'); this.centerT = 3.5; }
     }
     this.debris.spawn(c.pos.clone().add(new THREE.Vector3(0, c.sp.size + 0.5, 0)), [1, 0.5, 0.8], 10, 1.5, 1.2, true);
     this.feeding.push({ t: 2.5, item: c.sp.produce, name: c.sp.name });
@@ -1850,6 +1865,7 @@ export class SurfaceMode {
     g.audio.stopAllLoops();
     this.beam.hide();
     const why = this.lastDamage < 2 ? this.lastHurtBy : null;
+    if (this.riding.active) this.riding.dismount();
     this.horror.clear();
     this.horror.setPlanet(this.planet);
     g.menus.showDeath(() => {

@@ -265,7 +265,111 @@ function buildBubbleBear(sp) {
   return root;
 }
 
+// ------------------------------------------------------------------------------------------
+// Lumen Manta: a wide, slow flyer with glowing freckles. Big enough to ride.
+function buildManta(sp) {
+  const root = new THREE.Group();
+  const body = group(root, 0, 0, 0);
+  const top = shade(sp.c1, 0.55), belly = mix(sp.c2, [1, 1, 1], 0.5);
+  const key = 'manta' + (sp.seed % 9);
+  const skin = (p) => {
+    const dots = noise3(p[0] * 6, p[1] * 6, p[2] * 6) > 0.55;
+    if (p[1] > 0.02 && dots) return sp.c3;
+    return p[1] > 0 ? shade(top, 0.9 + fbm3(p[0] * 3, 0, p[2] * 3, 2) * 0.3) : belly;
+  };
+  body.add(sdfMesh(key + 'body', {
+    min: [-1.05, -0.45, -1.9], max: [1.05, 0.45, 3.4], step: 0.07,
+    sdf: (p) => {
+      let d = ellipsoid(p, 0, 0, 0, 0.85, 0.3, 1.3);
+      for (const s of [-1, 1]) d = smin(d, capsule(p, s * 0.42, 0, -1.1, s * 0.34, -0.14, -1.65, 0.12, 0.06), 0.08);
+      d = Math.min(d, capsule(p, 0, 0.02, 1.1, 0, 0.06, 3.3, 0.08, 0.02));
+      return d;
+    },
+    color: skin,
+  }));
+  const wings = [];
+  for (const s of [-1, 1]) {
+    const w = group(body, s * 0.62, 0, 0.05);
+    w.add(sdfMesh(key + 'wing' + s, {
+      min: s < 0 ? [-2.6, -0.3, -1.0] : [-0.1, -0.3, -1.0], max: s < 0 ? [0.1, 0.3, 1.3] : [2.6, 0.3, 1.3], step: 0.07,
+      sdf: (p) => smin(ellipsoid(p, s * 1.0, 0, 0.05, 1.1, 0.1, 0.8), capsule(p, s * 1.2, 0, 0.1, s * 2.4, 0.04, 0.75, 0.16, 0.03), 0.3),
+      color: skin,
+    }));
+    w.userData.side = s;
+    wings.push(w);
+  }
+  const head = group(body, 0, 0.05, -1.3);
+  for (const s of [-1, 1]) glowBox(head, sp.c3, 0.08, 0.06, 0.04, s * 0.3, 0.12, -0.05);
+  root.userData = { body, legs: [], wings, baseY: 0, head, slowWings: true };
+  return root;
+}
+
+// Moth: soft, dusty, with eyes on its wings. It loves your headlamp.
+function buildMoth(sp) {
+  const root = new THREE.Group();
+  const body = group(root, 0, 0, 0);
+  const key = 'moth' + (sp.seed % 7);
+  const dust = (p) => shade(sp.c1, 0.75 + fbm3(p[0] * 8, p[1] * 8, p[2] * 8, 2) * 0.4);
+  body.add(sdfMesh(key + 'body', {
+    min: [-0.2, -0.2, -0.3], max: [0.2, 0.2, 0.7], step: 0.035,
+    sdf: (p) => smin(capsule(p, 0, 0, -0.1, 0, -0.02, 0.6, 0.1, 0.06), sphere(p, 0, 0.02, -0.18, 0.1), 0.05) + noise3(p[0] * 20, p[1] * 20, p[2] * 20) * 0.01,
+    color: dust,
+  }));
+  for (const s of [-1, 1]) {
+    const f = group(body, 0, 0.06, -0.24);
+    f.add(sdfMesh('moth-feeler' + s, { min: [-0.3, -0.05, -0.4], max: [0.3, 0.3, 0.05], step: 0.03, sdf: (p) => capsule(p, s * 0.02, 0, 0, s * 0.18, 0.2, -0.3, 0.02, 0.015), color: () => [0.2, 0.18, 0.15] }));
+  }
+  const wings = [];
+  for (const s of [-1, 1]) {
+    const w = group(body, s * 0.06, 0.05, 0.1);
+    const eye = (p) => Math.hypot(p[0] - s * 0.5, p[2] - 0.05);
+    w.add(sdfMesh(key + 'wing' + s, {
+      min: s < 0 ? [-0.95, -0.06, -0.45] : [-0.05, -0.06, -0.45], max: s < 0 ? [0.05, 0.06, 0.65] : [0.95, 0.06, 0.65], step: 0.035,
+      sdf: (p) => Math.min(ellipsoid(p, s * 0.45, 0, -0.08, 0.45, 0.03, 0.34), ellipsoid(p, s * 0.32, 0, 0.35, 0.3, 0.03, 0.26)),
+      color: (p) => { const e = eye(p); return e < 0.06 ? [0.05, 0.03, 0.03] : e < 0.12 ? sp.c3 : e < 0.15 ? [0.95, 0.92, 0.85] : dust(p); },
+    }));
+    w.userData.side = s;
+    wings.push(w);
+  }
+  root.userData = { body, legs: [], wings, baseY: 0, head: body };
+  return root;
+}
+
+// Lantern Snail: slow, patient, and its shell is a lamp.
+function buildSnail(sp) {
+  const root = new THREE.Group();
+  const body = group(root, 0, 0.1, 0);
+  const key = 'snail' + (sp.seed % 7);
+  body.add(sdfMesh(key + 'foot', {
+    min: [-0.3, -0.15, -1.15], max: [0.3, 0.5, 0.55], step: 0.04,
+    sdf: (p) => {
+      let d = capsule(p, 0, 0.04, 0.4, 0, 0.08, -0.75, 0.16, 0.13);
+      d = smin(d, sphere(p, 0, 0.18, -0.85, 0.14), 0.06);
+      for (const s of [-1, 1]) d = Math.min(d, capsule(p, s * 0.07, 0.22, -0.88, s * 0.12, 0.45, -1.0, 0.025, 0.02), sphere(p, s * 0.12, 0.46, -1.0, 0.04));
+      return Math.max(d, -p[1] - 0.12);
+    },
+    color: (p) => shade(sp.c2, 0.8 + noise3(p[0] * 10, p[1] * 10, p[2] * 10) * 0.2),
+  }));
+  body.add(sdfMesh(key + 'shell', {
+    min: [-0.45, 0.0, -0.45], max: [0.45, 0.95, 0.55], step: 0.04,
+    sdf: (p) => {
+      let d = 9;
+      for (let i = 0; i < 14; i++) {
+        const t = i / 13, a = t * Math.PI * 3.2, r = 0.32 * (1 - t * 0.75);
+        d = smin(d, sphere(p, Math.cos(a) * r * 0.25, 0.42 + Math.sin(a) * r, 0.05 + Math.cos(a) * r * 0.9, 0.24 * (1 - t * 0.7)), 0.08);
+      }
+      return d;
+    },
+    color: (p) => mix(sp.c3, [1, 1, 0.9], Math.max(0, Math.sin((p[1] + p[2]) * 30)) * 0.35),
+  }, voxelGlowMaterial()));
+  root.userData = { body, legs: [], wings: [], baseY: 0.1, head: body };
+  return root;
+}
+
 export const VERMIN_BUILDERS = {
+  manta: buildManta,
+  moth: buildMoth,
+  snail: buildSnail,
   kodama: buildKodama,
   preta: buildPreta,
   wildebeest: buildWildebeest,
@@ -275,6 +379,21 @@ export const VERMIN_BUILDERS = {
 
 // Species templates. c1..c3 may be overridden by the planet palette.
 export const VERMIN = {
+  manta: {
+    names: ['Lumen Manta', 'Sky Manta', 'Freckled Manta'], size: [1.1, 1.5], temper: 'Curious', diet: 'Photosynthetic',
+    note: 'It will carry you if it trusts you', speed: 5.5, rarity: 'Uncommon', produce: 'oxygen',
+    hitY: 0, hitR: 2.0, flies: true, ride: { kind: 'flyer', seat: 0.45, speed: 15, boost: 28 },
+  },
+  moth: {
+    names: ['Lamp Moth', 'Dust Moth', 'Night Moth'], size: [0.6, 0.95], temper: 'Watching', diet: 'Light',
+    note: 'It will not leave your lamp alone', speed: 4.5, rarity: 'Common', produce: 'carbon',
+    hitY: 0, hitR: 0.6, flies: true,
+  },
+  snail: {
+    names: ['Lantern Snail', 'Candle Snail', 'Lamp Snail'], size: [0.8, 1.35], temper: 'Passive', diet: 'Lithovore',
+    note: 'Its shell is warm to the touch', speed: 0.7, rarity: 'Uncommon', produce: 'sodium',
+    hitY: 0.4, hitR: 0.6,
+  },
   kodama: {
     names: ['Kodama', 'Pale Kodama', 'Rattling Kodama'], size: [0.8, 1.05], temper: 'Watching', diet: 'Unknown',
     note: 'Their heads rattle when you come near', speed: 1.6, rarity: 'Uncommon', produce: 'memory_fragment',
@@ -288,16 +407,16 @@ export const VERMIN = {
   wildebeest: {
     names: ['Wildebeest', 'Table Wildebeest', 'Stilt Wildebeest'], size: [0.9, 1.15], temper: 'Passive', diet: 'Grazing',
     note: 'Its back is perfectly flat', speed: 2.0, rarity: 'Common', produce: 'carbon',
-    hitY: 2.3, hitR: 1.2,
+    hitY: 2.3, hitR: 1.2, ride: { kind: 'strider', seat: 2.55, speed: 7, boost: 11, step: 2.2 },
   },
   gel: {
     names: ['Gel', 'Lucid Gel', 'Wobbling Gel'], size: [0.7, 1.3], temper: 'Skittish', diet: 'Absorbic',
     note: 'You can see what it ate last', speed: 3.2, rarity: 'Common', produce: 'dihydrogen',
-    hitY: 0.5, hitR: 0.6, hops: true,
+    hitY: 0.5, hitR: 0.6, hops: true, ride: { kind: 'hopper', seat: 0.95, speed: 9, boost: 13, minSize: 0.95 },
   },
   bubblebear: {
     names: ['BubbleBear', 'Soap Bear', 'Foam Bear'], size: [0.9, 1.4], temper: 'Curious', diet: 'Omnivore',
     note: 'It pops if it gets too happy', speed: 2.6, rarity: 'Uncommon', produce: 'oxygen',
-    hitY: 0.7, hitR: 0.75,
+    hitY: 0.7, hitR: 0.75, ride: { kind: 'ground', seat: 1.25, speed: 7, boost: 10.5 },
   },
 };

@@ -63,8 +63,12 @@ export function generateSpecies(planet, index, forcePlan) {
     Object.assign(sp, {
       name: rng.pick(V.names), size: rng.range(V.size[0], V.size[1]), temper: V.temper, diet: V.diet, note: V.note,
       speed: V.speed, rarity: V.rarity, produce: V.produce, hitY: V.hitY, hitR: V.hitR, watcher: !!V.watcher, hops: !!V.hops,
-      horns: false, tail: false, crest: false, bigEye: false,
+      horns: false, tail: false, crest: false, bigEye: false, flies: !!V.flies,
     });
+    if (V.ride && !(V.ride.minSize && sp.size < V.ride.minSize)) sp.ride = V.ride;
+    if (plan === 'manta') { sp.c1 = hsl(baseHue, 0.5, 0.38); sp.c2 = hsl(baseHue + 0.1, 0.3, 0.7); sp.c3 = hsl(baseHue + 0.45, 0.9, 0.72); }
+    else if (plan === 'moth') { sp.c1 = hsl(0.06 + baseHue * 0.1, 0.25, 0.62); sp.c3 = hsl(baseHue, 0.85, 0.6); }
+    else if (plan === 'snail') { sp.c2 = hsl(0.08 + baseHue * 0.05, 0.25, 0.5); sp.c3 = hsl(baseHue, 0.85, 0.72); }
     if (plan === 'wildebeest') {
       sp.c1 = dreamy ? hsl(baseHue, 0.3, 0.72) : hsl(0.05 + baseHue * 0.08, rng.range(0.15, 0.35), rng.range(0.3, 0.45));
       sp.c2 = dreamy ? hsl(baseHue + 0.4, 0.35, 0.55) : hsl(0.07, 0.2, 0.2);
@@ -79,6 +83,8 @@ export function generateSpecies(planet, index, forcePlan) {
     if (plan === 'gel') sp.produce = 'gel_core';
     if (plan === 'bubblebear') sp.produce = 'bubble_foam';
   }
+  // big four-legged beasts will carry you
+  if (plan === 'quad' && sp.size >= 1.25 && !sp.ride) sp.ride = { kind: 'ground', seat: sp.legLen * 0.7 + 0.74, speed: 8 + sp.speed * 0.5, boost: 12 + sp.speed };
   sp.health = Math.round(30 + sp.size * 40);
   if (plan === 'preta') sp.health = 400;
   sp.height = plan === 'flyer' ? 0 : plan === 'floater' ? 0 : 1;
@@ -102,6 +108,9 @@ export function speciesForPlanet(planet) {
   if (['liminal', 'lush', 'frozen', 'barren', 'exotic'].includes(b) && rng.chance(b === 'liminal' ? 0.8 : 0.4)) out.push(generateSpecies(planet, 54, 'wildebeest'));
   if (['liminal', 'toxic', 'exotic', 'lush'].includes(b) && rng.chance(0.5)) out.push(generateSpecies(planet, 55, 'gel'));
   if (['liminal', 'frozen', 'lush'].includes(b) && rng.chance(0.45)) out.push(generateSpecies(planet, 56, 'bubblebear'));
+  if (['liminal', 'lush', 'exotic', 'frozen', 'toxic', 'barren'].includes(b) && rng.chance(b === 'liminal' || b === 'lush' ? 0.8 : 0.5)) out.push(generateSpecies(planet, 57, 'manta'));
+  if (rng.chance(0.65)) out.push(generateSpecies(planet, 58, 'moth'));
+  if (['liminal', 'lush', 'toxic', 'exotic', 'frozen'].includes(b) && rng.chance(0.45)) out.push(generateSpecies(planet, 59, 'snail'));
   return out;
 }
 
@@ -388,9 +397,10 @@ export class CreatureManager {
           if (sp.plan === 'manikin' && (this.list.filter((q) => q.sp.plan === 'manikin').length >= 2 || Math.random() > (ctx.night ? 0.8 : 0.35))) sp = this.species[0];
           if (sp.plan === 'spider' && this.list.some((q) => q.sp.plan === 'spider')) sp = this.species[0];
           if (sp.plan === 'preta') sp = this.species[0];
+          if (sp.plan === 'moth' && !ctx.night && Math.random() < 0.8) sp = this.species[0];
           if (sp.plan === 'kodama' && this.list.filter((q) => q.sp.plan === 'kodama').length >= 8) sp = this.species[0];
-          const y = sp.plan === 'flyer' ? gy + 12 : gy + 1;
-          const n = sp.plan === 'kodama' ? 3 + Math.floor(Math.random() * 3) : sp.plan === 'wildebeest' ? 2 + Math.floor(Math.random() * 3)
+          const y = sp.plan === 'flyer' ? gy + 12 : sp.plan === 'manta' ? gy + 11 : sp.plan === 'moth' ? gy + 2 : gy + 1;
+          const n = sp.plan === 'manta' ? 1 + Math.floor(Math.random() * 2) : sp.plan === 'moth' ? 1 + Math.floor(Math.random() * 3) : sp.plan === 'kodama' ? 3 + Math.floor(Math.random() * 3) : sp.plan === 'wildebeest' ? 2 + Math.floor(Math.random() * 3)
             : sp.plan === 'flyer' || sp.plan === 'manikin' || sp.plan === 'spider' ? 1 : 1 + Math.floor(Math.random() * 3);
           for (let i = 0; i < n && this.list.length < maxCount; i++) {
             this.spawn(sp, x + (Math.random() - 0.5) * 4, y, z + (Math.random() - 0.5) * 4);
@@ -402,6 +412,7 @@ export class CreatureManager {
     this._gifts(dt, ctx);
     const keep = [];
     for (const c of this.list) {
+      if (c.ridden) { keep.push(c); this._animate(c, dt, ctx.time); continue; }
       const dx = c.pos.x - P.x, dz = c.pos.z - P.z;
       const dist = Math.hypot(dx, dz);
       if (c.companion && dist > 60 && !c.dead) {
@@ -563,6 +574,12 @@ export class CreatureManager {
         if (dist > 30 && sp.plan !== 'manikin') { c.state = 'idle'; c.provoked = false; }
         break;
     }
+    // moths circle your headlamp; mantas come down to look at you
+    if (sp.plan === 'moth' && ctx.night && ctx.torch && dist < 35 && !ctx.playerInShip) {
+      const a = ctx.time * 1.6 + c.phase;
+      tx = ctx.camPos.x + Math.cos(a) * 1.9; tz = ctx.camPos.z + Math.sin(a) * 1.9;
+      speed = sp.speed * 1.4; c.lured = true;
+    } else c.lured = false;
     // move
     if (speed > 0) {
       const ang = Math.atan2(tx - c.pos.x, tz - c.pos.z);
@@ -572,7 +589,7 @@ export class CreatureManager {
       c.yaw += dy * Math.min(1, dt * 5);
       const nx = c.pos.x + Math.sin(c.yaw) * speed * dt;
       const nz = c.pos.z + Math.cos(c.yaw) * speed * dt;
-      if (sp.plan === 'flyer' || sp.plan === 'floater') {
+      if (sp.flies || sp.plan === 'flyer' || sp.plan === 'floater') {
         c.pos.x = nx; c.pos.z = nz;
       } else {
         const gy = world.groundBelow(nx, c.pos.y + 1.4, nz);
@@ -585,8 +602,16 @@ export class CreatureManager {
       c.moving = true;
     } else c.moving = false;
     // vertical
-    const gy = (sp.plan === 'flyer' || sp.plan === 'floater') ? world.groundAt(c.pos.x, c.pos.z) : world.groundBelow(c.pos.x, c.pos.y + 1.4, c.pos.z);
-    if (sp.plan === 'flyer') {
+    const gy = (sp.flies || sp.plan === 'flyer' || sp.plan === 'floater') ? world.groundAt(c.pos.x, c.pos.z) : world.groundBelow(c.pos.x, c.pos.y + 1.4, c.pos.z);
+    if (sp.plan === 'manta') {
+      const low = c.companion || (dist < 26 && !ctx.playerInShip);
+      const ty = gy + (low ? 2.4 : 8 + (c.flyAlt % 8)) + Math.sin(ctx.time * 0.7 + c.phase) * 0.4;
+      c.pos.y += (ty - c.pos.y) * Math.min(1, dt * 0.9);
+    } else if (sp.plan === 'moth') {
+      const ty = c.lured ? ctx.camPos.y + Math.sin(ctx.time * 3 + c.phase) * 0.5 : gy + 1.6 + Math.sin(ctx.time * 2.3 + c.phase) * 0.6;
+      c.pos.y += (ty - c.pos.y) * Math.min(1, dt * 3);
+      c.pos.x += (Math.random() - 0.5) * dt * 2; c.pos.z += (Math.random() - 0.5) * dt * 2;
+    } else if (sp.plan === 'flyer') {
       const ty = gy + c.flyAlt + Math.sin(ctx.time * 0.5 + c.phase) * 2;
       c.pos.y += (ty - c.pos.y) * Math.min(1, dt * 1.5);
       if (c.state === 'chase') c.pos.y += (ctx.player.y + 1.5 - c.pos.y) * Math.min(1, dt * 2);
@@ -625,7 +650,12 @@ export class CreatureManager {
         leg.rotation.x = Math.sin(c.phase + leg.userData.phase) * swing * (leg.userData.arm ? 0.6 : 1);
       }
     }
-    for (const w of ud.wings) w.rotation.z = Math.sin(time * 9 + c.phase) * 0.6 * w.userData.side;
+    for (const w of ud.wings) {
+      if (ud.slowWings) w.rotation.z = Math.sin(time * (c.ridden && c.rideBoost ? 3.5 : 1.8) + c.phase) * 0.42 * w.userData.side;
+      else if (c.sp.plan === 'moth') w.rotation.z = Math.sin(time * 16 + c.phase) * 0.9 * w.userData.side;
+      else w.rotation.z = Math.sin(time * 9 + c.phase) * 0.6 * w.userData.side;
+    }
+    if (c.sp.plan === 'manta' || c.sp.plan === 'moth') { m.position.copy(c.pos); m.rotation.y = c.yaw + Math.PI; m.rotation.z = c.bank || 0; m.rotation.x = c.tilt || 0; return; }
     let bodyY = ud.baseY;
     if (c.sp.plan === 'kodama') {
       bodyY += Math.sin(time * 1.3 + c.phase * 0.2) * 0.08;
