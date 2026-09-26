@@ -66,12 +66,35 @@ strongly recommended.
 - Your multi-tool listens. When it starts to beep, stop and look around. Your headlamp helps, sometimes.
 - **Fear intensity** in Settings turns the effects down, if the dream becomes too much.
 
+**Something else is playing**
+- The longer you dream, the less the dream behaves. Keep an eye on the chat (Enter to talk; someone may answer).
+- Things get built where you are not looking. Some of them have doors that are not doors.
+- If the game crashes, give it a moment.
+
+**Derelict freighters**
+- Dead ships drift in many systems (always one in your first). Fly to the hangar mouth at the stern and board.
+- Procedural interiors: a grated spine corridor under red emergency lights, crew quarters, cargo holds, a medbay, a mess, labs with specimen tanks, rooms the dream has grown into, hull breaches open to space, and the bridge.
+- No atmosphere: hazard protection drains everywhere aboard. Read the crew logs, since together they tell one story. Salvage what you can: Salvaged Data sells well at stations and fuses into Warp Cells.
+
+**Creatures you can ride**
+- Feed a creature to tame it, then look at it and press **E** to ride.
+  - **Wildebeest** are striders that step right over walls.
+  - **Gels** bound in great hops.
+  - **BubbleBears** and big four-legged beasts run.
+  - The **Lumen Manta** flies wherever you look: Space rises, C sinks, Shift goes fast.
+- New creatures: Lumen Mantas, Lamp Moths (they cannot leave your headlamp alone at night) and glowing Lantern Snails.
+
+**Worlds**
+- Rivers wind across worlds that have a liquid (lava rivers on scorched worlds), and dry canyons cross barren ones.
+- Each planet has regions: dense forests, open clearings, rocky badlands. Bare earth and rock break through the ground cover.
+- Ruins of older buildings stand in the wild, sometimes with something left inside.
+
 **Lucid Blocks side**
 - Liminal structures generated on every world: **Poolrooms** (tiled halls with still water), **The Backrooms** (maze generator, damp carpet, humming lights), **Endless Hallways**, **Plastic Cities**, **Abandoned Warehouses**, **Reverie Arches**, **Stairways to Nowhere** and **Watcher Shrines**.
 - **Dream Doors** stand in liminal places. Step through one and you come out somewhere else on the planet.
 - Dream-horror fauna: **Manikins** only move while you aren't looking at them, and **Colossal Spiders** have legs longer than they should be. Feed a creature and it becomes a **companion** that follows you.
 - Builder mode: break any block to carry it in your block bag, then place it anywhere in the galaxy. Placed blocks take on the colours of whichever world they are placed in.
-- **Apotheosis (dream alchemy)**: fuse any two items to discover 40 hidden recipes, such as Liquid Light, Somnium Sand, Echo Shells, Dream Lenses and Lucid Cores. Some recipes make liminal building blocks (bookshelves, fluorescent panels, carpet, memory silver, flesh, onyx, static televisions) or bring back memories. Vermin materials feed the dream: Gel Cores, Bubble Foam, Table Hide, and Kodama Rattles, which Kodama leave as gifts if you stand still among them.
+- **Apotheosis (dream alchemy)**: fuse any two items to discover 43 hidden recipes, such as Liquid Light, Somnium Sand, Echo Shells, Dream Lenses and Lucid Cores. Some recipes make liminal building blocks (bookshelves, fluorescent panels, carpet, memory silver, flesh, onyx, static televisions) or bring back memories. Vermin materials feed the dream: Gel Cores, Bubble Foam, Table Hide, and Kodama Rattles, which Kodama leave as gifts if you stand still among them.
 - A pastel dream filter (chromatic fringe, grain, vignette), dream aurora skies, whispers on liminal worlds, and a generative ambient score.
 
 **No Man's Sky side**
@@ -102,7 +125,9 @@ strongly recommended.
 | 1–9, Wheel | Select hotbar block |
 | F | Scanner pulse |
 | V | Analysis visor (hold LMB on creatures or plants) |
-| E | Interact · board or exit ship · land · dock |
+| E | Interact · board or exit ship · land · dock · ride / dismount a tamed creature |
+| C | Sink while flying a mount |
+| Enter or / | Chat |
 | R | Quick-recharge life support and hazard protection |
 | T | Headlamp (a beam; some things do not like it) |
 | Tab / I | Inventory, fabrication, alchemy, technology, discoveries, journey |
@@ -118,11 +143,11 @@ lib/three.module.min.js     vendored three.js r186 (npm run vendor regenerates i
 src/core/                   seeded RNG, simplex noise, names, input, shader helpers
 src/data/                   items, biomes, recipes and alchemy, lore
 src/universe/               galaxy, star system and planet generation
-src/world/                  blocks, texture atlas, terrain, dream zones, structures, mesher, worker, chunk manager
+src/world/                  blocks, texture atlas, terrain, dream zones, pocket spaces (Void, derelicts), structures, mesher, worker, chunk manager
 src/surface/                sky, clouds, weather, horizon giants, effects
 src/entities/               player, ship, creatures, Lucid vermin, SDF voxel modelling, sentinels
 src/space/                  space scene, planet shaders
-src/game/                   game controller, surface and space modes, inventory, quests
+src/game/                   game controller, surface and space modes, dread director, corruption, riding, inventory, quests
 src/ui/                     HUD, menus, galaxy map
 src/audio/                  procedural WebAudio music and SFX
 src/post/                   post-processing
