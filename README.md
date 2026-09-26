@@ -84,6 +84,34 @@ strongly recommended.
   - The **Lumen Manta** flies wherever you look: Space rises, C sinks, Shift goes fast.
 - New creatures: Lumen Mantas, Lamp Moths (they cannot leave your headlamp alone at night) and glowing Lantern Snails.
 
+**Every creature is itself**
+- Herds graze together, heads down, and drift back toward each other. Spook one (or sprint through them) and the whole herd stampedes. Don't stand in the way.
+- Kodama walk single file toward something forgotten and sit in a ring around it. Follow them.
+- Gels hop in real arcs. Kill a big one and it splits; small ones that touch merge back together.
+- BubbleBears sit and blow bubbles full of clean air. Pop them to top up life support. Don't make one too happy.
+- Mantas fly in formation behind a leader, skim low over water, and sing at night.
+- Moths rest flat on walls by day. Snails leave glowing trails that quicken your step, and hide in their shells if you rush them.
+- Among the procedural fauna there are grazers, chargers that paw the ground before they come, mimics that walk when you walk and jump when you jump, burrowers that dive underground, flocks that roost on tree tops and scatter together, dive-bombers, pollen drifters whose pollen heals you, skitterers and ambushers.
+
+**Hunters**
+- **Sandmaw**: listens for footsteps under the ground. If the ground starts to shake, move.
+- **Spitter**: a rooted pod that aims where you are going. Change direction.
+- **Mote Swarm**: comes out at night for your lamp. Turn it off.
+- **Carapace**: nothing gets through the front. Make it charge into something, then go for its back.
+- **Lurker**: there is ore in that boulder. Be careful what you mine.
+- Each drops something worth having, and each has its own alchemy.
+
+**Graphics**
+- A GPU post pipeline: screen-space ambient occlusion from the depth buffer (normals rebuilt per pixel, depth-aware blur), HDR bloom through a six-level mip chain with a filmic shoulder, and sun shafts that every leaf and ridge cuts, using the depth buffer's open sky.
+- Faces are shaded by the sun's real angle. Water has moving wave normals, fresnel sky reflections and sun glints. Ground mist lights up when you look toward the sun. Plasma sheaths, iridescent bubbles and bloom-lit glints finish the look.
+- The starship is a signed-distance hull, voxelised finely: swept wings, nacelles, spine, fin, canopy and painted livery.
+- **Graphics** in Settings chooses Low, High (AO and bloom) or Ultra.
+
+**Your ship**
+- You wake at a proper crash site: a scorched crater and a skid gouged through the ground, with the ship in view.
+- Arriving from space is a burning atmospheric entry that levels out above the ground.
+- Below 70u, a landing zone is marked ahead of you. Press E to glide in and settle, flattening whatever is growing there.
+
 **Worlds**
 - Rivers wind across worlds that have a liquid (lava rivers on scorched worlds), and dry canyons cross barren ones.
 - Each planet has regions: dense forests, open clearings, rocky badlands. Bare earth and rock break through the ground cover.
@@ -94,7 +122,7 @@ strongly recommended.
 - **Dream Doors** stand in liminal places. Step through one and you come out somewhere else on the planet.
 - Dream-horror fauna: **Manikins** only move while you aren't looking at them, and **Colossal Spiders** have legs longer than they should be. Feed a creature and it becomes a **companion** that follows you.
 - Builder mode: break any block to carry it in your block bag, then place it anywhere in the galaxy. Placed blocks take on the colours of whichever world they are placed in.
-- **Apotheosis (dream alchemy)**: fuse any two items to discover 43 hidden recipes, such as Liquid Light, Somnium Sand, Echo Shells, Dream Lenses and Lucid Cores. Some recipes make liminal building blocks (bookshelves, fluorescent panels, carpet, memory silver, flesh, onyx, static televisions) or bring back memories. Vermin materials feed the dream: Gel Cores, Bubble Foam, Table Hide, and Kodama Rattles, which Kodama leave as gifts if you stand still among them.
+- **Apotheosis (dream alchemy)**: fuse any two items to discover 53 hidden recipes, such as Liquid Light, Somnium Sand, Echo Shells, Dream Lenses and Lucid Cores. Some recipes make liminal building blocks (bookshelves, fluorescent panels, carpet, memory silver, flesh, onyx, static televisions) or bring back memories. Vermin materials feed the dream: Gel Cores, Bubble Foam, Table Hide, and Kodama Rattles, which Kodama leave as gifts if you stand still among them.
 - A pastel dream filter (chromatic fringe, grain, vignette), dream aurora skies, whispers on liminal worlds, and a generative ambient score.
 
 **No Man's Sky side**
@@ -145,11 +173,11 @@ src/data/                   items, biomes, recipes and alchemy, lore
 src/universe/               galaxy, star system and planet generation
 src/world/                  blocks, texture atlas, terrain, dream zones, pocket spaces (Void, derelicts), structures, mesher, worker, chunk manager
 src/surface/                sky, clouds, weather, horizon giants, effects
-src/entities/               player, ship, creatures, Lucid vermin, SDF voxel modelling, sentinels
+src/entities/               player, ship, creatures and their behaviours, Lucid vermin, hunters, SDF voxel modelling, sentinels
 src/space/                  space scene, planet shaders
 src/game/                   game controller, surface and space modes, dread director, corruption, riding, inventory, quests
 src/ui/                     HUD, menus, galaxy map
 src/audio/                  procedural WebAudio music and SFX
-src/post/                   post-processing
+src/post/                   GPU post pipeline: SSAO, bloom, god rays, grading
 tools/                      single-file build and three.js vendoring
 ```
