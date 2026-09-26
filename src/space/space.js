@@ -96,6 +96,48 @@ function glowSprite(color, size) {
   return s;
 }
 
+// A dead freighter: a long broken hull tumbling slowly, with a few red lights still blinking
+function buildDerelict(seed) {
+  const rng = new RNG(seed);
+  const g = new THREE.Group();
+  const hull = new THREE.MeshLambertMaterial({ color: 0x3a3a40, flatShading: true });
+  const rust = new THREE.MeshLambertMaterial({ color: 0x5a3a2a, flatShading: true });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x15161a, flatShading: true });
+  const red = new THREE.MeshBasicMaterial({ color: 0xff2a18 });
+  const add = (w, h, d, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z); m.rotation.set(rx, ry, rz);
+    g.add(m); return m;
+  };
+  // spine, split in the middle as if something broke its back
+  add(150, 90, 330, hull, 0, 0, -180);
+  add(150, 90, 300, hull, 0, -14, 190, 0.08, 0.05, 0.04);
+  add(40, 40, 60, dark, 0, 0, 0);
+  // bridge tower at the bow
+  add(90, 70, 90, hull, 0, 80, 290, 0.08, 0.05, 0.04);
+  add(70, 12, 8, dark, 0, 95, 244);
+  // cargo pods hanging off both flanks, some missing
+  for (let i = 0; i < 9; i++) {
+    for (const s of [-1, 1]) {
+      if (rng.chance(0.3)) continue;
+      const z = -300 + i * 70;
+      add(60, 60, 55, rng.chance(0.4) ? rust : hull, s * 108, rng.range(-12, 12), z, rng.range(-0.1, 0.1), 0, rng.range(-0.1, 0.1));
+    }
+  }
+  // engines at the stern, cold
+  for (const x of [-45, 0, 45]) add(36, 36, 50, dark, x, 0, -370);
+  // the hangar mouth at the stern
+  add(110, 60, 10, dark, 0, -22, -346);
+  // drifting debris
+  for (let i = 0; i < 26; i++) add(rng.range(8, 34), rng.range(6, 24), rng.range(8, 40), rng.chance(0.5) ? hull : rust, rng.range(-260, 260), rng.range(-140, 140), rng.range(-420, 420), rng.next() * 6, rng.next() * 6, 0);
+  // emergency lights
+  const lights = [];
+  for (let i = 0; i < 10; i++) lights.push(add(6, 6, 6, red, rng.chance(0.5) ? -78 : 78, rng.range(-40, 50), rng.range(-330, 320)));
+  g.userData.lights = lights;
+  g.userData.spin = rng.range(0.004, 0.012) * (rng.chance(0.5) ? 1 : -1);
+  return g;
+}
+
 function buildStation(seed) {
   const rng = new RNG(seed);
   const g = new THREE.Group();
@@ -260,6 +302,14 @@ export class SpaceScene {
     this.station.lookAt(0, system.station.position[1], 0);
     this.station.rotateY(Math.PI);
     this.scene.add(this.station);
+    // a derelict, if this system has one
+    this.derelict = null;
+    if (system.derelict) {
+      this.derelict = buildDerelict(system.derelict.seed);
+      this.derelict.position.set(...system.derelict.position);
+      this.derelict.rotation.set(0.3, (system.derelict.seed % 628) / 100, 0.15);
+      this.scene.add(this.derelict);
+    }
     // asteroid field
     this._buildAsteroids(system);
   }

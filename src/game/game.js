@@ -348,7 +348,7 @@ export class Game {
       this.surface.leave();
       this.inPocket = null;
       this.planet = null;
-      this.enterSpace({ fromStation: true });
+      this.enterSpace({ fromDerelict: true });
       this.saveGame(false);
     });
   }

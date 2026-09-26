@@ -141,6 +141,12 @@ export class Universe {
     };
     // Warp arrival point: between the station and the star
     sys.arrival = [sys.station.position[0] * 1.25 + 2500, sys.station.position[1] + 400, sys.station.position[2] * 1.25 + 2500];
+    // A dead freighter drifting near the arrival point in many systems (always in the first)
+    const dh = hash32(seed, 881);
+    if (!isCore && (isStart || (dh % 100) < 45)) {
+      const a = ((dh >>> 8) % 628) / 100, r = 1800 + ((dh >>> 16) % 1200);
+      sys.derelict = { seed: hash32(seed, 882) % 100000, position: [sys.arrival[0] + Math.cos(a) * r, sys.arrival[1] - 300 + ((dh >>> 4) % 600), sys.arrival[2] + Math.sin(a) * r] };
+    }
     return sys;
   }
 

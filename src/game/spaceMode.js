@@ -83,6 +83,14 @@ export class SpaceMode {
       ship.quat.setFromRotationMatrix(m);
       // lookAt makes -Z face the target (camera convention)
       ship.speed = 80; ship.targetSpeed = 80;
+    } else if (opts.fromDerelict && this.space.derelict) {
+      const mouth = this._derelictMouth();
+      const out = mouth.clone().sub(this.space.derelict.position).normalize();
+      ship.pos.copy(mouth).addScaledVector(out, 380);
+      const mm = new THREE.Matrix4().lookAt(ship.pos, ship.pos.clone().add(out), new THREE.Vector3(0, 1, 0));
+      ship.quat.setFromRotationMatrix(mm);
+      ship.speed = 40; ship.targetSpeed = 40;
+      this.dockCooldown = 6;
     } else if (opts.fromStation) {
       this.undock();
     } else if (opts.restore && g.state.shipSpace) {
@@ -253,6 +261,22 @@ export class SpaceMode {
     return this.space.station.localToWorld(new THREE.Vector3(0, 0, -150));
   }
 
+  _derelictMouth() {
+    return this.space.derelict.localToWorld(new THREE.Vector3(0, -22, -470));
+  }
+
+  boardDerelict() {
+    const g = this.game;
+    if (this.docked) return;
+    this.docked = true;
+    g.ship.speed = 0;
+    g.audio.setLoop('engine', false);
+    g.fade(0.6, () => {
+      this.leave();
+      g.enterDerelict(g.system.derelict.seed);
+    }, 0x100000);
+  }
+
   dock() {
     const g = this.game;
     if (this.docked) return;
@@ -397,6 +421,19 @@ export class SpaceMode {
       prompt = '<span class="key">E</span>Dock with station';
       if (input.hit('KeyE')) this.dock();
     }
+    // derelict freighter: tumbling slowly, a few lights still blinking
+    const D = this.space.derelict;
+    if (D) {
+      D.rotateZ(D.userData.spin * dt);
+      for (let i = 0; i < D.userData.lights.length; i++) D.userData.lights[i].visible = ((g.time * 0.7 + i * 0.37) % 1) < 0.18;
+      const dm = this._derelictMouth();
+      const dD = ship.pos.distanceTo(dm);
+      if (ship.pos.distanceTo(D.position) < 260) { ship.pos.copy(D.position).addScaledVector(ship.pos.clone().sub(D.position).normalize(), 260); ship.speed *= 0.5; }
+      if (dD < 320 && this.dockCooldown <= 0 && !prompt) {
+        prompt = '<span class="key">E</span>Board the derelict freighter';
+        if (input.hit('KeyE')) this.boardDerelict();
+      }
+    }
     // planet entry
     if (nearest && !this.entering) {
       if (nearest.d < nearest.r * 1.16) {
@@ -448,6 +485,7 @@ export class SpaceMode {
       if (d > p.data.radius * 1.8) add(p.group.position, '◯', `${g.nameOf(p.data)} · ${p.data.biomeLabel}`, g.state.discoveries.planets[p.data.id] ? '#7ef0ff' : '#ffffff');
     }
     add(this.space.station.position, '⌂', 'Space Station', '#ffd35a');
+    if (this.space.derelict) add(this.space.derelict.position, '✚', 'Derelict Freighter', '#ff6a5a');
     for (const e of this.enemies) add(e.pos, '◆', '', '#ff5fa8');
     hud.updateMarkers(cam, list, g.width, g.height);
     const f = cam.getWorldDirection(_v);

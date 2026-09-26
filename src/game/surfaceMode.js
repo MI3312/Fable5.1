@@ -1018,7 +1018,7 @@ export class SurfaceMode {
     const g = this.game, ship = g.ship, p = g.player;
     const r = ship.right(new THREE.Vector3()).setY(0).normalize();
     let x = ship.pos.x + r.x * 5, z = ship.pos.z + r.z * 5;
-    const gy = this.world.groundAt(x, z);
+    const gy = this.world.groundBelow(x, ship.pos.y + 1, z);
     p.pos.set(x, gy + 1, z);
     let guard = 0;
     while (p.collides(this.world, p.pos.x, p.pos.y, p.pos.z) && guard++ < 40) p.pos.y += 1;

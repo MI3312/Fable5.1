@@ -100,6 +100,9 @@ export const ALCHEMY = [
   { a: 'void_egg', b: 'mordite', out: ['block:' + B.ONYX, 6], hint: 'The shell of something that hatched.' },
   { a: 'static_bloom', b: 'ferrite', out: ['block:' + B.TV, 2], hint: 'A flower of static, framed.' },
   { a: 'memory_fragment', b: 'ferrite', out: ['block:' + B.SILVER, 6], hint: 'Memories, polished until they shine.' },
+  { a: 'null_shard', b: 'chroma_shard', out: ['block:' + B.VOID, 2], hint: 'A piece of nothing, dreamed into a door.' },
+  { a: 'null_shard', b: 'memory_fragment', out: ['lore', 1], hint: 'Remember what it remembers.' },
+  { a: 'salvage', b: 'chroma_shard', out: ['warp_cell', 1], hint: 'Their route home, dreamed back into fuel.' },
 ];
 
 // Technology upgrades (installed from the inventory)
