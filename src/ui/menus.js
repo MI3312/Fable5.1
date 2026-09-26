@@ -571,9 +571,21 @@ export class Menus {
       maw: ['THE GROUND WAS HUNGRY', 'You woke far from where it closed. Your legs remember.'],
       visitor: ['IT WAS WAVING', 'It looked like someone you knew. It still does, from far enough away.'],
       filament: ['DREAM CLOSED', 'It wore the shape of something harmless. It was waiting for you to come closer.'],
-    }[why] || ['YOU WOKE UP', 'The dream loosened its grip. You drift back to your starship, lighter than before.'];
-    const el = h('div', { class: 'death' + (why ? ' horror' : '') }, h('div', { class: 't' }, T[0]),
-      h('div', { class: 'muted', style: { fontFamily: 'var(--font-dream)', fontSize: '17px' } }, T[1]),
+    }[why];
+    const beast = {
+      sandmaw: ['SWALLOWED', 'It heard you walking. Next time, stand still - or keep running.'],
+      spitter: ['DISSOLVED', 'It aimed where you were going. Change direction.'],
+      acid: ['DISSOLVED', 'The ground itself was burning.'],
+      swarm: ['EATEN BY LIGHT', 'They wanted your lamp. You were holding it.'],
+      charge: ['TRAMPLED', 'It pawed the ground first. It always does.'],
+      brute: ['TRAMPLED', 'Nothing gets through the front. Make it hit a wall.'],
+      stampede: ['STAMPEDE', 'The herd did not see you. There were a great many of them.'],
+      diver: ['TAKEN FROM ABOVE', 'Listen for the screech.'],
+      lurker: ['IT WAS NOT A ROCK', 'The ore was bait. It usually is.'],
+    }[why];
+    const text = T || beast || ['YOU WOKE UP', 'The dream loosened its grip. You drift back to your starship, lighter than before.'];
+    const el = h('div', { class: 'death' + (T ? ' horror' : '') }, h('div', { class: 't' }, text[0]),
+      h('div', { class: 'muted', style: { fontFamily: 'var(--font-dream)', fontSize: '17px' } }, text[1]),
       h('button', { class: 'btn primary center', onclick: () => { this.closeAll(true); onRespawn(); } }, 'Dream again'));
     this._overlay(el, 'overlay');
     this.open = 'death';

@@ -44,7 +44,10 @@ const POINT_LIGHT_COLORS = {
   [B.EMERGENCY]: [1.0, 0.1, 0.06], [B.MISSING]: [0.9, 0.0, 0.9], [B.TV]: [0.7, 0.75, 0.85],
 };
 
-const VERMIN_DROPS = { kodama: ['kodama_rattle', 1, 1], gel: ['gel_core', 1, 2], bubblebear: ['bubble_foam', 2, 4], wildebeest: ['table_hide', 1, 3], manikin: ['memory_fragment', 1, 1] };
+const VERMIN_DROPS = {
+  kodama: ['kodama_rattle', 1, 1], gel: ['gel_core', 1, 2], bubblebear: ['bubble_foam', 2, 4], wildebeest: ['table_hide', 1, 3], manikin: ['memory_fragment', 1, 1],
+  sandmaw: ['maw_tooth', 2, 4], spitter: ['acid_gland', 1, 2], swarm: ['mote_dust', 2, 5], brute: ['carapace_plate', 2, 3], lurker: ['lurker_heart', 1, 1],
+};
 const ENC_OFFS = [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [7, 7], [-7, -7], [7, -7], [-7, 7]];
 const _v = new THREE.Vector3();
 // blocks a ship can't set down on (trees, plants, furniture of the world)
@@ -82,6 +85,36 @@ export class SurfaceMode {
     this.selection = makeSelectionBox();
     this.scene.add(this.selection);
     this.creatures = new CreatureManager(this.scene);
+    // what creatures can do to the world and to you
+    this.cfx = {
+      get player() { return game.player; },
+      debris: (pos, col, n, speed, life, glow) => this.debris.spawn(pos.clone(), col, n, speed, life, glow),
+      sound: (kind, pos) => this._critterSound(kind, pos),
+      hurt: (dmg, why, kx, ky, kz) => {
+        this._hurtPlayer(dmg, why);
+        if (kx !== undefined && !game.inShip && !this.riding.active) { game.player.vel.x += kx; game.player.vel.y = Math.max(game.player.vel.y, ky); game.player.vel.z += kz; game.player.onGround = false; }
+      },
+      shake: (k) => { this.horror.shake = Math.max(this.horror.shake, k); },
+      heal: (n) => { const st = game.player.stats; st.health = Math.min(100, st.health + n); game.audio.tone(660, 0.4, 'sine', 0.06, 1.5); },
+      give: (item, n) => { game.inventory.add(item, n); game.hud.notify(null, item, n); },
+      hint: (key, text, color) => {
+        const f = game.state.flags;
+        if (f['hint_' + key]) return;
+        f['hint_' + key] = true;
+        game.hud.setCenter(text, color || '#e8f4ff');
+        this.centerT = 3.2;
+      },
+      bubblePopped: (b) => {
+        const st = game.player.stats;
+        st.life = Math.min(100, st.life + 6);
+        st.hazard = Math.min(100, st.hazard + 4);
+        game.audio.tone(880 + Math.random() * 400, 0.12, 'sine', 0.05, 1.6);
+        if (b.owner) b.owner.joy = (b.owner.joy || 0) + 1;
+        this.cfx.hint('bubble', 'The bubble was full of clean air.', '#ffe0f6');
+      },
+      speedMul: (k) => { game.player.speedMul = k; },
+      blockColor: (id) => (id > 0 && BLOCKS[id] ? BLOCKS[id].color : null),
+    };
     this.sentinels = new SentinelManager(this.scene);
     // first-person multi-tool
     this.viewScene = new THREE.Scene();
@@ -893,6 +926,7 @@ export class SurfaceMode {
     this.creatures.update(dt, {
       world: this.world, player: pc, fauna: this.P.fauna, time: g.time, playerInShip: g.inShip,
       camPos: g.camera.position, camDir: g.camera.getWorldDirection(new THREE.Vector3()), night: this.daylight < 0.3, zone: this.zoneCur, torch: this.torch && !g.inShip,
+      fx: this.cfx, riding: this.riding.active,
       onAttack: (dmg, c) => { this._hurtPlayer(dmg); g.hud.notify(`${c.sp.name} attacks!`); },
       onCreep: () => { g.audio.tone(90, 0.6, 'sawtooth', 0.05, 0.7); g.audio.noiseHit(0.3, 300, 0.08, 'lowpass'); },
       onRattle: () => g.audio.rattle(),
@@ -1514,15 +1548,60 @@ export class SurfaceMode {
 
   _damageCreature(c, dmg) {
     const g = this.game;
-    if (this.creatures.damage(c, dmg)) {
-      this.debris.spawn(c.pos.clone().add(new THREE.Vector3(0, c.sp.size * 0.6, 0)), c.sp.c1, 24, 5, 1.4);
+    const died = this.creatures.damage(c, dmg, g.player.pos);
+    if (c.glance) {
+      // armour: sparks and a ring instead of a wound
+      this.glanceCd = (this.glanceCd || 0) - 1;
+      if (this.glanceCd <= 0) {
+        this.glanceCd = 6;
+        this.debris.spawn(c.pos.clone().add(new THREE.Vector3(0, c.sp.size, 0)), [1, 0.85, 0.5], 6, 4, 0.3, true);
+        g.audio.tone(1900, 0.08, 'square', 0.04, 0.7);
+      }
+      if (c.sp.plan === 'brute') this.cfx.hint('brute', 'Your shots glance off its front.', '#ffcf9a');
+    }
+    if (died) {
+      this.debris.spawn(c.pos.clone().add(new THREE.Vector3(0, c.sp.size * 0.6, 0)), c.sp.plan === 'swarm' ? c.sp.c3 : c.sp.c1, 24, 5, 1.4, c.sp.plan === 'swarm');
       const n = 2 + Math.floor(Math.random() * 4);
       g.inventory.add('mordite', n);
       g.hud.notify(null, 'mordite', n);
       const drop = VERMIN_DROPS[c.sp.plan];
       if (drop) { const k = drop[1] + Math.floor(Math.random() * (drop[2] - drop[1] + 1)); g.inventory.add(drop[0], k); g.hud.notify(null, drop[0], k); }
+      if (c.sp.plan === 'lurker') { const k = 12 + Math.floor(Math.random() * 14); g.inventory.add('ferrite', k); g.hud.notify(null, 'ferrite', k); }
       g.audio.explosion(0.5);
-      if (this.sentinels.raise(1)) { g.hud.toast('Sentinels Alerted', 'Fauna harmed'); g.audio.alert(); }
+      if (c.sp.hostile) {
+        if (!g.state.flags['slain_' + c.sp.plan]) { g.state.flags['slain_' + c.sp.plan] = true; g.hud.toast(`${c.sp.name} slain`, c.sp.note); }
+      } else if (this.sentinels.raise(1)) { g.hud.toast('Sentinels Alerted', 'Fauna harmed'); g.audio.alert(); }
+    }
+  }
+
+  // creature sounds, quieter with distance
+  _critterSound(kind, pos) {
+    const g = this.game, a = g.audio;
+    const p = g.inShip ? g.ship.pos : g.player.pos;
+    const d = pos ? Math.hypot(pos.x - p.x, pos.y - p.y, pos.z - p.z) : 0;
+    const v = Math.max(0, 1 - d / 60);
+    if (v <= 0.03) return;
+    switch (kind) {
+      case 'pop': a.tone(900 + Math.random() * 500, 0.06, 'sine', 0.05 * v, 2.2); break;
+      case 'splat': a.noiseHit(0.25, 700, 0.18 * v, 'lowpass'); break;
+      case 'roar': a.tone(70, 0.9, 'sawtooth', 0.12 * v, 0.6); a.noiseHit(0.8, 300, 0.2 * v, 'lowpass'); break;
+      case 'snort': a.noiseHit(0.3, 500, 0.14 * v, 'bandpass'); break;
+      case 'thud': a.noiseHit(0.35, 160, 0.3 * v, 'lowpass'); break;
+      case 'squeak': a.tone(1300, 0.12, 'triangle', 0.05 * v, 1.6); break;
+      case 'dig': a.noiseHit(0.5, 400, 0.12 * v, 'lowpass'); break;
+      case 'flutter': a.noiseHit(0.25, 2200, 0.06 * v, 'bandpass', 3); break;
+      case 'screech': a.tone(2200, 0.6, 'sawtooth', 0.06 * v, 0.35); break;
+      case 'hiss': a.noiseHit(0.5, 4000, 0.1 * v, 'highpass'); break;
+      case 'rumble': a.noiseHit(1.1, 90, 0.35 * v, 'lowpass'); break;
+      case 'boing': a.tone(260, 0.18, 'sine', 0.05 * v, 2.4); break;
+      case 'squelch': a.noiseHit(0.2, 600, 0.12 * v, 'lowpass'); a.tone(180, 0.15, 'sine', 0.05 * v, 0.5); break;
+      case 'song': [220, 277, 330].forEach((f, i) => a.tone(f, 2.6 + i * 0.4, 'sine', 0.045 * v, 1.02)); break;
+      case 'tuck': a.tone(420, 0.1, 'triangle', 0.05 * v, 0.6); break;
+      case 'chomp': a.noiseHit(0.12, 900, 0.22 * v, 'bandpass'); a.tone(110, 0.1, 'square', 0.05 * v, 0.7); break;
+      case 'spit': a.noiseHit(0.25, 1400, 0.14 * v, 'bandpass'); a.tone(300, 0.2, 'sine', 0.05 * v, 0.4); break;
+      case 'gurgle': a.tone(140, 0.6, 'sine', 0.06 * v, 1.5); a.noiseHit(0.5, 350, 0.08 * v, 'lowpass'); break;
+      case 'buzz': a.tone(340 + Math.random() * 80, 0.12, 'sawtooth', 0.02 * v, 1.05); break;
+      case 'shriek': a.tone(1600, 0.7, 'sawtooth', 0.1 * v, 0.4); a.noiseHit(0.6, 2500, 0.12 * v, 'bandpass'); break;
     }
   }
 
@@ -1624,7 +1703,7 @@ export class SurfaceMode {
         if (this.riding.canRide(c)) {
           prompt = `<span class="key">E</span>Ride ${g.nameOf(c.sp)}`;
           action = () => this.riding.mount(c);
-        } else if (c.sp.temper !== 'Watching' || c.sp.plan === 'moth') {
+        } else if (!c.sp.hostile && (c.sp.temper !== 'Watching' || c.sp.plan === 'moth')) {
           prompt = `<span class="key">E</span>Feed ${g.state.discoveries.creatures[c.sp.id] ? c.sp.name : 'creature'} (5 Carbon)`;
           action = () => this._feed(c);
         }

@@ -76,7 +76,8 @@ export class Player {
     const len = Math.hypot(mx, mz);
     if (len > 0) { mx /= len; mz /= len; }
     const sprint = controlsEnabled && (input.down('ShiftLeft') || input.down('ShiftRight'));
-    let speed = sprint ? 7.6 : 4.6;
+    let speed = (sprint ? 7.6 : 4.6) * (this.speedMul || 1);
+    this.sprinting = sprint && len > 0;
     if (this.inWater) speed *= 0.6;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wishX = (mx * cos + mz * sin) * speed;

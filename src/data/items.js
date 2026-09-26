@@ -63,6 +63,11 @@ export const ITEMS = {
   gel_core: { name: 'Gel Core', symbol: 'Gc', color: '#a8ff8a', cat: 'dream', value: 520, stack: 20, desc: 'The glowing heart of a Gel. Still wobbling. Still warm.' },
   bubble_foam: { name: 'Bubble Foam', symbol: 'Bf', color: '#ffc4ea', cat: 'dream', value: 380, stack: 30, desc: 'It pops if you squeeze it too happily.' },
   table_hide: { name: 'Table Hide', symbol: 'Th', color: '#b59a7a', cat: 'dream', value: 460, stack: 20, desc: 'Shaggy fur from a Wildebeest. Perfectly flat on one side.' },
+  maw_tooth: { name: 'Maw Tooth', symbol: 'Mt', color: '#efe4c8', cat: 'dream', value: 900, stack: 20, desc: 'Curved inward. Everything about the Sandmaw points inward.' },
+  acid_gland: { name: 'Acid Gland', symbol: 'Ag', color: '#c8ff4a', cat: 'dream', value: 480, stack: 20, desc: 'Still sloshing. Handle by the stem.' },
+  mote_dust: { name: 'Mote Dust', symbol: 'Md', color: '#ffd27a', cat: 'dream', value: 160, stack: 50, desc: 'Glows faintly in the dark, and more brightly near a lamp.' },
+  carapace_plate: { name: 'Carapace Plate', symbol: 'Cp', color: '#6a7282', cat: 'dream', value: 700, stack: 20, desc: 'Scratched by everything it ever ran into.' },
+  lurker_heart: { name: 'Lurker Heart', symbol: 'Lh', color: '#ffb347', cat: 'dream', value: 1400, stack: 10, desc: 'A lump of ore that beats, slowly, when held.' },
 };
 
 export const ITEM_IDS = Object.keys(ITEMS);

@@ -5,6 +5,8 @@ import { creatureName, latinName } from '../core/names.js';
 import { applyCurvature } from '../core/shaderlib.js';
 import { IS_LIQUID, IS_SOLID } from '../world/blocks.js';
 import { VERMIN, VERMIN_BUILDERS } from './vermin.js';
+import { ENEMIES, ENEMY_BUILDERS } from './enemies.js';
+import { BEHAVE, HABITS, CreatureFX, assignBehaviour, wrapA } from './behaviours.js';
 
 const PLANS = [['quad', 5], ['biped', 3], ['hopper', 2], ['flyer', 2], ['floater', 2], ['crawler', 2]];
 const TEMPERS = [['Passive', 4], ['Skittish', 3], ['Curious', 2], ['Aggressive', 1.4]];
@@ -57,7 +59,7 @@ export function generateSpecies(planet, index, forcePlan) {
       note: 'Its legs are longer than they should be', speed: 4.8, rarity: 'Rare', c1: hsl(rng.next(), 0.25, 0.22), c2: hsl(rng.next(), 0.3, 0.14), c3: [1, 0.2, 0.25], produce: 'mordite',
     });
   }
-  const V = VERMIN[plan];
+  const V = VERMIN[plan] || ENEMIES[plan];
   if (V) {
     const dreamy = planet.biome === 'liminal' || planet.biome === 'exotic';
     Object.assign(sp, {
@@ -80,6 +82,15 @@ export function generateSpecies(planet, index, forcePlan) {
       sp.c2 = hsl(baseHue + 0.25, 0.6, 0.62);
     }
     if (V.c1) sp.c1 = V.c1;
+    if (V.hostile) {
+      sp.hostile = true;
+      sp.baseHealth = V.health;
+      if (plan === 'sandmaw') { sp.c1 = hsl(0.07 + baseHue * 0.05, 0.28, 0.46); sp.c3 = [1, 0.35, 0.15]; }
+      else if (plan === 'spitter') { sp.c1 = hsl(0.22 + baseHue * 0.12, 0.35, 0.34); sp.c2 = hsl(0.8 + baseHue * 0.1, 0.35, 0.28); sp.c3 = hsl(0.2 + baseHue * 0.1, 1, 0.6); }
+      else if (plan === 'swarm') sp.c3 = hsl(0.08 + baseHue * 0.12, 1, 0.66);
+      else if (plan === 'brute') { sp.c1 = hsl(baseHue, 0.22, 0.4); sp.c2 = hsl(baseHue + 0.05, 0.25, 0.5); sp.c3 = hsl(0.95 + baseHue * 0.1, 1, 0.62); }
+      else if (plan === 'lurker') { sp.c1 = [0.44, 0.43, 0.45]; sp.c3 = rng.pick([[0.95, 0.75, 0.25], [0.9, 0.5, 0.25], [0.45, 0.85, 1.0]]); }
+    }
     if (plan === 'gel') sp.produce = 'gel_core';
     if (plan === 'bubblebear') sp.produce = 'bubble_foam';
   }
@@ -87,16 +98,30 @@ export function generateSpecies(planet, index, forcePlan) {
   if (plan === 'quad' && sp.size >= 1.25 && !sp.ride) sp.ride = { kind: 'ground', seat: sp.legLen * 0.7 + 0.74, speed: 8 + sp.speed * 0.5, boost: 12 + sp.speed };
   sp.health = Math.round(30 + sp.size * 40);
   if (plan === 'preta') sp.health = 400;
+  if (sp.baseHealth) sp.health = Math.round(sp.baseHealth * sp.size);
+  sp.behave = assignBehaviour(sp, rng);
+  if (HABITS[sp.behave]) sp.note = HABITS[sp.behave];
   sp.height = plan === 'flyer' ? 0 : plan === 'floater' ? 0 : 1;
   return sp;
 }
 
 export function speciesForPlanet(planet) {
   const P = planet.params;
-  if (P.fauna <= 0) return [];
+  if (P.interior) return [];
   const rng = new RNG(hash32(planet.seed, 55));
-  const n = rng.int(3, 6);
   const out = [];
+  // things that hunt
+  const b0 = planet.biome;
+  const erng = new RNG(hash32(planet.seed, 66));
+  const hunters = [];
+  const E = (i, plan, ok, ch) => { if (ok && erng.chance(ch)) hunters.push(generateSpecies(planet, i, plan)); };
+  E(60, 'sandmaw', ['barren', 'scorched', 'dead', 'radioactive', 'frozen'].includes(b0), 0.65);
+  E(64, 'lurker', b0 !== 'liminal', 0.5);
+  if (P.fauna <= 0) return hunters;
+  E(61, 'spitter', ['toxic', 'lush', 'exotic', 'radioactive'].includes(b0), 0.6);
+  E(62, 'swarm', true, 0.5);
+  E(63, 'brute', ['frozen', 'barren', 'scorched', 'radioactive', 'lush', 'toxic'].includes(b0), 0.4);
+  const n = rng.int(3, 6);
   for (let i = 0; i < n; i++) out.push(generateSpecies(planet, i));
   if (planet.biome === 'liminal' || (planet.biome === 'exotic' && rng.chance(0.4))) out.push(generateSpecies(planet, 50, 'manikin'));
   if (['exotic', 'toxic', 'liminal', 'radioactive'].includes(planet.biome) && rng.chance(0.55)) out.push(generateSpecies(planet, 51, 'spider'));
@@ -111,7 +136,7 @@ export function speciesForPlanet(planet) {
   if (['liminal', 'lush', 'exotic', 'frozen', 'toxic', 'barren'].includes(b) && rng.chance(b === 'liminal' || b === 'lush' ? 0.8 : 0.5)) out.push(generateSpecies(planet, 57, 'manta'));
   if (rng.chance(0.65)) out.push(generateSpecies(planet, 58, 'moth'));
   if (['liminal', 'lush', 'toxic', 'exotic', 'frozen'].includes(b) && rng.chance(0.45)) out.push(generateSpecies(planet, 59, 'snail'));
-  return out;
+  return out.concat(hunters);
 }
 
 const matCache = new Map();
@@ -133,8 +158,9 @@ function part(parent, mat, w, h, d, x, y, z) {
 }
 
 export function buildCreatureModel(sp) {
-  if (VERMIN_BUILDERS[sp.plan]) {
-    const r = VERMIN_BUILDERS[sp.plan](sp);
+  const custom = VERMIN_BUILDERS[sp.plan] || ENEMY_BUILDERS[sp.plan];
+  if (custom) {
+    const r = custom(sp);
     r.scale.setScalar(sp.size);
     return r;
   }
@@ -144,6 +170,7 @@ export function buildCreatureModel(sp) {
   const m1 = lam(sp.c1), m2 = lam(sp.c2), m3 = lam(sp.c3, 0.4);
   const white = lam([0.95, 0.95, 0.95]), black = lam([0.05, 0.05, 0.08]);
   const legs = [];
+  let headRef = null, neckRef = null;
   const wings = [];
   const s = 1;
   const L = sp.bodyLen;
@@ -171,6 +198,7 @@ export function buildCreatureModel(sp) {
       const head = new THREE.Group();
       head.position.set(0, hy, hz);
       neck.add(head);
+      headRef = head; neckRef = neck;
       part(head, m1, 0.6, 0.5, 0.6, 0, 0, 0);
       part(head, m2, 0.4, 0.2, 0.3, 0, -0.15, -0.35);
       addEyes(head, 0.6, 0.5, 0.6);
@@ -200,6 +228,7 @@ export function buildCreatureModel(sp) {
       const head = new THREE.Group();
       head.position.set(0, 0.8, -0.1);
       body.add(head);
+      headRef = head;
       part(head, m1, 0.65, 0.55, 0.6, 0, 0, 0);
       addEyes(head, 0.65, 0.55, 0.6);
       if (sp.horns) part(head, m3, 0.12, 0.5, 0.12, 0, 0.45, 0);
@@ -225,6 +254,7 @@ export function buildCreatureModel(sp) {
       const head = new THREE.Group();
       head.position.set(0, 0.2, -0.1);
       body.add(head);
+      headRef = head;
       addEyes(head, 0.9, 0.8, 0.9);
       part(body, m3, 0.12, 0.6, 0.12, -0.25, 0.65, 0);
       part(body, m3, 0.12, 0.6, 0.12, 0.25, 0.65, 0);
@@ -236,6 +266,7 @@ export function buildCreatureModel(sp) {
       const head = new THREE.Group();
       head.position.set(0, 0.05, -0.75);
       body.add(head);
+      headRef = head;
       part(head, m1, 0.4, 0.35, 0.35, 0, 0, 0);
       part(head, m3, 0.12, 0.12, 0.35, 0, -0.05, -0.3);
       addEyes(head, 0.4, 0.35, 0.35);
@@ -261,6 +292,7 @@ export function buildCreatureModel(sp) {
       const head = new THREE.Group();
       head.position.set(0, 0.85, 0);
       body.add(head);
+      headRef = head;
       part(head, m1, 0.36, 0.46, 0.38, 0, 0, 0);
       part(head, m2, 0.3, 0.02, 0.02, 0, -0.02, -0.2);
       for (const side of [-1, 1]) {
@@ -289,6 +321,7 @@ export function buildCreatureModel(sp) {
       const head = new THREE.Group();
       head.position.set(0, 0.05, -0.85);
       body.add(head);
+      headRef = head;
       const eyeMat = lam(sp.c3, 0.9);
       for (let i = 0; i < 6; i++) part(head, eyeMat, 0.1, 0.1, 0.05, (i % 3 - 1) * 0.18, (i < 3 ? 0.1 : -0.05), -0.05);
       for (let i = 0; i < 8; i++) {
@@ -331,7 +364,7 @@ export function buildCreatureModel(sp) {
     }
   }
   root.scale.setScalar(sp.size);
-  root.userData = { body, legs, wings, baseY: body.position.y };
+  root.userData = { body, legs, wings, baseY: body.position.y, head: headRef, neck: neckRef };
   return root;
 }
 
@@ -344,17 +377,23 @@ export class CreatureManager {
     this.species = [];
     this.planet = null;
     this.spawnTimer = 0;
+    this.fx = new CreatureFX(this.group);
+    this.wind = new THREE.Vector3(1, 0, 0);
   }
 
   setPlanet(planet) {
     this.clear();
     this.planet = planet;
     this.species = speciesForPlanet(planet);
+    const a = (hash32(planet.seed, 404) % 6283) / 1000;
+    this.wind.set(Math.cos(a), 0, Math.sin(a)).multiplyScalar(1.3);
+    this.poi = null; this.poiT = 0; this.walkTo = null; this.mantaHome = null;
   }
 
   clear() {
     for (const c of this.list) this.group.remove(c.model);
     this.list = [];
+    this.fx.clear();
   }
 
   spawn(sp, x, y, z) {
@@ -369,6 +408,7 @@ export class CreatureManager {
       health: sp.health, hurt: 0, attackCd: 0,
       fed: 0, flyAlt: 10 + Math.random() * 14, hop: 0,
       radius: 0.6 * sp.size,
+      gscale: 1,
     };
     model.position.copy(c.pos);
     this.group.add(model);
@@ -382,7 +422,8 @@ export class CreatureManager {
     // spawn
     this.spawnTimer -= dt;
     const maxCount = Math.round(4 + ctx.fauna * 12);
-    if (this.spawnTimer <= 0 && this.species.length && this.list.length < maxCount) {
+    const pool = this.species.filter((q) => !q.hostile);
+    if (this.spawnTimer <= 0 && pool.length && this.list.length < maxCount) {
       this.spawnTimer = 0.6;
       const a = Math.random() * Math.PI * 2;
       const r = 28 + Math.random() * 45;
@@ -392,13 +433,13 @@ export class CreatureManager {
         const top = ctx.world.getBlock(x, gy, z);
         if (gy > 2 && !IS_LIQUID[top]) {
           const rng = Math.random();
-          let sp = this.species[Math.floor(rng * this.species.length)];
-          if (sp.rarity === 'Rare' && Math.random() < 0.6) sp = this.species[0];
-          if (sp.plan === 'manikin' && (this.list.filter((q) => q.sp.plan === 'manikin').length >= 2 || Math.random() > (ctx.night ? 0.8 : 0.35))) sp = this.species[0];
-          if (sp.plan === 'spider' && this.list.some((q) => q.sp.plan === 'spider')) sp = this.species[0];
-          if (sp.plan === 'preta') sp = this.species[0];
-          if (sp.plan === 'moth' && !ctx.night && Math.random() < 0.8) sp = this.species[0];
-          if (sp.plan === 'kodama' && this.list.filter((q) => q.sp.plan === 'kodama').length >= 8) sp = this.species[0];
+          let sp = pool[Math.floor(rng * pool.length)];
+          if (sp.rarity === 'Rare' && Math.random() < 0.6) sp = pool[0];
+          if (sp.plan === 'manikin' && (this.list.filter((q) => q.sp.plan === 'manikin').length >= 2 || Math.random() > (ctx.night ? 0.8 : 0.35))) sp = pool[0];
+          if (sp.plan === 'spider' && this.list.some((q) => q.sp.plan === 'spider')) sp = pool[0];
+          if (sp.plan === 'preta') sp = pool[0];
+          if (sp.plan === 'moth' && !ctx.night && Math.random() < 0.8) sp = pool[0];
+          if (sp.plan === 'kodama' && this.list.filter((q) => q.sp.plan === 'kodama').length >= 8) sp = pool[0];
           const y = sp.plan === 'flyer' ? gy + 12 : sp.plan === 'manta' ? gy + 11 : sp.plan === 'moth' ? gy + 2 : gy + 1;
           const n = sp.plan === 'manta' ? 1 + Math.floor(Math.random() * 2) : sp.plan === 'moth' ? 1 + Math.floor(Math.random() * 3) : sp.plan === 'kodama' ? 3 + Math.floor(Math.random() * 3) : sp.plan === 'wildebeest' ? 2 + Math.floor(Math.random() * 3)
             : sp.plan === 'flyer' || sp.plan === 'manikin' || sp.plan === 'spider' ? 1 : 1 + Math.floor(Math.random() * 3);
@@ -409,7 +450,10 @@ export class CreatureManager {
       }
     }
     this._spawnWatcher(dt, ctx);
+    this._spawnHunters(dt, ctx);
     this._gifts(dt, ctx);
+    this.lastP = P;
+    this.fx.update(dt, ctx);
     const keep = [];
     for (const c of this.list) {
       if (c.ridden) { keep.push(c); this._animate(c, dt, ctx.time); continue; }
@@ -418,7 +462,7 @@ export class CreatureManager {
       if (c.companion && dist > 60 && !c.dead) {
         const gy = ctx.world.groundAt(P.x + 3, P.z + 3);
         c.pos.set(P.x + 3, gy + 1, P.z + 3);
-      } else if (dist > 120 || c.dead) { this.group.remove(c.model); continue; }
+      } else if (dist > 120 || c.dead) { this.group.remove(c.model); if (c.dead && !c.vanished && ctx.onDeath) ctx.onDeath(c); continue; }
       keep.push(c);
       this._think(c, dt, ctx, dist, dx, dz);
       this._animate(c, dt, ctx.time);
@@ -448,6 +492,43 @@ export class CreatureManager {
       c.life = 25 + Math.random() * 35;
       c.yaw = Math.atan2(P.x - x, P.z - z);
       return;
+    }
+  }
+
+  // Hunters arrive on their own terms: one at a time, each by its own rules.
+  _spawnHunters(dt, ctx) {
+    this.hunterT = (this.hunterT ?? 10) - dt;
+    if (this.hunterT > 0 || ctx.playerInShip) return;
+    this.hunterT = 4 + Math.random() * 5;
+    const P = ctx.player, W = ctx.world;
+    const CAP = { sandmaw: 1, spitter: 3, swarm: 1, brute: 1, lurker: 3 };
+    const CH = { sandmaw: 0.3, spitter: 0.5, swarm: 0.4, brute: 0.22, lurker: 0.5 };
+    for (const sp of this.species) {
+      if (!sp.hostile) continue;
+      if (this.list.filter((q) => q.sp === sp && !q.dead).length >= CAP[sp.plan]) continue;
+      if (sp.plan === 'swarm' && !ctx.night) continue;
+      if (Math.random() > CH[sp.plan] * (0.6 + Math.min(1, ctx.fauna))) continue;
+      const a = Math.random() * Math.PI * 2;
+      const r = sp.plan === 'sandmaw' ? 50 : sp.plan === 'lurker' ? 18 + Math.random() * 22 : 30 + Math.random() * 25;
+      const x = P.x + Math.cos(a) * r, z = P.z + Math.sin(a) * r;
+      if (!W.isLoaded(x, z)) continue;
+      const gy = W.groundAt(x, z);
+      if (gy < 2 || IS_LIQUID[W.getBlock(x, gy, z)]) continue;
+      const c = this.spawn(sp, x, gy + (sp.plan === 'swarm' ? 3 : 1), z);
+      if (sp.plan === 'sandmaw') { c.hidden = true; c.state = 'hunt'; c.model.visible = false; }
+      else if (sp.plan === 'lurker') c.state = 'disguise';
+      return;
+    }
+  }
+
+  // bubbles from a bear's mouth
+  blow(c, n, burst = false) {
+    const f = Math.sin(c.yaw), g = Math.cos(c.yaw);
+    for (let i = 0; i < n; i++) {
+      const pos = new THREE.Vector3(c.pos.x + f * 0.55 * c.sp.size, c.pos.y + 1.15 * c.sp.size, c.pos.z + g * 0.55 * c.sp.size);
+      const sp = burst ? 3.5 : 1.2;
+      const vel = new THREE.Vector3(f * sp + (Math.random() - 0.5) * sp, 0.6 + Math.random() * (burst ? 2.5 : 0.8), g * sp + (Math.random() - 0.5) * sp);
+      this.fx.bubble(pos, vel, undefined, c);
     }
   }
 
@@ -524,14 +605,24 @@ export class CreatureManager {
         if (dist < 14 && c.creepCd <= 0 && ctx.onCreep) { c.creepCd = 6; ctx.onCreep(c); }
       }
     }
+    const Bh = sp.behave && !c.companion ? BEHAVE[sp.behave] : null;
     // reactions
-    if (c.state !== 'dying' && !c.companion && sp.plan !== 'manikin' && sp.plan !== 'kodama') {
+    if (c.state !== 'dying' && !c.companion && sp.plan !== 'manikin' && sp.plan !== 'kodama' && !(Bh && Bh.noReact)) {
       if (c.provoked || (temper === 'Aggressive' && dist < 14 && !ctx.playerInShip)) {
         if (c.fed <= 0) c.state = 'chase';
       } else if (temper === 'Skittish' && dist < 9 && c.state !== 'flee') {
         c.state = 'flee'; c.timer = 3;
       } else if (temper === 'Curious' && dist < 20 && dist > 4 && c.state === 'idle' && Math.random() < dt * 0.3) {
         c.state = 'follow'; c.timer = 6;
+      }
+    }
+    if (Bh) {
+      const r = Bh.think(c, this, dt, ctx, dist, dx, dz);
+      if (r) {
+        if (r.done) { if (r.vert !== false) this._vertical(c, dt, ctx, dist); return; }
+        this._move(c, dt, ctx, r.tx, r.tz, r.speed * (c.speedMul ?? 1));
+        if (r.vert !== false) this._vertical(c, dt, ctx, dist);
+        return;
       }
     }
     let speed = 0;
@@ -580,28 +671,39 @@ export class CreatureManager {
       tx = ctx.camPos.x + Math.cos(a) * 1.9; tz = ctx.camPos.z + Math.sin(a) * 1.9;
       speed = sp.speed * 1.4; c.lured = true;
     } else c.lured = false;
-    // move
-    if (speed > 0) {
-      const ang = Math.atan2(tx - c.pos.x, tz - c.pos.z);
-      let dy = ang - c.yaw;
-      while (dy > Math.PI) dy -= Math.PI * 2;
-      while (dy < -Math.PI) dy += Math.PI * 2;
-      c.yaw += dy * Math.min(1, dt * 5);
-      const nx = c.pos.x + Math.sin(c.yaw) * speed * dt;
-      const nz = c.pos.z + Math.cos(c.yaw) * speed * dt;
-      if (sp.flies || sp.plan === 'flyer' || sp.plan === 'floater') {
-        c.pos.x = nx; c.pos.z = nz;
-      } else {
-        const gy = world.groundBelow(nx, c.pos.y + 1.4, nz);
-        const top = world.getBlock(nx, gy, nz);
-        const head = world.getBlock(nx, gy + 1 + Math.min(2, Math.ceil(sp.size * 1.2)), nz);
-        if (gy + 1 - c.pos.y <= 1.2 && !IS_LIQUID[top] && gy > 0 && !(head > 0 && IS_SOLID[head] && sp.plan !== 'crawler')) {
-          c.pos.x = nx; c.pos.z = nz;
-        } else if (c.state === 'wander') { c.state = 'idle'; c.timer = 1; }
-      }
-      c.moving = true;
-    } else c.moving = false;
-    // vertical
+    speed *= c.speedMul ?? 1;
+    if (speed > 0) this._move(c, dt, ctx, tx, tz, speed);
+    else c.moving = false;
+    this._vertical(c, dt, ctx, dist);
+  }
+
+  // Walk / fly toward (tx, tz). turnRate 0 heads straight there; keepFacing moves without turning.
+  // Returns false when the way is blocked.
+  _move(c, dt, ctx, tx, tz, speed, turnRate = 5, keepFacing = false) {
+    const sp = c.sp, world = ctx.world;
+    if (speed <= 0) { c.moving = false; return true; }
+    const ang = Math.atan2(tx - c.pos.x, tz - c.pos.z);
+    let dirA = c.yaw;
+    if (keepFacing) dirA = ang;
+    else if (turnRate === 0) { c.yaw = ang; dirA = ang; }
+    else { c.yaw += wrapA(ang - c.yaw) * Math.min(1, dt * turnRate); dirA = c.yaw; }
+    const nx = c.pos.x + Math.sin(dirA) * speed * dt;
+    const nz = c.pos.z + Math.cos(dirA) * speed * dt;
+    c.moving = true;
+    if (sp.flies || sp.plan === 'flyer' || sp.plan === 'floater') { c.pos.x = nx; c.pos.z = nz; return true; }
+    const gy = world.groundBelow(nx, c.pos.y + 1.4, nz);
+    const top = world.getBlock(nx, gy, nz);
+    const head = world.getBlock(nx, gy + 1 + Math.min(2, Math.ceil(sp.size * 1.2)), nz);
+    if (gy + 1 - c.pos.y <= 1.2 && !IS_LIQUID[top] && gy > 0 && !(head > 0 && IS_SOLID[head] && sp.plan !== 'crawler')) {
+      c.pos.x = nx; c.pos.z = nz;
+      return true;
+    }
+    if (c.state === 'wander') { c.state = 'idle'; c.timer = 1; }
+    return false;
+  }
+
+  _vertical(c, dt, ctx, dist) {
+    const sp = c.sp, world = ctx.world;
     const gy = (sp.flies || sp.plan === 'flyer' || sp.plan === 'floater') ? world.groundAt(c.pos.x, c.pos.z) : world.groundBelow(c.pos.x, c.pos.y + 1.4, c.pos.z);
     if (sp.plan === 'manta') {
       const low = c.companion || (dist < 26 && !ctx.playerInShip);
@@ -626,6 +728,32 @@ export class CreatureManager {
   }
 
   _animate(c, dt, time) {
+    const m = c.model, ud = m.userData;
+    const Bh = c.sp.behave ? BEHAVE[c.sp.behave] : null;
+    const sc = c.sp.size * (c.gscale || 1);
+    if (c.lastScale !== sc) { m.scale.setScalar(sc); c.lastScale = sc; c.radius = 0.6 * sc; }
+    m.visible = !c.hidden;
+    if (Bh && Bh.anim) { m.position.copy(c.pos); m.rotation.y = c.yaw + Math.PI; Bh.anim(c, dt, time); return; }
+    this._animBase(c, dt, time);
+    // behaviour flourishes layered over the base animation
+    if (c.hopY) m.position.y += c.hopY;
+    if (c.sink) m.position.y -= c.sink * 1.3 * c.sp.size;
+    if (c.bounce && c.moving && ud.body) ud.body.position.y = ud.baseY + Math.abs(Math.sin(c.phase * 0.45)) * 1.6;
+    if (c.folded) for (const w of ud.wings) w.rotation.z = 1.1 * w.userData.side;
+    if (c.headDown !== undefined && (ud.neck || ud.head)) {
+      const h = ud.neck || ud.head;
+      h.rotation.x += ((c.headDown ? -0.8 : 0) - h.rotation.x) * Math.min(1, dt * 3);
+    }
+    if (c.dizzy && ud.body) ud.body.rotation.z = Math.sin(time * 10) * 0.18;
+    if (c.state === 'windup' && ud.body) ud.body.position.y = ud.baseY + Math.abs(Math.sin(c.paw || 0)) * 0.12;
+    if (c.sit && ud.body) { ud.body.position.y -= c.sit * 0.22; if (ud.head) ud.head.rotation.x = c.sit * 0.45; }
+    if (c.tuck !== undefined && c.sp.plan === 'snail') { const foot = ud.body.children[0]; foot.scale.set(1 - c.tuck * 0.5, 1 - c.tuck * 0.6, 1 - c.tuck * 0.75); }
+    if (c.resting) for (const w of ud.wings) w.rotation.z = 0.15 * w.userData.side;
+    if (c.sp.behave === 'diver') m.rotation.x = c.tilt || 0;
+    if (Bh && Bh.animAfter) Bh.animAfter(c, dt, time);
+  }
+
+  _animBase(c, dt, time) {
     const m = c.model;
     const ud = m.userData;
     if (c.sp.watcher) {
@@ -688,7 +816,7 @@ export class CreatureManager {
     let best = null, bestT = maxDist;
     const tmp = new THREE.Vector3();
     for (const c of this.list) {
-      if (c.dead) continue;
+      if (c.dead || c.hidden) continue;
       const center = tmp.copy(c.pos);
       center.y += c.sp.hitY ? c.sp.hitY * c.sp.size : (c.sp.plan === 'flyer' || c.sp.plan === 'floater') ? 0 : 0.8 * c.sp.size;
       const r = c.sp.hitR ? c.sp.hitR * c.sp.size : Math.max(0.7, c.sp.size * 0.9);
@@ -703,19 +831,32 @@ export class CreatureManager {
     return best ? { creature: best, dist: bestT } : null;
   }
 
-  damage(c, amount) {
+  damage(c, amount, from = this.lastP) {
     if (c.sp.watcher) { c.dead = true; c.vanished = true; return false; }
-    c.health -= amount;
+    if (c.hidden || c.dead) return false;
+    const Bh = c.sp.behave ? BEHAVE[c.sp.behave] : null;
+    c.glance = false;
+    if (Bh && Bh.armor && from) { const k = Bh.armor(c, from); amount *= k; c.glance = k < 0.5; }
+    if (c.sp.behave === 'snail' && c.shell > 0) { amount *= 0.1; c.glance = true; }
+    if (c.sp.behave === 'spitter') { amount *= c.closed > 0 ? 0.3 : 1; c.closed = 1.6; }
     c.hurt = 0.5;
-    c.provoked = c.sp.temper !== 'Skittish';
-    if (c.sp.temper === 'Skittish' || c.sp.temper === 'Passive') { c.state = 'flee'; c.timer = 5; c.provoked = false; }
-    if (c.health <= 0) { c.dead = true; return true; }
+    if (Bh && Bh.damage) { const died = Bh.damage(c, amount); if (died) c.dead = true; return died; }
+    c.health -= amount;
+    if (!c.sp.hostile) {
+      c.provoked = c.sp.temper !== 'Skittish';
+      if (c.sp.temper === 'Skittish' || c.sp.temper === 'Passive') { c.state = 'flee'; c.timer = 5; c.provoked = false; }
+    }
+    if (c.health <= 0) {
+      c.dead = true;
+      if (c.sp.behave === 'gel' && !c.companion) BEHAVE.gel.split(c, this);
+      return true;
+    }
     return false;
   }
 
   hitSphere(p, radius) {
     for (const c of this.list) {
-      if (c.dead) continue;
+      if (c.dead || c.hidden) continue;
       const cy = c.pos.y + (c.sp.hitY ? c.sp.hitY * c.sp.size : (c.sp.plan === 'flyer' || c.sp.plan === 'floater') ? 0 : 0.8 * c.sp.size);
       const r = (c.sp.hitR ? c.sp.hitR * c.sp.size : Math.max(0.7, c.sp.size * 0.9)) + radius;
       if ((p.x - c.pos.x) ** 2 + (p.y - cy) ** 2 + (p.z - c.pos.z) ** 2 < r * r) return c;
