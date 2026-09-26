@@ -1,8 +1,18 @@
 // Shared GLSL snippets: planetary curvature and sky gradient (so fog matches the sky exactly).
+import * as THREE from 'three';
 import { CURVATURE } from '../config.js';
 
 export const curvatureUniforms = {
   uCurve: { value: CURVATURE },
+};
+
+// shared by the cloud raymarcher and the terrain (cloud shadows)
+export const cloudUniforms = {
+  uCloudNoise: { value: null },
+  uCloudCover: { value: 0.45 },
+  uCloudWind: { value: new THREE.Vector3() },
+  uCloudShadow: { value: 0 },
+  uCloudBase: { value: 175 },
 };
 
 export const SKY_GLSL = /* glsl */`

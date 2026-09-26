@@ -14,6 +14,7 @@ import { Giants } from '../surface/giants.js';
 import { Horror } from './horror.js';
 import { Riding } from './riding.js';
 import { SunShadows, castShadows } from '../world/shadows.js';
+import { VolumetricClouds } from '../surface/volclouds.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
@@ -87,6 +88,8 @@ export class SurfaceMode {
     this.scene.add(this.selection);
     this.creatures = new CreatureManager(this.scene);
     this.shadows = new SunShadows(this.game.renderer);
+    this.volClouds = new VolumetricClouds();
+    this.cloudIn = 0;
     // what creatures can do to the world and to you
     this.cfx = {
       get player() { return game.player; },
@@ -196,6 +199,7 @@ export class SurfaceMode {
     this.clouds.uniforms.uCloudCol.value.setRGB(...this.P.sky.cloud);
     this.clouds.uniforms.uCover.value = this.P.sky.cloudCover;
     this.clouds.mesh.visible = this.P.sky.cloudCover > 0.01;
+    this.volClouds.setPlanet(this.P, this.P.seed);
     this.sky.uniforms.uStars.value = this.P.sky.stars || 0;
     this.sky.uniforms.uDream.value = this.P.sky.dream || 0;
     this.sky.uniforms.uDreamCol.value.setRGB(...this.P.accent);
@@ -779,6 +783,14 @@ export class SurfaceMode {
       const mk = ZA.k * ZA.sky;
       u.uMistCol.value.setRGB(lerp(u.uMistCol.value.r, ZA.fog[0] * ml, mk), lerp(u.uMistCol.value.g, ZA.fog[1] * ml, mk), lerp(u.uMistCol.value.b, ZA.fog[2] * ml, mk));
     }
+    // flying through a cloud: the world whites out
+    const cin = this.volClouds.densityAt(this.game.camera.position);
+    this.cloudIn += (Math.min(1, cin * 2.2) - this.cloudIn) * Math.min(1, dt * 3);
+    if (this.cloudIn > 0.01) {
+      u.uFogDensity.value = lerp(u.uFogDensity.value, 1 / 9, this.cloudIn);
+      u.uMistCol.value.lerp(_c.setRGB(0.85 * ml + 0.05, 0.86 * ml + 0.05, 0.9 * ml + 0.06), this.cloudIn * 0.8);
+      u.uSkyLight.value.multiplyScalar(1 - this.cloudIn * 0.25);
+    }
     this.sky.uniforms.uSkyFog.value = Math.min(1, FG.skyFog * (1 - (P.sky.stars >= 1 ? 1 : 0)) + storm * 0.3 + ZA.k * ZA.sky * 0.5);
     // enclosure: under a roof (caves, backrooms, libraries) the open-air mist gives way to a dim indoor haze
     const enc = this._enclosure(dt);
@@ -889,7 +901,16 @@ export class SurfaceMode {
     if (d.lengthSq() > 1e-4) d.normalize();
     const center = _v.copy(focus).addScaledVector(d, 18);
     const sun = voxelUniforms.uSunDir.value;
-    this.shadows.update(this.scene, center, sun, !this.interior && (g.settings.gfx ?? 2) > 0, g.settings.gfx ?? 2, this.lastDt || 1 / 60);
+    const gfx = g.settings.gfx ?? 2;
+    this.shadows.update(this.scene, center, sun, !this.interior && gfx > 0, gfx, this.lastDt || 1 / 60);
+    // volumetric clouds, marched at reduced resolution and composited by the sky
+    const pr = g.post.rt;
+    const tex = this.volClouds.render(g.renderer, g.camera, pr.width, pr.height, gfx, g.time, this.stormK || 0, !this.interior);
+    const su = this.sky.uniforms;
+    su.uClouds.value = tex;
+    su.uCloudOn.value = tex ? 1 : 0;
+    su.uScreen.value.set(pr.width, pr.height);
+    this.clouds.mesh.visible = !tex && this.P.sky.cloudCover > 0.01 && !this.interior;
   }
 
   update(dt, paused) {

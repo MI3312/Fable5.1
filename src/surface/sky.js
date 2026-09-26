@@ -27,6 +27,9 @@ export class Sky {
       uStorm: { value: 0 },
       uSkyFog: { value: 0 },
       uMistCol: voxelUniforms.uMistCol,
+      uClouds: { value: null },
+      uCloudOn: { value: 0 },
+      uScreen: { value: new THREE.Vector2(1, 1) },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -50,6 +53,9 @@ export class Sky {
         uniform float uStorm;
         uniform float uSkyFog;
         uniform vec3 uMistCol;
+        uniform sampler2D uClouds;
+        uniform float uCloudOn;
+        uniform vec2 uScreen;
         varying vec3 vDir;
         float hash13(vec3 p) {
           p = fract(p * 0.1031);
@@ -119,6 +125,11 @@ export class Sky {
           float sd = dot(dir, uSunDir);
           col += uSunColor * smoothstep(0.9993, 0.9997, sd) * 3.0;
           col += uSunColor * pow(max(sd, 0.0), 300.0) * 0.8;
+          // raymarched clouds (premultiplied colour, transmittance)
+          if (uCloudOn > 0.5) {
+            vec4 cl = texture2D(uClouds, gl_FragCoord.xy / uScreen);
+            col = col * cl.a + cl.rgb;
+          }
           // the horizon dissolves into mist: the world ends in fog, not in a line
           float hz = 1.0 - smoothstep(-0.1, 0.55, dir.y);
           col = mix(col, mix(col, uMistCol, 0.8), uSkyFog * hz);

@@ -2,7 +2,7 @@
 // sky light + artificial (liminal) light + emissive, dynamic point lights, headlamp,
 // dense sky-matched exponential fog with drifting ground mist, and fake planetary curvature.
 import * as THREE from 'three';
-import { SKY_GLSL, FOG_GLSL, curvatureUniforms } from '../core/shaderlib.js';
+import { SKY_GLSL, FOG_GLSL, curvatureUniforms, cloudUniforms } from '../core/shaderlib.js';
 
 export const MAX_POINT_LIGHTS = 8;
 
@@ -41,6 +41,11 @@ export const voxelUniforms = {
   uShadowOn: { value: 0 },
   uShadowTexel: { value: 1 / 2048 },
   uShadowDepth: { value: 1 / 500 },
+  uCloudNoise: cloudUniforms.uCloudNoise,
+  uCloudCover: cloudUniforms.uCloudCover,
+  uCloudWind: cloudUniforms.uCloudWind,
+  uCloudShadow: cloudUniforms.uCloudShadow,
+  uCloudBase: cloudUniforms.uCloudBase,
 };
 
 const vert = /* glsl */`
@@ -88,6 +93,10 @@ uniform float uLiquid;
 uniform vec3 uPL[${MAX_POINT_LIGHTS}];
 uniform vec3 uPLCol[${MAX_POINT_LIGHTS}];
 uniform float uPLStrength;
+precision highp sampler3D;
+uniform sampler3D uCloudNoise;
+uniform float uCloudCover, uCloudShadow, uCloudBase;
+uniform vec3 uCloudWind;
 uniform sampler2D uShadowMap;
 uniform mat4 uShadowMatrix;
 uniform float uShadowOn, uShadowTexel, uShadowDepth;
@@ -114,6 +123,14 @@ float sunShadow(vec3 wp, vec3 n, float ndl) {
 }
 ${SKY_GLSL}
 ${FOG_GLSL}
+// shadow of the cloud above this point, looking up along the sun
+float cloudShade(vec3 wp) {
+  if (uCloudShadow <= 0.0) return 1.0;
+  vec3 p = wp + uSunDir / max(uSunDir.y, 0.2) * (uCloudBase + 45.0 - wp.y);
+  float s = texture(uCloudNoise, p * 0.0028 + uCloudWind).r;
+  float c = smoothstep(1.0 - uCloudCover, 1.0 - uCloudCover + 0.28, s);
+  return 1.0 - c * 0.72 * uCloudShadow;
+}
 varying vec3 vUvl;
 varying vec3 vTint;
 varying vec4 vLight;
@@ -138,7 +155,7 @@ void main() {
   // the sun rakes across faces that turn toward it; the far sides fall into shade
   float ndl = dot(fn, uSunDir);
   float direct = max(ndl, 0.0);
-  if (direct > 0.0 && sky > 0.05) direct *= sunShadow(vWorld, fn, ndl);
+  if (direct > 0.0 && sky > 0.05) direct *= sunShadow(vWorld, fn, ndl) * cloudShade(vWorld);
   float sunTerm = mix(1.0, 0.64 + 0.62 * direct - 0.08 * max(-ndl, 0.0), uDaylight * 0.9);
   vec3 lightCol = uAmbient + uSkyLight * sky * sunTerm + uArtificial * art;
   // headlamp: a beam where you look, a little spill around you
