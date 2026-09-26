@@ -129,6 +129,9 @@ export class SurfaceMode {
     this.leaving = false;
     this.structCache.clear();
     this.markers = [];
+    this.zoneCur = undefined;
+    this.zAtm = null;
+    this.encK = 0;
     this.world.setPlanet(this.P, g.state.edits[planet.id]);
     this.setRenderDistance(g.settings.renderDist);
     this.creatures.setPlanet(planet);
@@ -1483,6 +1486,8 @@ export class SurfaceMode {
     }
     if (zone === this.zoneCur) return zone;
     this.zoneCur = zone;
+    const mood = { naraka: 'naraka', tilevoid: 'void', library: 'library' }[zone];
+    g.audio.setMood(mood || this.P.biome, this.P.seed);
     if (!zone || g.inShip) return zone;
     const info = ZONE_INFO[zone];
     const d = g.state.discoveries;

@@ -23,6 +23,9 @@ const MOODS = {
   space: { scale: 'lydian', root: 38, pad: 'sawtooth', cutoff: 600, bellRate: 3, space: true },
   station: { scale: 'pentatonic', root: 57, pad: 'sine', cutoff: 1200, bellRate: 2 },
   title: { scale: 'lydian', root: 45, pad: 'sawtooth', cutoff: 800, bellRate: 2.6, dream: true },
+  naraka: { scale: 'phrygian', root: 38, pad: 'sawtooth', cutoff: 420, bellRate: 7, dream: true },
+  void: { scale: 'whole', root: 50, pad: 'sine', cutoff: 900, bellRate: 1.8, dream: true },
+  library: { scale: 'dorian', root: 52, pad: 'triangle', cutoff: 700, bellRate: 5 },
 };
 
 const midi = (m) => 440 * Math.pow(2, (m - 69) / 12);
