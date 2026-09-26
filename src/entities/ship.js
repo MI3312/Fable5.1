@@ -67,25 +67,86 @@ export class Ship {
     }
   }
 
-  // Beginning take-off (returns message string on failure)
+  // Beginning take-off (returns message string on failure). The ship spools up, lifts clear of the
+  // ground while levelling out, then eases forward so it leaves the animation already flying.
   tryTakeoff() {
     if (!this.thrustersRepaired) return 'Launch thrusters are damaged. Repair them from the Ship tab of your inventory.';
     if (this.fuel.launch < 20) return 'Launch thrusters need fuel. Refuel with Di-hydrogen Jelly, Uranium or Launch Fuel.';
     this.fuel.launch -= 20;
     this.state = 'takeoff';
-    this.anim = { t: 0, dur: 1.8, from: this.pos.clone(), to: this.pos.clone().add(new THREE.Vector3(0, 16, 0)) };
+    const yaw = this.yaw();
+    const f = _v.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const from = this.pos.clone();
+    this.anim = {
+      kind: 'takeoff', t: 0, dur: 3.2, spool: 0.7, from,
+      rise: 17, fwd: f.clone(), fwdDist: 24,
+      qFrom: this.quat.clone(), qTo: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.14, yaw, 0, 'YXZ')),
+    };
     return null;
   }
 
-  beginLanding(groundY, liquid) {
+  // site: { x, y (ground), z, yaw }. Glides over, flares, then settles straight down onto the gear.
+  beginLanding(site, liquid) {
     if (liquid) return 'Cannot land on liquid.';
-    const f = this.forward(_v).setY(0).normalize();
-    const to = new THREE.Vector3(this.pos.x + f.x * 8, groundY + 1.75, this.pos.z + f.z * 8);
+    const from = this.pos.clone();
+    const to = new THREE.Vector3(site.x, site.y + 1.75, site.z);
+    const hd = Math.hypot(to.x - from.x, to.z - from.z), vd = Math.max(0, from.y - to.y);
+    const dur = Math.min(6.5, Math.max(2.6, 1.4 + hd / 14 + vd / 18));
+    const f = this.forward(_v).setY(0);
+    if (f.lengthSq() < 1e-4) f.set(0, 0, -1);
+    f.normalize();
+    const lead = Math.min(Math.max(this.speed, 8), 45) * dur / (3 * Math.PI / 2);
+    const c1 = from.clone().addScaledVector(f, Math.min(lead, hd * 0.7 + 2));
+    const c2 = to.clone(); c2.y += Math.min(10, 3 + vd * 0.3);
+    let yaw = site.yaw ?? this.yaw();
     this.state = 'landing';
-    const yaw = this.yaw();
-    const q2 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0, 'YXZ'));
-    this.anim = { t: 0, dur: 2.4, from: this.pos.clone(), to, qFrom: this.quat.clone(), qTo: q2 };
+    this.anim = {
+      kind: 'landing', t: 0, dur, from, c1, c2, to,
+      qFrom: this.quat.clone(), qTo: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0, 'YXZ')),
+    };
     return null;
+  }
+
+  // Atmospheric entry: a long burning dive from orbit altitude down to a cruising height over `to`.
+  beginEntry(from, to, yaw) {
+    this.pos.copy(from);
+    const d = new THREE.Vector3().subVectors(to, from);
+    const hd = Math.hypot(d.x, d.z);
+    const h = _v.set(d.x / hd, 0, d.z / hd);
+    const c1 = from.clone().addScaledVector(h, hd * 0.35); c1.y -= (from.y - to.y) * 0.55;
+    const c2 = to.clone().addScaledVector(h, -hd * 0.5);
+    this.state = 'entry';
+    this.speed = 90; this.targetSpeed = 36;
+    this.anim = {
+      kind: 'entry', t: 0, dur: 7.5, from: from.clone(), c1, c2, to: to.clone(),
+      qTo: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0, 'YXZ')),
+    };
+    this._bez(this.anim, 0.02, _v2);
+    this._faceAlong(_v2.sub(from), 0);
+    return null;
+  }
+
+  _bez(a, u, out) {
+    const iu = 1 - u;
+    return out.copy(a.from).multiplyScalar(iu * iu * iu)
+      .addScaledVector(a.c1, 3 * iu * iu * u)
+      .addScaledVector(a.c2, 3 * iu * u * u)
+      .addScaledVector(a.to, u * u * u);
+  }
+
+  _faceAlong(dir, bank) {
+    if (dir.lengthSq() < 1e-6) return;
+    dir.normalize();
+    const yaw = Math.atan2(-dir.x, -dir.z);
+    const pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
+    this.quat.setFromEuler(_e.set(pitch, yaw, bank, 'YXZ'));
+  }
+
+  // Heat of the entry burn, 0..1 (drives plasma sheath, shake and audio)
+  get entryHeat() {
+    if (this.state !== 'entry' || !this.anim) return 0;
+    const k = this.anim.t / this.anim.dur;
+    return Math.max(0, Math.min(1, 1.2 - k * 1.6)) * Math.min(1, k * 8);
   }
 
   // env: { mode: 'surface'|'space', groundAt(x,z), ctl: bool }
@@ -94,24 +155,64 @@ export class Ship {
     this.fireCooldown -= dt;
     this.shake = Math.max(0, this.shake - dt * 2);
     if (this.state === 'landed') { this.speed = 0; this.syncModel(); return events; }
-    if (this.state === 'takeoff' || this.state === 'landing') {
+    if (this.state === 'takeoff' || this.state === 'landing' || this.state === 'entry') {
       const a = this.anim;
       a.t += dt;
       const k = Math.min(1, a.t / a.dur);
-      const e = k * k * (3 - 2 * k);
-      this.pos.lerpVectors(a.from, a.to, e);
-      if (a.qFrom) this.quat.slerpQuaternions(a.qFrom, a.qTo, e);
+      if (a.kind === 'takeoff') {
+        const kk = Math.max(0, (a.t - a.spool) / (a.dur - a.spool));
+        const up = kk * kk * (3 - 2 * kk);
+        this.pos.copy(a.from);
+        this.pos.y += a.rise * up;
+        this.pos.addScaledVector(a.fwd, a.fwdDist * kk * kk * kk);
+        this.pos.y += Math.sin(a.t * 30) * 0.03 * (1 - kk);
+        this.quat.slerpQuaternions(a.qFrom, a.qTo, Math.min(1, kk * 1.4));
+        this.shake = Math.max(this.shake, a.t < a.spool ? 0.25 : 0.12 * (1 - kk));
+        this.speed = 3 * a.fwdDist * kk * kk / (a.dur - a.spool);
+      } else if (a.kind === 'landing') {
+        const u = Math.sin(k * Math.PI / 2);
+        const prev = _v2.copy(this.pos);
+        this._bez(a, u, this.pos);
+        const e = k * k * (3 - 2 * k);
+        this.quat.slerpQuaternions(a.qFrom, a.qTo, e);
+        // nose-up flare mid-way, a little bank into the turn
+        _q.setFromAxisAngle(_v.set(1, 0, 0), Math.sin(k * Math.PI) * 0.16);
+        this.quat.multiply(_q);
+        this.speed = prev.distanceTo(this.pos) / Math.max(dt, 1e-4);
+        if (k > 0.85) this.shake = Math.max(this.shake, 0.1);
+      } else {
+        // entry: fall along the curve, nose follows the motion, speed bleeds off
+        const uu = 0.7 * k + 0.3 * (1 - (1 - k) * (1 - k));
+        const prev = _v2.copy(this.pos);
+        this._bez(a, uu, this.pos);
+        const vel = _v.subVectors(this.pos, prev);
+        this.speed = vel.length() / Math.max(dt, 1e-4);
+        const g = env.groundAt ? env.groundAt(this.pos.x, this.pos.z) : -1e9;
+        if (this.pos.y < g + 10) this.pos.y = g + 10;
+        if (k < 0.97) this._faceAlong(vel, Math.sin(a.t * 1.7) * 0.08 * (1 - k));
+        else this.quat.slerp(a.qTo, Math.min(1, dt * 6));
+        this.shake = Math.max(this.shake, this.entryHeat * 0.7);
+      }
       if (k >= 1) {
-        if (this.state === 'takeoff') {
+        if (a.kind === 'takeoff') {
           this.state = 'flying';
-          this.speed = 20; this.targetSpeed = 30;
+          this.speed = 3 * a.fwdDist / (a.dur - a.spool); this.targetSpeed = 32;
           events.push('tookoff');
+        } else if (a.kind === 'entry') {
+          this.state = 'flying';
+          this.speed = 38; this.targetSpeed = 34;
+          this.stick.set(0, 0);
+          events.push('entered');
         } else {
+          this.pos.copy(a.to);
+          this.quat.copy(a.qTo);
           this.state = 'landed';
+          this.speed = 0;
           events.push('landed');
         }
         this.anim = null;
       }
+      if (env.ctl && env.mode !== 'space') input.consumeMouse();
       this.syncModel();
       return events;
     }
@@ -221,7 +322,7 @@ export class Ship {
       camera.position.x += (Math.random() - 0.5) * this.shake * 0.6;
       camera.position.y += (Math.random() - 0.5) * this.shake * 0.6;
     }
-    camera.up.copy(this.state === 'flying' || this.state === 'space' ? up : UP);
+    camera.up.copy(this.state === 'flying' || this.state === 'space' || this.state === 'entry' ? up : UP);
     camera.lookAt(this.camLook);
   }
 }

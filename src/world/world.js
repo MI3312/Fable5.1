@@ -305,6 +305,18 @@ export class World {
     return true;
   }
 
+  // Like setBlock, but when the chunk isn't loaded yet the change is recorded and applied on generation
+  editBlock(x, y, z, id) {
+    if (this.setBlock(x, y, z, id)) return;
+    x = Math.floor(x); y = Math.floor(y); z = Math.floor(z);
+    if (y < 1 || y >= HEIGHT) return;
+    const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
+    const k = chunkKey(cx, cz);
+    let m = this.edits.get(k);
+    if (!m) { m = new Map(); this.edits.set(k, m); }
+    m.set((x - cx * CHUNK) + 16 * ((z - cz * CHUNK) + 16 * y), id);
+  }
+
   exportEdits() {
     const out = {};
     for (const [k, m] of this.edits) {

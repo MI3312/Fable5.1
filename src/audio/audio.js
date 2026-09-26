@@ -572,6 +572,12 @@ export class AudioSystem {
         const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 400; f.Q.value = 0.6;
         n.connect(f); f.connect(g); n.start();
         nodes.f = f;
+      } else if (name === 'reentry') {
+        const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500; f.Q.value = 1.4;
+        const n2 = this._noiseSrc(); const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1800; f2.Q.value = 0.8;
+        const g2 = c.createGain(); g2.gain.value = 0.25;
+        n.connect(f); f.connect(g); n2.connect(f2); f2.connect(g2); g2.connect(g); n.start(); n2.start();
+        nodes.f = f;
       } else if (name === 'hum') {
         const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 120;
         const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 240; f.Q.value = 6;
@@ -581,8 +587,8 @@ export class AudioSystem {
     });
     if (!L) return;
     const t = c.currentTime;
-    const vols = { laser: 0.09, jetpack: 0.1, engine: 0.14, wind: 0.08, hum: 0.025 };
-    L.g.gain.setTargetAtTime(on ? vols[name] * (name === 'wind' ? param : 1) : 0, t, on ? 0.05 : 0.12);
+    const vols = { laser: 0.09, jetpack: 0.1, engine: 0.14, wind: 0.08, hum: 0.025, reentry: 0.3 };
+    L.g.gain.setTargetAtTime(on ? vols[name] * (name === 'wind' || name === 'reentry' ? param : 1) : 0, t, on ? 0.05 : 0.12);
     if (name === 'laser' && L.o) L.o.frequency.setTargetAtTime(170 + Math.sin(t * 30) * 12, t, 0.02);
     if (name === 'engine' && on) {
       const k = Math.min(1, param);
@@ -592,6 +598,7 @@ export class AudioSystem {
       L.nf.frequency.setTargetAtTime(400 + k * 2400, t, 0.2);
     }
     if (name === 'wind' && L.f) L.f.frequency.setTargetAtTime(300 + param * 500, t, 0.5);
+    if (name === 'reentry' && L.f) L.f.frequency.setTargetAtTime(300 + param * 900, t, 0.1);
   }
 
   stopAllLoops() {

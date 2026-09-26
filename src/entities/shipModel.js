@@ -103,6 +103,25 @@ export function buildShip(seed = 1) {
   g.userData.flames = g.children.filter((c) => c.name === 'flame');
   g.userData.gear = gear;
   g.userData.colors = { hull: c1, trim: c2, accent: c3 };
+  // re-entry plasma sheath: nested additive shells wrapped over the nose, hidden until entry
+  const plasma = new THREE.Group();
+  plasma.name = 'plasma';
+  const shells = [];
+  for (let i = 0; i < 3; i++) {
+    const pm = new THREE.MeshBasicMaterial({ color: [0xffb070, 0xff6a20, 0xff3a10][i], transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    applyCurvature(pm);
+    const geo = new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    geo.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(geo, pm);
+    m.scale.set(2.6 + i * 1.3, 2.0 + i * 1.1, 4.5 + i * 3.2);
+    m.position.z = -3.2 + i * 0.4;
+    m.renderOrder = 10;
+    plasma.add(m);
+    shells.push(m);
+  }
+  plasma.visible = false;
+  g.add(plasma);
+  g.userData.plasma = { group: plasma, shells };
   return g;
 }
 

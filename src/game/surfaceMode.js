@@ -47,6 +47,9 @@ const POINT_LIGHT_COLORS = {
 const VERMIN_DROPS = { kodama: ['kodama_rattle', 1, 1], gel: ['gel_core', 1, 2], bubblebear: ['bubble_foam', 2, 4], wildebeest: ['table_hide', 1, 3], manikin: ['memory_fragment', 1, 1] };
 const ENC_OFFS = [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [7, 7], [-7, -7], [7, -7], [-7, 7]];
 const _v = new THREE.Vector3();
+// blocks a ship can't set down on (trees, plants, furniture of the world)
+const LAND_ALT = 70;
+const SITE_OBSTACLE = new Set([B.LOG, B.LEAVES, B.MUSHROOM_STEM, B.MUSHROOM_CAP, B.CACTUS, B.CORAL, B.CLOUD, B.CRYSTAL, B.MONOLITH, B.SENTINEL_PILLAR, B.CHEST, B.CHEST_OPEN, B.POD, B.POD_OPEN, B.LAMP, B.TERMINAL, B.EYE, B.GLASS, B.HULL]);
 const _c = new THREE.Color();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
@@ -112,6 +115,7 @@ export class SurfaceMode {
     this.storm = { on: false, t: 0, next: 200 };
     this.whisperTimer = 30;
     this.smokeTimer = 0;
+    this.landScan = 0; this.landSite = null; this.dustT = 0; this.entryShown = true;
     this.dayT = 0.35;
     this.leaving = false;
     this.feeding = [];
@@ -299,11 +303,7 @@ export class SurfaceMode {
       g.inShip = true;
       player.pos.copy(ship.pos);
     } else if (mode === 'crash') {
-      const s = this._settle(this.target.x, this.target.z);
-      player.pos.set(s.x + 0.5, s.y, s.z + 0.5);
-      player.yaw = Math.PI * 0.25;
-      this._placeShipNear(player.pos, 7);
-      ship.state = 'landed';
+      this._crashSite(this.target.x, this.target.z);
       g.inShip = false;
     } else if (mode === 'restore' && st.player) {
       player.pos.set(st.player.x, st.player.y, st.player.z);
@@ -321,14 +321,17 @@ export class SurfaceMode {
       } else this._placeShipNear(player.pos, 7);
       if (g.inShip) ship.speed = ship.state === 'flying' ? 30 : 0;
     } else {
-      // atmospheric entry: ship arrives high above the surface
-      ship.pos.set(this.target.x, SURFACE_ENTRY_ALT, this.target.z);
+      // atmospheric entry: a burning dive from high altitude that levels out over the loaded ground
       const yaw = Math.random() * Math.PI * 2;
-      ship.quat.setFromEuler(new THREE.Euler(-0.28, yaw, 0, 'YXZ'));
-      ship.state = 'flying';
-      ship.speed = 60; ship.targetSpeed = 40;
+      const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+      let top = 0;
+      for (let i = -2; i <= 2; i++) top = Math.max(top, W.groundAt(this.target.x + fx * i * 20, this.target.z + fz * i * 20));
+      const to = new THREE.Vector3(this.target.x, Math.min(SURFACE_ENTRY_ALT - 60, top + 62), this.target.z);
+      const from = new THREE.Vector3(this.target.x - fx * 320, SURFACE_ENTRY_ALT, this.target.z - fz * 320);
+      ship.beginEntry(from, to, yaw);
       g.inShip = true;
       player.pos.copy(ship.pos);
+      this.entryShown = false;
     }
     ship.syncModel();
     ship.camInit = false;
@@ -365,6 +368,13 @@ export class SurfaceMode {
 
   _placeShipNear(pos, dist) {
     const ship = this.game.ship;
+    const site = this._findLandingSite(pos.x, pos.z, Math.random() * 6.28, dist + 8, dist);
+    if (site) {
+      ship.pos.set(site.x, site.y + 1.75, site.z);
+      ship.setLevel(site.yaw);
+      ship.syncModel();
+      return;
+    }
     let best = null;
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2;
@@ -380,6 +390,180 @@ export class SurfaceMode {
     ship.pos.set(best.x, best.g + 1.75, best.z);
     ship.setLevel(best.yaw);
     ship.syncModel();
+  }
+
+  // Samples the ship's footprint (wings included) at a spot. Returns the ground heights and what's in
+  // the way, or null when it's over liquid / unloaded ground.
+  _siteAt(x, z, yaw) {
+    const W = this.world;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const hs = [];
+    let obstacles = 0;
+    for (const a of [-6, -3, 0, 3, 5]) for (const b of [-5.5, -2.7, 0, 2.7, 5.5]) {
+      const px = x + fx * a + fz * b, pz = z + fz * a - fx * b;
+      if (!W.isLoaded(px, pz)) return null;
+      let gy = W.groundAt(px, pz);
+      let top = W.getBlock(px, gy, pz);
+      if (IS_LIQUID[top]) return null;
+      // look through trees and plants to the ground they stand on
+      let guard = 0;
+      while (SITE_OBSTACLE.has(top) && guard++ < 30) { gy--; top = W.getBlock(px, gy, pz); obstacles++; }
+      if (IS_LIQUID[top]) return null;
+      hs.push(gy);
+    }
+    hs.sort((p, q) => p - q);
+    return { lo: hs[0], hi: hs[hs.length - 1], med: hs[hs.length >> 1], spread: hs[hs.length - 1] - hs[0], obstacles };
+  }
+
+  // Flat, open ground for a landing around (x, z). Prefers spots close to the centre and headings
+  // near `yaw`.
+  _findLandingSite(x, z, yaw, maxR = 18, minR = 0) {
+    const sea = this.P.liquid ? this.P.seaLevel : -99;
+    let best = null;
+    for (let r = minR; r <= maxR; r += 3) {
+      const n = r === 0 ? 1 : Math.max(6, Math.floor(r * 0.9));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const px = Math.floor(x + Math.cos(a) * r) + 0.5, pz = Math.floor(z + Math.sin(a) * r) + 0.5;
+        for (const dy of [0, 0.5, -0.5, Math.PI / 2]) {
+          const s = this._siteAt(px, pz, yaw + dy);
+          if (!s || s.obstacles > 10 || s.spread > 2 || s.hi <= sea) continue;
+          const score = s.spread * 3 + r * 0.12 + Math.abs(dy) * 0.6 + s.obstacles * 0.35;
+          if (!best || score < best.score) best = { x: px, z: pz, y: s.hi, yaw: yaw + dy, score, obstacles: s.obstacles };
+        }
+      }
+      if (best && best.score < r * 0.12 + 1) break;
+    }
+    return best;
+  }
+
+  // First arrival: pick open ground, gouge a scorched skid behind the wreck and wake the player
+  // a little way off with the ship in view.
+  _crashSite(x0, z0) {
+    const g = this.game, W = this.world, ship = g.ship, player = g.player;
+    const sea = this.P.liquid ? this.P.seaLevel : -99;
+    const rng = new RNG(hash32(this.P.seed, 991));
+    let best = null;
+    for (let r = 0; r <= 26; r += 3) {
+      const n = r === 0 ? 1 : Math.max(6, Math.floor(r * 0.8));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + r;
+        const x = Math.floor(x0 + Math.cos(a) * r) + 0.5, z = Math.floor(z0 + Math.sin(a) * r) + 0.5;
+        for (let k = 0; k < 4; k++) {
+          const yaw = k * Math.PI / 2 + 0.4;
+          const s = this._siteAt(x, z, yaw);
+          if (!s || s.med <= sea + 1) continue;
+          // the skid behind the ship shouldn't run into a cliff or the sea
+          const bx = x + Math.sin(yaw) * 16, bz = z + Math.cos(yaw) * 16;
+          const bh = W.groundAt(bx, bz);
+          const score = s.spread * 2 + s.obstacles * 0.15 + r * 0.08 + Math.max(0, Math.abs(bh - s.med) - 3) * 0.8;
+          if (!best || score < best.score) best = { x, z, yaw, s, score };
+        }
+      }
+      if (best && best.score < 3) break;
+    }
+    if (!best) {
+      const s = this._settle(x0, z0);
+      player.pos.set(s.x + 0.5, s.y, s.z + 0.5);
+      this._placeShipNear(player.pos, 10);
+      ship.state = 'landed';
+      return;
+    }
+    const { x, z, yaw } = best;
+    const gy = best.s.med;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const scorch = (px, py, pz) => W.editBlock(px, py, pz, rng.next() < 0.6 ? B.ASH : B.GRAVEL);
+    const clearTree = (px, py, pz) => {
+      for (let dy = 0; dy < 16; dy++) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+        const id = W.getBlock(px + dx, py + dy, pz + dz);
+        if (id === B.LOG || id === B.LEAVES || id === B.MUSHROOM_STEM || id === B.MUSHROOM_CAP || id === B.CACTUS) W.editBlock(px + dx, py + dy, pz + dz, B.AIR);
+      }
+    };
+    // bed: level the footprint, clear anything the hull would clip
+    for (let a = -8; a <= 6; a++) for (let b = -8; b <= 8; b++) {
+      const e = (a / (a < 0 ? 8 : 6)) ** 2 + (b / 8) ** 2;
+      if (e > 1.05) continue;
+      const px = Math.floor(x + fx * a + fz * b), pz = Math.floor(z + fz * a - fx * b);
+      for (let y = gy + 1; y <= gy + 9; y++) {
+        const id = W.getBlock(px, y, pz);
+        if (id === B.LOG || id === B.MUSHROOM_STEM) clearTree(px, gy, pz);
+        if (id > 0) W.editBlock(px, y, pz, B.AIR);
+      }
+      let cy = W.groundAt(px, pz);
+      if (cy > gy) cy = gy;
+      for (let y = cy + 1; y <= gy; y++) W.editBlock(px, y, pz, B.DIRT);
+      if (e < 0.55) scorch(px, gy, pz);
+    }
+    // skid furrow behind the wreck, with heaped berms and torn-off plating
+    const side = rng.next() < 0.5 ? -1 : 1;
+    for (let t = 5; t <= 26; t++) {
+      const bend = Math.sin(t * 0.18) * 1.2 * side;
+      const w = t < 14 ? 2 : 1.4;
+      const deep = t < 16 ? 1 : 0;
+      for (let b = -w - 1; b <= w + 1; b++) {
+        const px = Math.floor(x - fx * t + fz * (b + bend)), pz = Math.floor(z - fz * t - fx * (b + bend));
+        let cy = W.groundAt(px, pz);
+        let top = W.getBlock(px, cy, pz);
+        let guard = 0;
+        while (SITE_OBSTACLE.has(top) && guard++ < 30) { if (top === B.LOG || top === B.MUSHROOM_STEM) clearTree(px, cy - 4, pz); cy--; top = W.getBlock(px, cy, pz); }
+        if (IS_LIQUID[top] || cy < 2) continue;
+        for (let y = cy + 1; y <= cy + 6; y++) if (W.getBlock(px, y, pz) > 0) W.editBlock(px, y, pz, B.AIR);
+        if (Math.abs(b) <= w) {
+          for (let d = 0; d < deep; d++) W.editBlock(px, cy - d, pz, B.AIR);
+          scorch(px, cy - deep, pz);
+        } else if (rng.next() < 0.7) W.editBlock(px, cy + 1, pz, rng.next() < 0.5 ? B.DIRT : B.GRAVEL);
+      }
+      if (t % 5 === 3 && rng.next() < 0.8) {
+        const b = (w + 2.5) * (rng.next() < 0.5 ? -1 : 1);
+        const px = Math.floor(x - fx * t + fz * (b + bend)), pz = Math.floor(z - fz * t - fx * (b + bend));
+        const cy = W.groundAt(px, pz);
+        W.editBlock(px, cy + 1, pz, B.HULL);
+        if (rng.next() < 0.4) W.editBlock(px, cy + 2, pz, B.HULL);
+      }
+    }
+    // ship nosed into the end of its skid, canted
+    ship.pos.set(x, gy + 1.75 - 0.3, z);
+    ship.quat.setFromEuler(new THREE.Euler(-0.07, yaw, 0.08 * side, 'YXZ'));
+    ship.state = 'landed';
+    ship.syncModel();
+    // wake up off to one side, looking at the ship from the front quarter, with a clear view of it
+    const cands = [];
+    for (const d of [11, 13, 9, 15, 17]) for (const ang of [0.9, -0.9, 1.3, -1.3, 0.5, -0.5, 1.8, -1.8, 2.4, -2.4]) cands.push([d, ang]);
+    const hull = [[0, 0, 1.0], [5, 0, 1.2], [-5, 0, 1.4], [0, 5, 1.3], [0, -5, 1.3]];
+    let placed = false;
+    const eye = new THREE.Vector3(), to = new THREE.Vector3();
+    for (const tol of [1, 3]) {
+      for (const [d, ang] of cands) {
+        const dx = fx * Math.cos(ang) - fz * Math.sin(ang), dz = fz * Math.cos(ang) + fx * Math.sin(ang);
+        const px = Math.floor(x + dx * d) + 0.5, pz = Math.floor(z + dz * d) + 0.5;
+        const py = W.groundBelow(px, gy + 8, pz);
+        const top = W.getBlock(px, py, pz);
+        if (IS_LIQUID[top] || SITE_OBSTACLE.has(top) || Math.abs(py - gy) > tol) continue;
+        if (W.isSolid(px, py + 1, pz) || W.isSolid(px, py + 2, pz)) continue;
+        eye.set(px, py + 2.62, pz);
+        let seen = 0;
+        for (const [a, b, h] of hull) {
+          to.set(x + fx * a + fz * b, gy + h, z + fz * a - fx * b).sub(eye);
+          const dist = to.length();
+          if (!W.raycast(eye, to.normalize(), dist - 1.5)) seen++;
+        }
+        if (seen < 5) continue;
+        player.pos.set(px, py + 1.01, pz);
+        player.yaw = Math.atan2(-(x - px), -(z - pz)) + 0.2 * Math.sign(ang);
+        player.pitch = -0.14;
+        placed = true;
+        break;
+      }
+      if (placed) break;
+    }
+    if (!placed) {
+      const s = this._settle(Math.floor(x + fz * 11), Math.floor(z - fx * 11));
+      player.pos.set(s.x + 0.5, s.y, s.z + 0.5);
+      player.yaw = Math.atan2(-(x - player.pos.x), -(z - player.pos.z));
+    }
+    let guard = 0;
+    while (player.collides(W, player.pos.x, player.pos.y, player.pos.z) && guard++ < 20) player.pos.y += 1;
+    this.smokeTimer = 0;
   }
 
   leave() {
@@ -535,7 +719,7 @@ export class SurfaceMode {
     u.uFogFar.value = far;
     u.uFogNear.value = far * 0.6;
     const FG = P.fog;
-    const fogK = (1 + storm * 1.6) * (this.game.inShip && this.game.ship.state === 'flying' ? 0.6 : 1);
+    const fogK = (1 + storm * 1.6) * (this.game.inShip && (this.game.ship.state === 'flying' || this.game.ship.state === 'entry') ? 0.6 : 1);
     const HM = this.horror || { fogMul: 1, mistMul: 1, longNightK: 0 };
     u.uFogDensity.value = FG.density * fogK * lerp(1, ZA.dens, ZA.k) * HM.fogMul;
     u.uMistDensity.value = FG.mistDensity * (1 + storm) * lerp(1, ZA.mist, ZA.k) * HM.mistMul;
@@ -975,15 +1159,21 @@ export class SurfaceMode {
       }
     } else if (ship.state === 'flying') {
       const alt = ship.pos.y - groundAt(ship.pos.x, ship.pos.z);
+      // keep a landing zone picked out ahead while low enough to use it
+      this.landScan -= dt;
+      if (alt < LAND_ALT && this.landScan <= 0) {
+        this.landScan = 0.35;
+        const f = ship.forward(_v2).setY(0);
+        if (f.lengthSq() > 1e-4) f.normalize();
+        const lead = 10 + Math.min(ship.speed, 50) * 0.35;
+        this.landSite = this._findLandingSite(ship.pos.x + f.x * lead, ship.pos.z + f.z * lead, ship.yaw(), 18);
+      } else if (alt >= LAND_ALT) this.landSite = null;
       if (input.hit('KeyE')) {
-        if (alt < 55) {
-          const f = ship.forward(_v2).setY(0).normalize();
-          const lx = ship.pos.x + f.x * 8, lz = ship.pos.z + f.z * 8;
-          const gy = this._shipGround(lx, lz, ship.yaw());
-          const top = W.getBlock(lx, W.groundAt(lx, lz), lz);
-          const err = ship.beginLanding(gy, IS_LIQUID[top] === 1);
-          if (err) g.hud.notify(err);
-        } else g.hud.notify('Too high to land - descend below 55u');
+        if (alt < LAND_ALT) {
+          const site = this.landSite || this._findLandingSite(ship.pos.x, ship.pos.z, ship.yaw(), 24);
+          if (site) { ship.beginLanding(site, false); this.landSite = null; g.audio.tone(300, 0.5, 'sine', 0.05, 0.6); }
+          else g.hud.notify('No clear ground here - find an open, level spot');
+        } else g.hud.notify(`Too high to land - descend below ${LAND_ALT}u`);
       }
       if (input.mouseDown(0) && ship.fireCooldown <= 0) {
         ship.fireCooldown = 0.12;
@@ -999,8 +1189,43 @@ export class SurfaceMode {
     const events = ship.update(dt, input, { mode: 'surface', groundAt, ctl });
     for (const e of events) {
       if (e === 'exitAtmosphere' && !this.leaving) { this.leaving = true; g.leavePlanet(); }
-      if (e === 'landed') { g.audio.land(); g.hud.notify('Landed. [E] to exit'); }
+      if (e === 'landed') {
+        g.audio.land(); g.hud.notify('Landed. [E] to exit');
+        ship.shake = 0.45;
+        this._clearFootprint(ship.pos.x, ship.pos.z, ship.yaw(), Math.round(ship.pos.y - 1.75));
+        this._shipDust(14, 5);
+      }
       if (e === 'tookoff') g.hud.notify('Airborne - climb to leave the atmosphere');
+      if (e === 'entered') {
+        g.hud.notify(`Atmosphere entered · [E] to land below ${LAND_ALT}u`);
+        g.audio.setLoop('reentry', false);
+      }
+    }
+    // re-entry burn: plasma over the nose, roar, buffeting; landing and take-off kick up the ground
+    const heat = ship.entryHeat;
+    const pl = ship.model.userData.plasma;
+    if (pl) {
+      pl.group.visible = heat > 0.01;
+      pl.shells.forEach((m, i) => {
+        m.material.opacity = heat * (0.36 - i * 0.09) * (0.75 + Math.random() * 0.5);
+        m.scale.z = (4.5 + i * 3.2) * (0.85 + heat * 0.5 + Math.random() * 0.12);
+      });
+    }
+    if (ship.state === 'entry') {
+      g.audio.setLoop('reentry', true, heat);
+      if (!this.entryShown && ship.anim && ship.anim.t > 0.4) {
+        this.entryShown = true;
+        g.hud.setCenter('ATMOSPHERIC ENTRY', '#ffc89a');
+        this.centerT = 2.4;
+      }
+      if (Math.random() < heat * dt * 30) this.debris.spawn(ship.pos.clone().addScaledVector(ship.forward(_v2), -4 - Math.random() * 3), [1, 0.55 + Math.random() * 0.3, 0.25], 2, 3, 0.7, true);
+    }
+    if (ship.state === 'takeoff' && ship.anim && ship.anim.t < 1.8) {
+      this.dustT -= dt;
+      if (this.dustT <= 0) { this.dustT = 0.09; this._shipDust(4, 3.5); }
+    } else if (ship.state === 'landing' && ship.anim && ship.anim.t > ship.anim.dur * 0.7) {
+      this.dustT -= dt;
+      if (this.dustT <= 0) { this.dustT = 0.1; this._shipDust(3, 3); }
     }
     g.audio.setLoop('engine', ship.state !== 'landed', ship.speed / 120);
     g.audio.setLoop('laser', false);
@@ -1008,6 +1233,47 @@ export class SurfaceMode {
     ship.updateFlames(g.time);
     this.beam.hide();
     this.selection.visible = false;
+  }
+
+  // A landing ship flattens the plants and snaps the trees it comes down on
+  _clearFootprint(x, z, yaw, gy) {
+    const W = this.world;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    let broke = 0;
+    for (let a = -7; a <= 6; a++) for (let b = -7; b <= 7; b++) {
+      const px = Math.floor(x + fx * a + fz * b), pz = Math.floor(z + fz * a - fx * b);
+      for (let y = gy + 1; y <= gy + 7; y++) {
+        const id = W.getBlock(px, y, pz);
+        if (id <= 0) continue;
+        if (SITE_OBSTACLE.has(id) && id !== B.CHEST && id !== B.POD && id !== B.TERMINAL && id !== B.MONOLITH && id !== B.SENTINEL_PILLAR) {
+          W.editBlock(px, y, pz, B.AIR); broke++;
+          if (broke % 6 === 0) this.debris.spawn(new THREE.Vector3(px + 0.5, y + 0.5, pz + 0.5), BLOCKS[id].color || [0.3, 0.6, 0.3], 4, 3, 0.8);
+        } else if (IS_CROSS[id]) W.editBlock(px, y, pz, B.AIR);
+      }
+    }
+    // anything left hanging above the cleared hull (tree crowns) comes down too
+    for (let a = -8; a <= 7; a++) for (let b = -8; b <= 8; b++) {
+      const px = Math.floor(x + fx * a + fz * b), pz = Math.floor(z + fz * a - fx * b);
+      for (let y = gy + 8; y <= gy + 16; y++) {
+        const id = W.getBlock(px, y, pz);
+        if ((id === B.LEAVES || id === B.LOG || id === B.MUSHROOM_CAP || id === B.MUSHROOM_STEM) && !W.isSolid(px, gy + 7, pz)) W.editBlock(px, y, pz, B.AIR);
+      }
+    }
+    if (broke > 3) this.game.audio.noiseHit(0.4, 700, 0.12, 'lowpass');
+  }
+
+  // a ring of dust thrown out from under the ship
+  _shipDust(n, speed) {
+    const W = this.world, ship = this.game.ship;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 4;
+      const x = ship.pos.x + Math.cos(a) * r, z = ship.pos.z + Math.sin(a) * r;
+      const gy = W.groundBelow(x, ship.pos.y, z);
+      const id = W.getBlock(x, gy, z);
+      const col = id > 0 && BLOCKS[id] && BLOCKS[id].color ? BLOCKS[id].color : [0.6, 0.55, 0.5];
+      if (ship.pos.y - gy > 14) continue;
+      this.debris.spawn(new THREE.Vector3(x, gy + 1.2, z), [col[0] * 0.9 + 0.08, col[1] * 0.9 + 0.08, col[2] * 0.9 + 0.08], 3, speed, 1.1);
+    }
   }
 
   _boardShip() {
@@ -1913,6 +2179,7 @@ export class SurfaceMode {
       compass.push({ bearing: (Math.atan2(pos.x - cp.x, -(pos.z - cp.z)) * 180 / Math.PI + 360) % 360, icon, color });
     };
     if (!g.inShip) addM(ship.pos.clone().add(new THREE.Vector3(0, 3, 0)), '▲', 'Starship', '#ff9f5a');
+    else if (ship.state === 'flying' && this.landSite) addM(new THREE.Vector3(this.landSite.x, this.landSite.y + 1.5, this.landSite.z), '▼', 'Landing zone', '#9fffd0');
     for (const m of this.markers) addM(m.pos, m.icon, m.label, m.color);
     for (const c of this.creatures.list) if (c.companion) addM(c.pos.clone().add(new THREE.Vector3(0, c.sp.size * 1.6 + 0.6, 0)), '♥', '', '#ff9bd6');
     hud.updateMarkers(cam, list, g.width, g.height);
@@ -1937,7 +2204,7 @@ export class SurfaceMode {
       if (ship.state === 'landed') hud.setPrompt(this.interior ? (this.pocket === 'derelict' ? '<span class="key">SPACE</span>Undock  <span class="key">E</span>Exit ship' : '<span class="key">SPACE</span>Launch  <span class="key">E</span>Exit ship') : '<span class="key">SPACE</span>Take off  <span class="key">E</span>Exit ship');
       else if (ship.state === 'flying') {
         const alt = ship.pos.y - this.world.groundAt(ship.pos.x, ship.pos.z);
-        hud.setPrompt(alt < 55 ? '<span class="key">E</span>Land' : null);
+        hud.setPrompt(alt < LAND_ALT ? (this.landSite ? '<span class="key">E</span>Land' : 'No landing zone - look for open ground') : null);
       } else hud.setPrompt(null);
       hud.setHelp('W/S throttle · A/D roll · Shift boost · LMB fire\nClimb above 300u to leave the atmosphere');
       hud.setProgress(null);
