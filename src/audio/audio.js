@@ -572,6 +572,15 @@ export class AudioSystem {
         const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 400; f.Q.value = 0.6;
         n.connect(f); f.connect(g); n.start();
         nodes.f = f;
+      } else if (name === 'rover') {
+        const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 42;
+        const o2 = c.createOscillator(); o2.type = 'square'; o2.frequency.value = 63;
+        const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 260; f.Q.value = 2;
+        const n = this._noiseSrc(); const nf = c.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 500;
+        const ng = c.createGain(); ng.gain.value = 0.35;
+        o.connect(f); o2.connect(f); f.connect(g); n.connect(nf); nf.connect(ng); ng.connect(g);
+        o.start(); o2.start(); n.start();
+        nodes.o = o; nodes.o2 = o2; nodes.f = f;
       } else if (name === 'reentry') {
         const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500; f.Q.value = 1.4;
         const n2 = this._noiseSrc(); const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1800; f2.Q.value = 0.8;
@@ -587,7 +596,7 @@ export class AudioSystem {
     });
     if (!L) return;
     const t = c.currentTime;
-    const vols = { laser: 0.09, jetpack: 0.1, engine: 0.14, wind: 0.08, hum: 0.025, reentry: 0.3 };
+    const vols = { laser: 0.09, jetpack: 0.1, engine: 0.14, wind: 0.08, hum: 0.025, reentry: 0.3, rover: 0.13 };
     L.g.gain.setTargetAtTime(on ? vols[name] * (name === 'wind' || name === 'reentry' ? param : 1) : 0, t, on ? 0.05 : 0.12);
     if (name === 'laser' && L.o) L.o.frequency.setTargetAtTime(170 + Math.sin(t * 30) * 12, t, 0.02);
     if (name === 'engine' && on) {
@@ -599,6 +608,12 @@ export class AudioSystem {
     }
     if (name === 'wind' && L.f) L.f.frequency.setTargetAtTime(300 + param * 500, t, 0.5);
     if (name === 'reentry' && L.f) L.f.frequency.setTargetAtTime(300 + param * 900, t, 0.1);
+    if (name === 'rover' && on && L.o) {
+      const k = Math.min(1.3, param);
+      L.o.frequency.setTargetAtTime(38 + k * 60, t, 0.15);
+      L.o2.frequency.setTargetAtTime(57 + k * 95, t, 0.15);
+      L.f.frequency.setTargetAtTime(220 + k * 900, t, 0.15);
+    }
   }
 
   stopAllLoops() {

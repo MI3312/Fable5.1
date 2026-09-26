@@ -15,6 +15,7 @@ import { Horror } from './horror.js';
 import { Riding } from './riding.js';
 import { SunShadows, castShadows } from '../world/shadows.js';
 import { VolumetricClouds } from '../surface/volclouds.js';
+import { Exocraft } from './exocraft.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
@@ -89,6 +90,7 @@ export class SurfaceMode {
     this.creatures = new CreatureManager(this.scene);
     this.shadows = new SunShadows(this.game.renderer);
     this.volClouds = new VolumetricClouds();
+    this.rover = new Exocraft(this);
     this.cloudIn = 0;
     // what creatures can do to the world and to you
     this.cfx = {
@@ -380,6 +382,7 @@ export class SurfaceMode {
     }
     ship.syncModel();
     ship.camInit = false;
+    if (st.rover && this.planet && st.rover.planet === this.planet.id && !this.interior) this.rover.restore(st.rover);
     g.onSurfaceReady();
     this.game.audio.setMood(this.P.biome, this.P.seed);
   }
@@ -615,6 +618,9 @@ export class SurfaceMode {
     if (!this.active) return;
     this.active = false;
     if (this.riding.c) { this.riding.c.ridden = false; this.riding.c = null; }
+    if (this.rover.driving) this.rover.exit();
+    this.game.state.rover = this.rover.present && this.planet ? { planet: this.planet.id, ...this.rover.save() } : this.game.state.rover;
+    this.rover.clear();
     this._clearNPCs();
     this.world.clear();
     this.creatures.clear();
@@ -658,6 +664,8 @@ export class SurfaceMode {
     }
     if (this.pocket === 'derelict') { st.mode = 'space'; st.edits[this.planet.id] = this.world.exportEdits(); return; }
     st.mode = this.interior ? 'station' : 'surface';
+    if (this.rover.driving) this.rover.exit();
+    if (this.rover.present) st.rover = { planet: this.planet.id, ...this.rover.save() };
     st.player = { x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch };
     st.inShip = this.game.inShip;
     st.shipSurface = { x: s.pos.x, y: s.pos.y, z: s.pos.z, yaw: s.yaw(), state: s.state === 'landed' ? 'landed' : 'flying' };
@@ -943,6 +951,13 @@ export class SurfaceMode {
       this.riding.update(dt, ctl);
       focus = player.pos;
       this._updateTool(dt, ctl);
+    } else if (this.rover.driving) {
+      this.rover.update(dt, ctl);
+      focus = this.rover.pos;
+      this.tool.visible = false;
+      g.audio.setLoop('laser', false); g.audio.setLoop('jetpack', false);
+      g.hud.setPrompt('<span class="key">E</span>Exit the Roamer');
+      if (input.hit('KeyE')) this.rover.exit();
     } else {
       const grav = this.P.gravity;
       const ev = player.update(dt, input, this.world, grav, ctl);
@@ -950,6 +965,11 @@ export class SurfaceMode {
       focus = player.pos;
       this._updateTool(dt, ctl);
       if (player.pos.y < -20) { player.pos.y = this.world.groundAt(player.pos.x, player.pos.z) + 2; player.vel.set(0, 0, 0); }
+    }
+    if (this.rover.present && !this.rover.driving) this.rover.update(dt, false);
+    if (!g.inShip && !this.rover.driving && ctl && input.hit('KeyG') && !this.interior) {
+      if (this.rover.unlocked) this.rover.summon();
+      else g.hud.notify('Install the Roamer Geobay (Tech) to summon an exocraft');
     }
     this.world.update(focus.x, focus.z, 5);
     this._updateCamera(dt);
@@ -968,7 +988,7 @@ export class SurfaceMode {
     this.creatures.update(dt, {
       world: this.world, player: pc, fauna: this.P.fauna, time: g.time, playerInShip: g.inShip,
       camPos: g.camera.position, camDir: g.camera.getWorldDirection(new THREE.Vector3()), night: this.daylight < 0.3, zone: this.zoneCur, torch: this.torch && !g.inShip,
-      fx: this.cfx, riding: this.riding.active,
+      fx: this.cfx, riding: this.riding.active || this.rover.driving,
       onAttack: (dmg, c) => { this._hurtPlayer(dmg); g.hud.notify(`${c.sp.name} attacks!`); },
       onCreep: () => { g.audio.tone(90, 0.6, 'sawtooth', 0.05, 0.7); g.audio.noiseHit(0.3, 300, 0.08, 'lowpass'); },
       onRattle: () => g.audio.rattle(),
@@ -1148,6 +1168,9 @@ export class SurfaceMode {
     if (g.inShip) {
       g.ship.updateCamera(g.camera, dt || 0.016, { groundAt: (x, z) => this.world.groundAt(x, z) });
       this.tool.visible = false;
+    } else if (this.rover.driving) {
+      this.rover.updateCamera(g.camera, dt || 0.016);
+      this.tool.visible = false;
     } else {
       g.player.applyCamera(g.camera);
       this.tool.visible = !this.visor;
@@ -1162,12 +1185,14 @@ export class SurfaceMode {
     voxelUniforms.uTime.value = g.time;
     voxelUniforms.uTorch.value.copy(g.camera.position);
     g.camera.getWorldDirection(voxelUniforms.uTorchDir.value);
+    if (this.rover.driving) this.rover.headlight(voxelUniforms.uTorch.value, voxelUniforms.uTorchDir.value);
     // the same beam for creatures and horrors (always present, so materials never recompile)
-    this.torchSpot.position.copy(g.camera.position);
-    this.torchSpot.target.position.copy(g.camera.position).add(voxelUniforms.uTorchDir.value);
+    this.torchSpot.position.copy(voxelUniforms.uTorch.value);
+    this.torchSpot.target.position.copy(voxelUniforms.uTorch.value).add(voxelUniforms.uTorchDir.value);
     this.torchSpot.target.updateMatrixWorld();
     const ambientDark = 1 - this.daylight;
-    this.torchK = (this.torchK || 0) + (((this.torch && !g.inShip) ? 1 : 0) - (this.torchK || 0)) * Math.min(1, (dt || 0) * 8);
+    const lampOn = this.rover.driving ? this.rover.lights : this.torch && !g.inShip;
+    this.torchK = (this.torchK || 0) + ((lampOn ? 1 : 0) - (this.torchK || 0)) * Math.min(1, (dt || 0) * 8);
     voxelUniforms.uTorchOn.value = this.torchK * lerp(1, this.horror.flicker, 0.85);
     this.torchSpot.intensity = voxelUniforms.uTorchOn.value * 70;
     // underwater post effect
@@ -1725,6 +1750,9 @@ export class SurfaceMode {
     if (this.riding.active) {
       prompt = '<span class="key">E</span>Dismount';
       action = () => this.riding.dismount();
+    } else if (this.rover.canBoard(p.pos)) {
+      prompt = '<span class="key">E</span>Drive the Roamer';
+      action = () => this.rover.board();
     } else if (dShip < 6.5 && Math.abs(ship.pos.y - p.pos.y) < 5 && ship.state === 'landed') {
       prompt = '<span class="key">E</span>Board starship';
       action = () => this._boardShip();
@@ -2254,6 +2282,7 @@ export class SurfaceMode {
     this.beam.hide();
     const why = this.lastDamage < 2 ? this.lastHurtBy : null;
     if (this.riding.active) this.riding.dismount();
+    if (this.rover.driving) this.rover.exit();
     this.horror.clear();
     this.horror.setPlanet(this.planet);
     g.menus.showDeath(() => {
@@ -2301,6 +2330,7 @@ export class SurfaceMode {
       compass.push({ bearing: (Math.atan2(pos.x - cp.x, -(pos.z - cp.z)) * 180 / Math.PI + 360) % 360, icon, color });
     };
     if (!g.inShip) addM(ship.pos.clone().add(new THREE.Vector3(0, 3, 0)), '▲', 'Starship', '#ff9f5a');
+    if (this.rover.present && !this.rover.driving) addM(this.rover.pos.clone().add(new THREE.Vector3(0, 3, 0)), '◆', 'Roamer', '#ffc46b');
     else if (ship.state === 'flying' && this.landSite) addM(new THREE.Vector3(this.landSite.x, this.landSite.y + 1.5, this.landSite.z), '▼', 'Landing zone', '#9fffd0');
     for (const m of this.markers) addM(m.pos, m.icon, m.label, m.color);
     for (const c of this.creatures.list) if (c.companion) addM(c.pos.clone().add(new THREE.Vector3(0, c.sp.size * 1.6 + 0.6, 0)), '♥', '', '#ff9bd6');
@@ -2315,7 +2345,8 @@ export class SurfaceMode {
         'LMB collect block · RMB place · 1-9 / wheel select',
         'LMB fire bolts',
       ];
-      hud.setTool(this.visor ? 'Analysis Visor' : TOOL_MODES[this.toolMode], this.visor ? ['Analysis Visor'] : TOOL_MODES, this.visor ? 'Hold LMB on fauna & flora to discover · V to close' : hints[this.toolMode]);
+      if (this.rover.driving) hud.setTool('Roamer', ['Roamer'], `${Math.round(Math.abs(this.rover.speed) * 3.6)} km/h · LMB cannon · Space hop · L lights · E exit`);
+      else hud.setTool(this.visor ? 'Analysis Visor' : TOOL_MODES[this.toolMode], this.visor ? ['Analysis Visor'] : TOOL_MODES, this.visor ? 'Hold LMB on fauna & flora to discover · V to close' : hints[this.toolMode]);
       hud.toolEl.style.display = '';
     } else hud.toolEl.style.display = 'none';
     hud.updateHotbar(g.inventory, g.selectedHot || 0, !g.inShip, this.toolMode === 1 && !this.visor);
