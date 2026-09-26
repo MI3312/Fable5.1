@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { hash32 } from '../core/rng.js';
 import { applyCurvature } from '../core/shaderlib.js';
 import {
-  sdfMesh, voxelLitMaterial, voxelGlowMaterial, voxelGelMaterial,
+  sdfMesh, voxelGlowMaterial, voxelGelMaterial,
   sphere, ellipsoid, capsule, box, smin, noise3, fbm3,
 } from './sdfModel.js';
 
