@@ -23,6 +23,7 @@ export const voxelUniforms = {
   uCaveCol: { value: new THREE.Color(0.05, 0.05, 0.06) },
   uTorch: { value: new THREE.Vector3() },
   uTorchOn: { value: 0 },
+  uTorchDir: { value: new THREE.Vector3(0, 0, -1) },
   uZenith: { value: new THREE.Color(0.3, 0.5, 0.9) },
   uHorizon: { value: new THREE.Color(0.7, 0.8, 1.0) },
   uGroundCol: { value: new THREE.Color(0.2, 0.2, 0.2) },
@@ -76,6 +77,7 @@ uniform vec3 uSkyLight;
 uniform vec3 uArtificial;
 uniform vec3 uTorch;
 uniform float uTorchOn;
+uniform vec3 uTorchDir;
 uniform float uAlpha;
 uniform float uLiquid;
 uniform vec3 uPL[${MAX_POINT_LIGHTS}];
@@ -101,8 +103,13 @@ void main() {
   float emit = vLight.b;
   float art = vLight.a;
   vec3 lightCol = uAmbient + uSkyLight * sky + uArtificial * art;
-  float td = distance(vWorld, uTorch);
-  lightCol += vec3(1.0, 0.92, 0.8) * uTorchOn * pow(clamp(1.0 - td / 20.0, 0.0, 1.0), 1.5) * 1.2;
+  // headlamp: a beam where you look, a little spill around you
+  vec3 tv = vWorld - uTorch;
+  float td = length(tv);
+  float cone = smoothstep(0.8, 0.94, dot(tv / max(td, 0.001), uTorchDir));
+  float beam = cone * pow(clamp(1.0 - td / 38.0, 0.0, 1.0), 1.3) * 1.7;
+  float spill = pow(clamp(1.0 - td / 6.0, 0.0, 1.0), 2.0) * 0.45;
+  lightCol += vec3(1.0, 0.93, 0.82) * uTorchOn * (beam + spill);
   vec3 plGlow = vec3(0.0);
   for (int i = 0; i < ${MAX_POINT_LIGHTS}; i++) {
     float d = distance(vWorld, uPL[i]);

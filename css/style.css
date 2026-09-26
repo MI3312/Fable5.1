@@ -262,3 +262,6 @@ button { font-family: var(--font); }
 .death.horror { background: radial-gradient(ellipse at center, rgba(40, 0, 6, 0.82), rgba(0, 0, 0, 0.97)); }
 .death.horror .t { color: #e8d8d4; letter-spacing: 0.5em; text-shadow: 0 0 18px rgba(255, 30, 40, 0.5); animation: horrorShiver 0.12s infinite alternate; }
 @keyframes horrorShiver { from { transform: translate(-1px, 0); } to { transform: translate(1px, 1px); } }
+
+#title-screen .subtitle.wrong { color: #ff9a9a; letter-spacing: 0.6em; text-shadow: 2px 0 rgba(255, 0, 40, 0.6), -2px 0 rgba(0, 200, 255, 0.4); filter: blur(0.3px); }
+.loading .lh { margin-top: 26px; max-width: 520px; text-align: center; font-family: var(--font-dream); font-size: 15px; color: rgba(220, 210, 230, 0.55); font-style: italic; }

@@ -59,6 +59,9 @@ export class SurfaceMode {
     this.sky = new Sky(this.scene);
     this.giants = new Giants(this.scene);
     this.horror = new Horror(this.scene);
+    this.torchSpot = new THREE.SpotLight(0xfff0dd, 0, 40, 0.42, 0.55, 1.1);
+    this.scene.add(this.torchSpot);
+    this.scene.add(this.torchSpot.target);
     this.clouds = new Clouds(this.scene);
     this.weather = new Weather(this.scene);
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -363,9 +366,12 @@ export class SurfaceMode {
     this.debris.clear();
     this.beam.hide();
     this.game.audio.stopAllLoops();
-    this.game.post.uniforms.uUnderwater.value = 0;
-    this.game.post.uniforms.uHazard.value = 0;
-    this.game.post.uniforms.uVisor.value = 0;
+    const pu = this.game.post.uniforms;
+    pu.uUnderwater.value = 0;
+    pu.uHazard.value = 0;
+    pu.uVisor.value = 0;
+    pu.uDread.value = 0; pu.uPulse.value = 0; pu.uGlitch.value = 0; pu.uFlash.value = 0; pu.uRays.value = 0;
+    this.game.audio.setDread(0);
     this.game.hud.setVisor(false);
     this.visor = false;
   }
@@ -559,7 +565,8 @@ export class SurfaceMode {
   _zoneWeather() {
     const z = this.zoneCur;
     const W = { naraka: ['ash', 0.5], tilevoid: ['sparkle', 0.35], memory: ['dream', 0.3], meadow: ['dream', 0.2] }[z];
-    const type = W ? W[0] : this.P.weather;
+    let type = W ? W[0] : this.P.weather;
+    if (this.horror && this.horror.longNightK > 0.5) type = 'ash';
     if (this.weather.type !== type) this.weather.setType(type);
     return { zoneBase: W ? W[1] : 0, cover: 1 - (this.encK || 0) };
   }
@@ -773,9 +780,15 @@ export class SurfaceMode {
     this.clouds.update(g.camera);
     voxelUniforms.uTime.value = g.time;
     voxelUniforms.uTorch.value.copy(g.camera.position);
+    g.camera.getWorldDirection(voxelUniforms.uTorchDir.value);
+    // the same beam for creatures and horrors (always present, so materials never recompile)
+    this.torchSpot.position.copy(g.camera.position);
+    this.torchSpot.target.position.copy(g.camera.position).add(voxelUniforms.uTorchDir.value);
+    this.torchSpot.target.updateMatrixWorld();
     const ambientDark = 1 - this.daylight;
     this.torchK = (this.torchK || 0) + (((this.torch && !g.inShip) ? 1 : 0) - (this.torchK || 0)) * Math.min(1, (dt || 0) * 8);
     voxelUniforms.uTorchOn.value = this.torchK * lerp(1, this.horror.flicker, 0.85);
+    this.torchSpot.intensity = voxelUniforms.uTorchOn.value * 70;
     // underwater post effect
     const camBlock = this.world.getBlock(g.camera.position.x, g.camera.position.y, g.camera.position.z);
     const pu = g.post.uniforms;

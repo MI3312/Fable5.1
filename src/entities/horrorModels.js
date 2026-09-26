@@ -284,7 +284,29 @@ function haloTexture() {
   haloTex = new THREE.CanvasTexture(c);
   return haloTex;
 }
-export function buildEyes(color) {
+let grinTex = null;
+function grinTexture() {
+  if (grinTex) return grinTex;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 32;
+  const x = c.getContext('2d');
+  x.fillStyle = 'rgba(0,0,0,0)'; x.fillRect(0, 0, 128, 32);
+  // a smile far too wide, and far too many teeth
+  x.fillStyle = '#ffffff';
+  x.beginPath();
+  x.moveTo(4, 8);
+  x.quadraticCurveTo(64, 40, 124, 8);
+  x.quadraticCurveTo(64, 26, 4, 8);
+  x.fill();
+  x.globalCompositeOperation = 'destination-out';
+  x.lineWidth = 1.6;
+  for (let i = 1; i < 26; i++) {
+    const t = i / 26, px = 4 + t * 120;
+    x.beginPath(); x.moveTo(px, 4); x.lineTo(px + (t - 0.5) * 2, 30); x.stroke();
+  }
+  grinTex = new THREE.CanvasTexture(c);
+  return grinTex;
+}
+export function buildEyes(color, grin = false) {
   if (!eyeGeo) { eyeGeo = new THREE.PlaneGeometry(0.2, 0.1); haloGeo = new THREE.PlaneGeometry(0.9, 0.9); }
   const g = new THREE.Group();
   const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
@@ -297,6 +319,12 @@ export function buildEyes(color) {
     const h = new THREE.Mesh(haloGeo, hm);
     h.position.set(s * 0.2, 0, -0.01);
     g.add(h);
+  }
+  if (grin) {
+    const gm = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.22), new THREE.MeshBasicMaterial({ map: grinTexture(), color: 0xfff4e8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    gm.position.y = -0.32;
+    g.add(gm);
+    g.userData.grin = gm.material;
   }
   g.userData.mat = m;
   g.userData.halo = hm;

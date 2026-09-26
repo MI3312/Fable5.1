@@ -60,6 +60,12 @@ strongly recommended.
 - The HUD fades back after a quiet spell, so the world has the screen (you can turn this off in Settings).
 - Textures are painted from mathematics: tileable fbm, Worley cells and domain-warped veins for stone, marble, onyx, flesh, silver, crystal, wood and dream tiles.
 
+**Things in the fog**
+- The dream has started to notice you. Fear is not a number on your HUD: you will hear it, and see it at the edges.
+- Something pale keeps its distance. Something very large walks where the fog is thickest. Some nights are wrong.
+- Your multi-tool listens. When it starts to beep, stop and look around. Your headlamp helps, sometimes.
+- **Fear intensity** in Settings turns the effects down, if the dream becomes too much.
+
 **Lucid Blocks side**
 - Liminal structures generated on every world: **Poolrooms** (tiled halls with still water), **The Backrooms** (maze generator, damp carpet, humming lights), **Endless Hallways**, **Plastic Cities**, **Abandoned Warehouses**, **Reverie Arches**, **Stairways to Nowhere** and **Watcher Shrines**.
 - **Dream Doors** stand in liminal places. Step through one and you come out somewhere else on the planet.
@@ -98,7 +104,7 @@ strongly recommended.
 | V | Analysis visor (hold LMB on creatures or plants) |
 | E | Interact · board or exit ship · land · dock |
 | R | Quick-recharge life support and hazard protection |
-| T | Headlamp |
+| T | Headlamp (a beam; some things do not like it) |
 | Tab / I | Inventory, fabrication, alchemy, technology, discoveries, journey |
 | M | Galaxy map |
 | F2 | Hide HUD |

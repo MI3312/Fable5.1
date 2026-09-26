@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { clamp, lerp } from '../core/rng.js';
 import { B, IS_SOLID, IS_LIQUID } from '../world/blocks.js';
 import { buildHollow, buildChoirFigure, buildMaw, buildWalker, buildEyes, placeSegment } from '../entities/horrorModels.js';
+import { buildTraveller } from '../entities/shipModel.js';
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Vector3();
 const wrapA = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
@@ -23,10 +24,10 @@ export class Horror {
     this.dread = 0; this.pulse = 0; this.hbT = 0; this.breathT = 6; this.whisperT = 20;
     this.shake = 0; this.glitch = 0; this.flash = 0; this.flicker = 1;
     this.blips = []; this.beepT = 0;
-    this.hollow = null; this.walker = null; this.choir = null; this.eyes = []; this.maws = [];
+    this.hollow = null; this.walker = null; this.choir = null; this.eyes = []; this.maws = []; this.visitor = null;
     this.surge = { k: 0, phase: 'none', t: 0, next: rnd(300, 600) };
     this.longNight = false; this.longNightK = 0; this.wasDark = false;
-    this.timers = { hollow: rnd(40, 90), walker: rnd(70, 160), choir: rnd(140, 280), eyes: 3 };
+    this.timers = { hollow: rnd(40, 90), walker: rnd(70, 160), choir: rnd(140, 280), eyes: 3, visitor: rnd(150, 320) };
     this.cause = null;
   }
 
@@ -61,6 +62,7 @@ export class Horror {
     this._updateChoir(dt, ctx);
     this._updateEyes(dt, ctx);
     this._updateMaws(dt, ctx);
+    this._updateVisitor(dt, ctx);
     // dread target
     let t = 0;
     const dark = 1 - ctx.daylight;
@@ -74,6 +76,7 @@ export class Horror {
     if (this.walker) t += 0.25 * clamp(1 - this.walker.dist / 160, 0, 1);
     if (this.choir && this.choir.state === 'noticed') t += 0.35;
     if (this.maws.some((m) => m.state !== 'hidden')) t += 0.35;
+    if (this.visitor) t += this.visitor.state === 'run' || this.visitor.state === 'turn' ? 0.7 : 0.12;
     if (ctx.inShip) t *= 0.35;
     t = clamp(t, 0, 1);
     this.dread += (t - this.dread) * Math.min(1, dt * (t > this.dread ? 0.35 : 0.18));
@@ -555,7 +558,8 @@ export class Horror {
       const gy = this._ground(x, pl.y + 8, z);
       if (gy != null && !IS_SOLID[ctx.world.getBlock(x, gy + 1, z)]) {
         const red = Math.random() < 0.3 + this.longNightK * 0.5;
-        const g = buildEyes(red ? 0xff3a2a : 0xf4f0b0);
+        const grin = this.dreamWorld && Math.random() < 0.18 + this.dread * 0.15;
+        const g = buildEyes(red ? 0xff3a2a : 0xf4f0b0, grin);
         const y = gy + rnd(0.9, 2.2);
         g.position.set(x, y, z);
         this.group.add(g);
@@ -575,9 +579,10 @@ export class Horror {
       e.g.scale.set(1, e.blink > 0 ? 0.08 : 1, 1);
       e.g.userData.mat.opacity = e.fade * clamp(1.5 - v.d / 45, 0.3, 1);
       e.g.userData.halo.opacity = e.g.userData.mat.opacity * 0.45;
+      if (e.g.userData.grin) e.g.userData.grin.opacity = e.g.userData.mat.opacity * 0.85;
     }
     this.eyes = this.eyes.filter((e) => {
-      if (e.gone && e.fade <= 0) { this.group.remove(e.g); e.g.userData.mat.dispose(); e.g.userData.halo.dispose(); return false; }
+      if (e.gone && e.fade <= 0) { this.group.remove(e.g); e.g.userData.mat.dispose(); e.g.userData.halo.dispose(); if (e.g.userData.grin) e.g.userData.grin.dispose(); return false; }
       return true;
     });
   }
@@ -633,6 +638,72 @@ export class Horror {
     }
   }
 
+  // ------------------------------------------------------------------ the Visitor
+  // Someone is standing out there, waving. It looks almost like a person.
+  _updateVisitor(dt, ctx) {
+    const pl = ctx.player;
+    if (!this.visitor) {
+      if (ctx.inShip || !(this.dreamWorld || this.anyZones) || ctx.zone === 'backrooms') return;
+      this.timers.visitor -= dt;
+      if (this.timers.visitor > 0) return;
+      this.timers.visitor = rnd(260, 520);
+      for (let i = 0; i < 10; i++) {
+        const a = this.viewYaw + rnd(-0.55, 0.55), r = rnd(30, 46);
+        const x = pl.x + Math.sin(a) * r, z = pl.z + Math.cos(a) * r;
+        const gy = this._ground(x, pl.y + 8, z);
+        if (gy == null || Math.abs(gy - pl.y) > 9) continue;
+        const model = buildTraveller(Math.floor(Math.random() * 1e6));
+        model.position.set(x, gy, z);
+        this.group.add(model);
+        this.visitor = { model, pos: new THREE.Vector3(x, gy, z), state: 'wave', t: 0, awayT: 0, yaw: 0, spin: 0 };
+        return;
+      }
+      return;
+    }
+    const V = this.visitor, U = V.model.userData;
+    V.t += dt;
+    const dx = pl.x - V.pos.x, dz = pl.z - V.pos.z, dist = Math.hypot(dx, dz);
+    const v = this._view(V.pos, 1.5);
+    const looking = v.dot > 0.8 && v.d < 90;
+    const face = Math.atan2(dx, dz);
+    if (V.state === 'wave') {
+      V.yaw = face;
+      const arm = U.arms.find((a) => a.userData.side > 0) || U.arms[0];
+      if (arm) { arm.rotation.z = 2.5 + Math.sin(V.t * 7) * 0.45; }
+      U.head.rotation.z = Math.sin(V.t * 0.8) * 0.15;
+      if (!looking) V.awayT += dt; else V.awayT = 0;
+      if (V.awayT > 4 || V.t > 90 || ctx.inShip) { this._removeVisitor(); return; }
+      if (dist < 15) { V.state = 'turn'; V.t = 0; ctx.audio.clicks(0.1, this._pan(V.pos)); }
+    } else if (V.state === 'turn') {
+      // the head keeps turning after it should have stopped
+      U.head.rotation.y = Math.min(Math.PI * 2, V.t / 0.6 * Math.PI * 2);
+      U.head.rotation.z = Math.sin(V.t * 40) * 0.2;
+      V.model.position.x = V.pos.x + (Math.random() - 0.5) * 0.06;
+      if (V.t > 0.9) { V.state = 'run'; V.t = 0; ctx.audio.screech(0.12); this.glitch = Math.max(this.glitch, 0.3); }
+    } else if (V.state === 'run') {
+      V.yaw = face;
+      const sp = 13;
+      const nx = V.pos.x + (dx / dist) * sp * dt, nz = V.pos.z + (dz / dist) * sp * dt;
+      const gy = this._ground(nx, V.pos.y + 3, nz);
+      if (gy != null && gy - V.pos.y < 3) { V.pos.x = nx; V.pos.z = nz; V.pos.y += (gy - V.pos.y) * Math.min(1, dt * 10); }
+      for (const a of U.arms) a.rotation.x = Math.sin(V.t * 22 + a.userData.side) * 1.4;
+      U.body.rotation.x = -0.5;
+      if (dist < 1.8 && Math.abs(V.pos.y - pl.y) < 3) {
+        ctx.onHurt(24, 'visitor'); ctx.audio.screech(0.3); this.flash = 0.3; this.glitch = 0.9; this.shake = 1;
+        this._removeVisitor(); return;
+      }
+      if (V.t > 6 || (!looking && V.t > 1.5 && Math.random() < dt * 1.5)) { ctx.audio.swell(0.08); this._removeVisitor(); return; }
+    }
+    V.model.position.set(V.state === 'turn' ? V.model.position.x : V.pos.x, V.pos.y, V.pos.z);
+    V.model.rotation.y = V.yaw + Math.PI;
+  }
+
+  _removeVisitor() {
+    if (!this.visitor) return;
+    this.group.remove(this.visitor.model);
+    this.visitor = null;
+  }
+
   // ------------------------------------------------------------------ the tool's tracker
   _tracker(dt, ctx) {
     const pl = ctx.player;
@@ -645,6 +716,7 @@ export class Horror {
     };
     if (this.hollow && this.hollow.state !== 'dying') add(this.hollow.pos, 'hollow', 60);
     if (this.choir) add(this.choir.center, 'choir', 60);
+    if (this.visitor) add(this.visitor.pos, 'other', 60);
     if (this.walker) add(this.walker.pos, 'walker', 180);
     for (const p of ctx.extraBlips || []) add(p, 'other', 60);
     this.blips = out;

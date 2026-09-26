@@ -79,9 +79,20 @@ export class Menus {
       h('button', { class: 'btn', onclick: () => this.showSettings(() => this.showTitle(hasSave, seedInput.value)) }, '⚙ Settings'),
       h('button', { class: 'btn', onclick: () => this.showControls(() => this.showTitle(hasSave, seedInput.value)) }, '⌨ Controls'),
     );
+    // now and then the subtitle says something else
+    const subtitle = h('div', { class: 'subtitle' }, 'an infinite dream of blocks and stars');
+    const WRONG = ['something is standing in the fog', 'do not look behind you', 'it was waving at you', 'the night is wrong', 'you are not the only one dreaming', 'it knows where the light is'];
+    clearInterval(this.titleTimer);
+    this.titleTimer = setInterval(() => {
+      if (!subtitle.isConnected) { clearInterval(this.titleTimer); return; }
+      if (Math.random() > 0.35) return;
+      subtitle.textContent = WRONG[Math.floor(Math.random() * WRONG.length)];
+      subtitle.classList.add('wrong');
+      setTimeout(() => { subtitle.textContent = 'an infinite dream of blocks and stars'; subtitle.classList.remove('wrong'); }, 380);
+    }, 3500);
     const el = h('div', { id: 'title-screen' },
       h('div', { class: 'logo' }, 'LUCID SKY'),
-      h('div', { class: 'subtitle' }, 'an infinite dream of blocks and stars'),
+      subtitle,
       menu,
       h('div', { class: 'title-foot' }, 'Explore procedurally generated voxel worlds · Mine · Build · Dream · Travel to the Dream Core'),
     );
@@ -95,13 +106,27 @@ export class Menus {
       this.loadingBar = h('i');
       this.loadingText = h('div', { class: 'lt' });
       this.loadingSub = h('div', { class: 'ls' });
-      this.loadingEl = h('div', { class: 'loading' }, this.loadingText, h('div', { class: 'lb' }, this.loadingBar), this.loadingSub);
+      this.loadingHint = h('div', { class: 'lh' });
+      this.loadingEl = h('div', { class: 'loading' }, this.loadingText, h('div', { class: 'lb' }, this.loadingBar), this.loadingSub, this.loadingHint);
       this.root.appendChild(this.loadingEl);
     }
     this.loadingEl.classList.remove('hidden');
     this.loadingText.textContent = text;
     this.loadingSub.textContent = sub || '';
     this.loadingBar.style.width = '0%';
+    const HINTS = [
+      'Light keeps some things away. Not all of them.',
+      'If something waves at you from the fog, do not go to it.',
+      'Your tool listens. When it starts to beep, stop and look around.',
+      'Some things only move when you are not looking. Others only when you are.',
+      'The fog does not always stay where it is.',
+      'Stand still among the Kodama. They are shy, not unkind.',
+      'Your ship is the one place they will not follow.',
+      'The ground in Naraka is soft for a reason. Keep moving.',
+      'If the sky turns the wrong colour, it may be time to leave.',
+      'Something very large is walking out there. It is not interested in you. Probably.',
+    ];
+    this.loadingHint.textContent = HINTS[Math.floor(Math.random() * HINTS.length)];
   }
   setLoading(p) { if (this.loadingBar) this.loadingBar.style.width = Math.round(p * 100) + '%'; }
   hideLoading() { if (this.loadingEl) this.loadingEl.classList.add('hidden'); }
@@ -544,6 +569,7 @@ export class Menus {
       hollow: ['IT FOUND YOU', 'Something pale was kneeling over you when you woke. Its mouth was open. It is still out there.'],
       walker: ['THE SKY CAME DOWN', 'Something very large passed over you. It did not notice you at all.'],
       maw: ['THE GROUND WAS HUNGRY', 'You woke far from where it closed. Your legs remember.'],
+      visitor: ['IT WAS WAVING', 'It looked like someone you knew. It still does, from far enough away.'],
     }[why] || ['YOU WOKE UP', 'The dream loosened its grip. You drift back to your starship, lighter than before.'];
     const el = h('div', { class: 'death' + (why ? ' horror' : '') }, h('div', { class: 't' }, T[0]),
       h('div', { class: 'muted', style: { fontFamily: 'var(--font-dream)', fontSize: '17px' } }, T[1]),
