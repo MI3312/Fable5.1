@@ -111,6 +111,9 @@ void main() {
     lightCol += uPLCol[i] * a * uPLStrength * 1.3;
     plGlow += uPLCol[i] * a * a;
   }
+  // soft knee: stacked lights roll off instead of clipping to white
+  vec3 over = max(lightCol - 1.0, 0.0);
+  lightCol = min(lightCol, vec3(1.0)) + over / (1.0 + over * 2.5);
   vec3 col = base * lightCol * ao;
   col = mix(col, base * (0.85 + 0.25 * ao), emit);
   vec3 viewDir = normalize(vWorld - cameraPosition);
