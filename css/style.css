@@ -253,3 +253,8 @@ button { font-family: var(--font); }
   .quest { display: none; }
   .detail { width: 220px; }
 }
+
+/* HUD settles into the background while nothing is happening */
+#hud .stats, #hud .tool, #hud .hotbar, #hud .location, #hud .compass, #hud .compass-center, #hud .quest, #hud .block-name {
+  opacity: calc(1 - var(--calm, 0) * 0.85);
+}

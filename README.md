@@ -37,6 +37,29 @@ strongly recommended.
 - Planets are infinite voxel worlds, streamed in 16×16×128 chunks by Web Workers. Terrain includes rolling hills, ridged mountains, mesas, overhangs, caves, floating islands, spires and craters. Fake planetary curvature makes each world feel like a small sphere.
 - From orbit, planets are voxel-shaded spheres with oceans, ice caps, atmospheres and rings. Where you enter a planet decides where you land and what time of day it is there.
 
+**Liminality, fog and mystery**
+- **Atmosphere**: every planet has its own fog profile. There is exponential haze, a low ground mist that drifts on noise and pools in valleys, and a horizon that dissolves into mist instead of ending in a line. Lamps, TVs and light panels glow as dynamic point lights with halos in the fog. Caves and interiors swap the open-air mist for a dim indoor haze.
+- **Dream zones**: whole regions of a world have slipped into liminal space, laid out as Worley cells with soft borders. Each zone has its own air: fog colour, density, mist and light.
+  - **Fog Meadow**: tall grass to the end of the world.
+  - **The Poolscape**: tiles, still water and fluorescent roofs.
+  - **Tile Void**: floor tiles floating over a starry abyss.
+  - **Memory**: a silver lattice hanging in white.
+  - **The Infinite Library**: bookshelf rooms, lamps and pits into the void.
+  - **Plastic District**: bright, hollow toy buildings.
+  - **The Lines**: beams drawn across the sky.
+  - **Naraka**: warm flesh ground, onyx graves and spires under a blood-red fog.
+- **Underground Eden**: an endless backrooms layer under liminal worlds, reached by spiral manholes.
+- **Horizon giants**: colossal silhouettes stand in the haze at the edge of the world, such as hands, spires, lollipop trees, doorway cubes, Kodama heads and Preta. They move with you, so you can never reach them.
+- **Lucid vermin**, modelled with signed distance fields and voxelised:
+  - **Kodama**: pale spirits whose heads rattle when you come near.
+  - **Preta**: impossibly tall black figures that stand at the edge of the fog and are never there when you arrive.
+  - **Wildebeest**: shaggy table-backed stilt beasts.
+  - **Gel**: wobbling translucent cubes with a glowing heart.
+  - **BubbleBear**: round pastel bears made of fused bubbles.
+- Distant, unexplained sounds such as footsteps, doors, hums and chimes. Music-box phrases play when you enter a zone, and dream music has a worn-tape warble.
+- The HUD fades back after a quiet spell, so the world has the screen (you can turn this off in Settings).
+- Textures are painted from mathematics: tileable fbm, Worley cells and domain-warped veins for stone, marble, onyx, flesh, silver, crystal, wood and dream tiles.
+
 **Lucid Blocks side**
 - Liminal structures generated on every world: **Poolrooms** (tiled halls with still water), **The Backrooms** (maze generator, damp carpet, humming lights), **Endless Hallways**, **Plastic Cities**, **Abandoned Warehouses**, **Reverie Arches**, **Stairways to Nowhere** and **Watcher Shrines**.
 - **Dream Doors** stand in liminal places. Step through one and you come out somewhere else on the planet.
@@ -89,9 +112,9 @@ lib/three.module.min.js     vendored three.js r186 (npm run vendor regenerates i
 src/core/                   seeded RNG, simplex noise, names, input, shader helpers
 src/data/                   items, biomes, recipes and alchemy, lore
 src/universe/               galaxy, star system and planet generation
-src/world/                  blocks, texture atlas, terrain and structures, mesher, worker, chunk manager
-src/surface/                sky, clouds, weather, effects
-src/entities/               player, ship, creatures, sentinels, models
+src/world/                  blocks, texture atlas, terrain, dream zones, structures, mesher, worker, chunk manager
+src/surface/                sky, clouds, weather, horizon giants, effects
+src/entities/               player, ship, creatures, Lucid vermin, SDF voxel modelling, sentinels
 src/space/                  space scene, planet shaders
 src/game/                   game controller, surface and space modes, inventory, quests
 src/ui/                     HUD, menus, galaxy map

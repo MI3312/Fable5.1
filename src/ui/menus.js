@@ -178,6 +178,8 @@ export class Menus {
     slider('Dream filter', 'dreamFx', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
     const inv = h('input', { type: 'checkbox', checked: s.invertY ? true : null, onchange: (e) => { s.invertY = e.target.checked; g.applySettings(); } });
     rows.push(h('span', {}, 'Invert mouse Y'), inv, h('span'));
+    const fade = h('input', { type: 'checkbox', checked: s.hudFade !== false ? true : null, onchange: (e) => { s.hudFade = e.target.checked; g.applySettings(); } });
+    rows.push(h('span', {}, 'Fade HUD when idle'), fade, h('span'));
     const el = h('div', { class: 'dialog interactive', style: { width: 'min(720px, 94vw)' } },
       h('div', { class: 'dh' }, 'Settings'),
       h('div', { class: 'db' }, h('div', { class: 'settings-grid' }, rows)),

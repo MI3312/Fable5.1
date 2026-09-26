@@ -10,6 +10,7 @@ import { B, BLOCKS, IS_LIQUID, IS_CROSS, IS_AIRLIKE, IS_SOLID, isPlaceable } fro
 import { planStructure, REGION, STRUCTURE_INFO } from '../world/structures.js';
 import { ZONE_INFO, ZONE_ATMOS } from '../world/zones.js';
 import { Sky, Clouds, Weather } from '../surface/sky.js';
+import { Giants } from '../surface/giants.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
@@ -52,6 +53,7 @@ export class SurfaceMode {
     this.materials = createVoxelMaterials(this.atlas);
     this.world = new World(this.scene, this.materials);
     this.sky = new Sky(this.scene);
+    this.giants = new Giants(this.scene);
     this.clouds = new Clouds(this.scene);
     this.weather = new Weather(this.scene);
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -129,6 +131,7 @@ export class SurfaceMode {
     this.world.setPlanet(this.P, g.state.edits[planet.id]);
     this.setRenderDistance(g.settings.renderDist);
     this.creatures.setPlanet(planet);
+    this.giants.setPlanet(planet);
     this.sentinels.setPlanet(this.P.sentinels);
     this.weather.setType(this.P.weather);
     this.clouds.uniforms.uCloudCol.value.setRGB(...this.P.sky.cloud);
@@ -724,6 +727,7 @@ export class SurfaceMode {
     this.viewScene.children[1].intensity = 0.6 * Math.PI * lf;
     this.viewLight.intensity = 0.9 * Math.PI * lf;
     this.sky.update(g.camera);
+    this.giants.update(g.camera, this.sky.uniforms.uSkyFog.value, this.daylight ?? 1);
     this.clouds.update(g.camera);
     voxelUniforms.uTime.value = g.time;
     voxelUniforms.uTorch.value.copy(g.camera.position);
@@ -870,7 +874,7 @@ export class SurfaceMode {
     } else this.selection.visible = false;
 
     // interaction prompt
-    this._interaction(target);
+    this._interaction(target, dt);
 
     const muzzle = this._muzzleWorld(cam);
     const lmb = ctl && input.mouseDown(0);
@@ -1051,6 +1055,15 @@ export class SurfaceMode {
     }
   }
 
+  // Fade the HUD after a quiet spell; any activity, danger or need brings it back.
+  _calm(dt, busy) {
+    const g = this.game, st = g.player.stats, input = g.input;
+    const active = busy || g.inShip || this.visor || input.mouse.buttons || input.pressed.size > 0 && [...input.pressed].some((k) => !/^Key[WASD]$|^Space$|^Shift/.test(k))
+      || this.lastDamage < 6 || st.health < 60 || st.hazard < 35 || st.life < 30 || (this.mine && this.mine.progress > 0) || this.centerT > 0;
+    this.calmT = active ? 0 : (this.calmT || 0) + dt;
+    g.hud.setCalm(g.settings.hudFade !== false && this.calmT > 10 ? 1 : 0, dt);
+  }
+
   _hurtPlayer(dmg) {
     const g = this.game;
     if (g.inShip) { g.ship.shield = Math.max(0, g.ship.shield - dmg * 0.5 / g.ship.upgrades.shield); return; }
@@ -1088,7 +1101,7 @@ export class SurfaceMode {
   }
 
   // ---------------- interaction ----------------
-  _interaction(target) {
+  _interaction(target, dt = 1 / 60) {
     const g = this.game, input = g.input, ship = g.ship, p = g.player, hud = g.hud;
     let prompt = null, action = null;
     const dShip = Math.hypot(ship.pos.x - p.pos.x, ship.pos.z - p.pos.z);
@@ -1131,6 +1144,7 @@ export class SurfaceMode {
     }
     if (this.toolMode === 0 && this.overheated) prompt = prompt || 'Mining beam cooling…';
     hud.setPrompt(prompt);
+    this._calm(dt, !!prompt);
     if (action && input.hit('KeyE')) action();
   }
 

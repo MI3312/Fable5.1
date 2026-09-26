@@ -357,6 +357,13 @@ export class HUD {
 
   setVisor(on) { this.visorFrame.classList.toggle('hidden', !on); }
 
+  // 0 = fully visible, 1 = faded back so the world can breathe
+  setCalm(target, dt) {
+    this.calm = (this.calm || 0) + (target - (this.calm || 0)) * Math.min(1, dt * (target > (this.calm || 0) ? 0.5 : 6));
+    const v = Math.round(this.calm * 100) / 100;
+    if (v !== this.cache.calm) { this.cache.calm = v; this.root.style.setProperty('--calm', v); }
+  }
+
   update(dt) {
     for (const n of this.notes) {
       n.t -= dt;
