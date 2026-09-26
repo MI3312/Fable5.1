@@ -27,6 +27,10 @@ export class PostFX {
       uHazardColor: { value: new THREE.Color(1, 0.5, 0.1) },
       uVisor: { value: 0 },
       uPixel: { value: 0 },
+      uDread: { value: 0 },
+      uPulse: { value: 0 },
+      uGlitch: { value: 0 },
+      uFlash: { value: 0 },
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -36,6 +40,7 @@ export class PostFX {
       fragmentShader: /* glsl */`
         uniform sampler2D tDiffuse;
         uniform float uTime, uVignette, uCA, uGrain, uSat, uFade, uDamage, uWarp, uUnderwater, uDream, uHazard, uVisor, uPixel;
+        uniform float uDread, uPulse, uGlitch, uFlash;
         uniform vec2 uRes;
         uniform vec3 uTint, uFadeColor, uWaterColor, uHazardColor;
         varying vec2 vUv;
@@ -50,9 +55,21 @@ export class PostFX {
             uv.x += sin(uv.y * 20.0 + uTime * 2.0) * 0.004 * uUnderwater;
             uv.y += cos(uv.x * 18.0 + uTime * 1.7) * 0.003 * uUnderwater;
           }
+          // something is wrong with the picture: torn scanlines and jitter
+          if (uGlitch > 0.0) {
+            float band = floor(uv.y * 38.0 + floor(uTime * 17.0) * 7.0);
+            float tear = step(1.0 - uGlitch * 0.35, hash(vec2(band, floor(uTime * 23.0))));
+            uv.x += (hash(vec2(band, uTime)) - 0.5) * 0.06 * tear * uGlitch;
+            uv.y += (hash(vec2(floor(uTime * 31.0), 3.0)) - 0.5) * 0.004 * uGlitch;
+          }
+          // dread breathes at the edge of vision
+          if (uDread > 0.0) {
+            vec2 cc = uv - 0.5;
+            uv = 0.5 + cc * (1.0 - uDread * 0.012 * (0.5 + 0.5 * sin(uTime * 0.9)));
+          }
           vec2 c = uv - 0.5;
           float r = length(c);
-          float ca = uCA * (1.0 + r * 2.0) + uWarp * 0.02 + uDamage * 0.01;
+          float ca = uCA * (1.0 + r * 2.0) + uWarp * 0.02 + uDamage * 0.01 + uDread * 0.0025 * r + uGlitch * 0.012;
           vec3 col = sampleCA(uv, ca);
           if (uWarp > 0.0) {
             vec3 acc = col;
@@ -63,9 +80,10 @@ export class PostFX {
             col = mix(col, acc / 10.0, clamp(uWarp, 0.0, 1.0));
             col += vec3(0.6, 0.5, 1.0) * uWarp * 0.25 * smoothstep(0.2, 0.9, r);
           }
-          // grading
+          // grading: dread drains the colour out of the world
           float l = dot(col, vec3(0.299, 0.587, 0.114));
-          col = mix(vec3(l), col, uSat);
+          col = mix(vec3(l), col, uSat * (1.0 - uDread * 0.55));
+          col = mix(col, col * vec3(0.92, 0.96, 1.04), uDread * 0.6);
           col *= uTint;
           if (uDream > 0.0) {
             col += vec3(0.05, 0.0, 0.07) * uDream * (0.5 + 0.5 * sin(uTime * 0.3 + uv.x * 3.0));
@@ -83,11 +101,14 @@ export class PostFX {
           float edge = smoothstep(0.3, 0.75, r);
           col = mix(col, uHazardColor, edge * uHazard * 0.45);
           col = mix(col, vec3(0.9, 0.05, 0.08), edge * uDamage * 0.7);
-          // vignette
-          col *= 1.0 - uVignette * smoothstep(0.35, 0.85, r);
+          // vignette, tightening with dread and throbbing with the heart
+          float vig = uVignette + uDread * 0.45 + uPulse * 0.12;
+          col *= 1.0 - clamp(vig, 0.0, 0.95) * smoothstep(0.35 - uDread * 0.15, 0.85, r + uPulse * 0.03);
           // grain
           float g = hash(uv * uRes + fract(uTime * 7.13) * 100.0) - 0.5;
-          col += g * uGrain;
+          col += g * (uGrain + uDread * 0.06 + uGlitch * 0.12);
+          if (uGlitch > 0.0) col *= 1.0 - 0.25 * uGlitch * step(0.5, fract(uv.y * uRes.y * 0.25 + uTime * 40.0));
+          col = mix(col, vec3(1.0), clamp(uFlash, 0.0, 1.0));
           col = mix(col, uFadeColor, clamp(uFade, 0.0, 1.0));
           gl_FragColor = vec4(col, 1.0);
         }`,

@@ -11,6 +11,7 @@ import { planStructure, REGION, STRUCTURE_INFO } from '../world/structures.js';
 import { ZONE_INFO, ZONE_ATMOS } from '../world/zones.js';
 import { Sky, Clouds, Weather } from '../surface/sky.js';
 import { Giants } from '../surface/giants.js';
+import { Horror } from './horror.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
@@ -42,6 +43,7 @@ const POINT_LIGHT_COLORS = {
 const VERMIN_DROPS = { kodama: ['kodama_rattle', 1, 1], gel: ['gel_core', 1, 2], bubblebear: ['bubble_foam', 2, 4], wildebeest: ['table_hide', 1, 3], manikin: ['memory_fragment', 1, 1] };
 const ENC_OFFS = [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [7, 7], [-7, -7], [7, -7], [-7, 7]];
 const _v = new THREE.Vector3();
+const _c = new THREE.Color();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 
@@ -55,6 +57,7 @@ export class SurfaceMode {
     this.world = new World(this.scene, this.materials);
     this.sky = new Sky(this.scene);
     this.giants = new Giants(this.scene);
+    this.horror = new Horror(this.scene);
     this.clouds = new Clouds(this.scene);
     this.weather = new Weather(this.scene);
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -136,6 +139,7 @@ export class SurfaceMode {
     this.setRenderDistance(g.settings.renderDist);
     this.creatures.setPlanet(planet);
     this.giants.setPlanet(planet);
+    this.horror.setPlanet(planet);
     this.sentinels.setPlanet(this.P.sentinels);
     this.weather.setType(this.P.weather);
     this.clouds.uniforms.uCloudCol.value.setRGB(...this.P.sky.cloud);
@@ -352,6 +356,7 @@ export class SurfaceMode {
     this._clearNPCs();
     this.world.clear();
     this.creatures.clear();
+    this.horror.clear();
     this.sentinels.clear();
     this.bolts.clear();
     this.debris.clear();
@@ -446,6 +451,12 @@ export class SurfaceMode {
       hor[i] = lerp(hor[i], (hor[0] + hor[1] + hor[2]) / 3 * 0.75, storm * 0.5);
     }
     const ZA = this._zoneAtmos(dt);
+    // a wrong night: the sky bleeds
+    const LN = this.horror ? this.horror.longNightK * (1 - daylight) : 0;
+    if (LN > 0.001) {
+      const zr = [0.035, 0.0, 0.006], hr = [0.2, 0.025, 0.035];
+      for (let i = 0; i < 3; i++) { zen[i] = lerp(zen[i], zr[i], LN); hor[i] = lerp(hor[i], hr[i], LN); }
+    }
     if (ZA.k > 0.001) {
       const nk = lerp(0.25, 1, daylight);
       for (let i = 0; i < 3; i++) {
@@ -477,8 +488,9 @@ export class SurfaceMode {
     u.uFogNear.value = far * 0.6;
     const FG = P.fog;
     const fogK = (1 + storm * 1.6) * (this.game.inShip && this.game.ship.state === 'flying' ? 0.6 : 1);
-    u.uFogDensity.value = FG.density * fogK * lerp(1, ZA.dens, ZA.k);
-    u.uMistDensity.value = FG.mistDensity * (1 + storm) * lerp(1, ZA.mist, ZA.k);
+    const HM = this.horror || { fogMul: 1, mistMul: 1, longNightK: 0 };
+    u.uFogDensity.value = FG.density * fogK * lerp(1, ZA.dens, ZA.k) * HM.fogMul;
+    u.uMistDensity.value = FG.mistDensity * (1 + storm) * lerp(1, ZA.mist, ZA.k) * HM.mistMul;
     u.uMistBase.value = FG.mistBase;
     u.uMistFalloff.value = FG.mistFalloff;
     // mist glows softly in daylight, turns to deep velvet at night
@@ -489,6 +501,7 @@ export class SurfaceMode {
       lerp(mc[1] * ml, u.uSunsetCol.value.g, sunset * 0.35) + (1 - daylight) * 0.02,
       lerp(mc[2] * ml, u.uSunsetCol.value.b, sunset * 0.35) + (1 - daylight) * 0.05,
     );
+    if (LN > 0.001) u.uMistCol.value.lerp(_c.setRGB(0.16, 0.02, 0.03), LN * 0.85);
     if (ZA.k > 0.001) {
       const mk = ZA.k * ZA.sky;
       u.uMistCol.value.setRGB(lerp(u.uMistCol.value.r, ZA.fog[0] * ml, mk), lerp(u.uMistCol.value.g, ZA.fog[1] * ml, mk), lerp(u.uMistCol.value.b, ZA.fog[2] * ml, mk));
@@ -538,7 +551,7 @@ export class SurfaceMode {
       const d = b.dir.clone().applyQuaternion(_q);
       return { dir: [d.x, d.y, d.z], size: b.size, color: b.color };
     }));
-    this.sky.uniforms.uStorm.value = storm;
+    this.sky.uniforms.uStorm.value = Math.max(storm, this.horror ? this.horror.longNightK : 0);
   }
 
   // Dream zones bring their own weather; roofs keep it out.
@@ -641,6 +654,14 @@ export class SurfaceMode {
         if (!g.state.flags.pretaSeen) { g.state.flags.pretaSeen = true; g.hud.setCenter('Was something standing there?', '#d8d0e8'); this.centerT = 3.5; }
       },
     });
+    this.horror.update(dt, {
+      world: this.world, P: this.P, cam: g.camera, player: pc, daylight: this.daylight ?? 1, torch: this.torch && !g.inShip,
+      inShip: g.inShip, interior: this.interior, zone: this.zoneCur, enc: this.encK || 0, time: g.time, fogFar: this.fogFar || 100,
+      playTime: g.state.playTime || 0, audio: g.audio, hud: g.hud, toolOut: this.tool.visible, fear: g.settings.fear ?? 1,
+      centerT: (t) => { this.centerT = t; },
+      extraBlips: this.creatures.list.filter((c) => c.sp.watcher || c.sp.plan === 'manikin').map((c) => c.pos),
+      onHurt: (dmg, why) => { this._hurtPlayer(dmg, why); },
+    });
     this.sentinels.update(dt, {
       world: this.world, player: pc, inShip: g.inShip, time: g.time,
       fire: (from, dir) => { this.bolts.fire(from, dir, 70, 'sentinel', 7, 0xff3020, 2); g.audio.enemyShoot(); },
@@ -711,7 +732,7 @@ export class SurfaceMode {
       if (c[4] === B.CRYSTAL) u.uPLCol.value[i].setRGB(T[30] * 0.7, T[31] * 0.7, T[32] * 0.7);
       else u.uPLCol.value[i].setRGB(col[0], col[1], col[2]);
     }
-    u.uPLStrength.value = this.interior ? 0.5 : lerp(1.0, 0.3, this.daylight ?? 1);
+    u.uPLStrength.value = (this.interior ? 0.5 : lerp(1.0, 0.3, this.daylight ?? 1)) * this.horror.flicker;
   }
 
   _footEvents(ev) {
@@ -752,7 +773,8 @@ export class SurfaceMode {
     voxelUniforms.uTime.value = g.time;
     voxelUniforms.uTorch.value.copy(g.camera.position);
     const ambientDark = 1 - this.daylight;
-    voxelUniforms.uTorchOn.value += (((this.torch && !g.inShip) ? 1 : 0) - voxelUniforms.uTorchOn.value) * Math.min(1, (dt || 0) * 8);
+    this.torchK = (this.torchK || 0) + (((this.torch && !g.inShip) ? 1 : 0) - (this.torchK || 0)) * Math.min(1, (dt || 0) * 8);
+    voxelUniforms.uTorchOn.value = this.torchK * lerp(1, this.horror.flicker, 0.85);
     // underwater post effect
     const camBlock = this.world.getBlock(g.camera.position.x, g.camera.position.y, g.camera.position.z);
     const pu = g.post.uniforms;
@@ -768,6 +790,23 @@ export class SurfaceMode {
     pu.uVignette.value = 0.3 + 0.15 * g.settings.dreamFx;
     pu.uCA.value = 0.001 + 0.0025 * g.settings.dreamFx;
     pu.uGrain.value = 0.02 + 0.03 * g.settings.dreamFx;
+    // fear: shaking, swaying, a picture that will not hold still, lights that stutter
+    const H = this.horror;
+    const fear = g.settings.fear ?? 1;
+    pu.uDread.value = H.dread * fear;
+    pu.uPulse.value = H.pulse * fear;
+    pu.uGlitch.value = H.glitch * fear;
+    pu.uFlash.value = H.flash * fear;
+    const sh = H.shake * fear;
+    if (sh > 0.001 || H.dread > 0.3) {
+      const t = g.time;
+      g.camera.position.x += (Math.random() - 0.5) * sh * 0.22;
+      g.camera.position.y += (Math.random() - 0.5) * sh * 0.22;
+      g.camera.rotation.z += (Math.random() - 0.5) * sh * 0.03 + Math.sin(t * 0.63) * 0.012 * Math.max(0, H.dread - 0.3) * fear;
+      g.camera.rotation.x += Math.sin(t * 0.41) * 0.006 * Math.max(0, H.dread - 0.3) * fear;
+      g.camera.updateMatrixWorld();
+    }
+
     void ambientDark;
   }
 
@@ -880,10 +919,12 @@ export class SurfaceMode {
     const hit = this.world.raycast(origin, dir, range);
     const cHit = this.creatures.raycast(origin, dir, range);
     const dHit = this.sentinels.raycast(origin, dir, range);
+    const hHit = this.visor ? null : this.horror.raycast(origin, dir, range);
     let target = null;
     if (hit) target = { kind: 'block', dist: hit.dist, hit };
     if (cHit && (!target || cHit.dist < target.dist)) target = { kind: 'creature', dist: cHit.dist, c: cHit.creature };
     if (dHit && (!target || dHit.dist < target.dist)) target = { kind: 'drone', dist: dHit.dist, d: dHit.drone };
+    if (hHit && (!target || hHit.dist < target.dist)) target = { kind: 'hollow', dist: hHit.dist };
     this.target = target;
 
     // selection box
@@ -915,6 +956,7 @@ export class SurfaceMode {
         if (target && target.kind === 'block') this._mineBlock(target.hit, dt, 'mine');
         else if (target && target.kind === 'creature') this._damageCreature(target.c, 24 * dt);
         else if (target && target.kind === 'drone') this._damageDrone(target.d, 24 * dt);
+        else if (target && target.kind === 'hollow') this._damageHollow(30 * dt);
         if (target && Math.random() < 0.4) this.debris.spawn(end, [0.7, 1, 1], 1, 2, 0.3, true);
       } else {
         this.heat = Math.max(0, this.heat - dt / (this.overheated ? 2.5 : 1.5));
@@ -1086,10 +1128,11 @@ export class SurfaceMode {
     g.hud.setCalm(g.settings.hudFade !== false && this.calmT > 10 ? 1 : 0, dt);
   }
 
-  _hurtPlayer(dmg) {
+  _hurtPlayer(dmg, why) {
     const g = this.game;
     if (g.inShip) { g.ship.shield = Math.max(0, g.ship.shield - dmg * 0.5 / g.ship.upgrades.shield); return; }
     g.player.damage(dmg);
+    this.lastHurtBy = why || null;
     this.lastDamage = 0;
     g.post.uniforms.uDamage.value = Math.min(1, g.post.uniforms.uDamage.value + dmg / 25);
     g.audio.hurt();
@@ -1119,7 +1162,17 @@ export class SurfaceMode {
     if (d) { this._damageDrone(d, b.damage); this.debris.spawn(b.p, [1, 0.8, 0.5], 5, 3, 0.4, true); return true; }
     const c = this.creatures.hitSphere(b.p, 0.3);
     if (c) { this._damageCreature(c, b.damage); this.debris.spawn(b.p, c.sp.c1, 5, 3, 0.4); return true; }
+    if (this.horror.hitSphere(b.p, 0.3)) { this._damageHollow(b.damage); this.debris.spawn(b.p, [0.8, 0.78, 0.74], 6, 3, 0.5); return true; }
     return false;
+  }
+
+  _damageHollow(dmg) {
+    const g = this.game;
+    if (this.horror.damageHollow(dmg, { audio: g.audio })) {
+      g.inventory.add('memory_fragment', 3); g.hud.notify(null, 'memory_fragment', 3);
+      if (Math.random() < 0.35) { g.inventory.add('void_egg', 1); g.hud.notify(null, 'void_egg', 1); }
+      g.hud.setCenter('It will be back.', '#d8d0e8'); this.centerT = 3;
+    }
   }
 
   // ---------------- interaction ----------------
@@ -1626,6 +1679,9 @@ export class SurfaceMode {
     g.input.unlock();
     g.audio.stopAllLoops();
     this.beam.hide();
+    const why = this.lastDamage < 2 ? this.lastHurtBy : null;
+    this.horror.clear();
+    this.horror.setPlanet(this.planet);
     g.menus.showDeath(() => {
       const p = g.player;
       Object.assign(p.stats, { health: 100, shield: 60, hazard: 100, life: 100, jet: 100 });
@@ -1641,7 +1697,7 @@ export class SurfaceMode {
       g.inventory.remove('units', lost);
       g.hud.notify(`Lost ${lost} units in the dream`);
       g.resume();
-    });
+    }, why);
   }
 
   // ---------------- HUD ----------------

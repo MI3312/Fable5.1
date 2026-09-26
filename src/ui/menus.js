@@ -176,6 +176,7 @@ export class Menus {
     slider('Music volume', 'music', 0, 1, 0.05, (v) => Math.round(v * 100));
     slider('Effects volume', 'sfx', 0, 1, 0.05, (v) => Math.round(v * 100));
     slider('Dream filter', 'dreamFx', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
+    slider('Fear intensity', 'fear', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
     const inv = h('input', { type: 'checkbox', checked: s.invertY ? true : null, onchange: (e) => { s.invertY = e.target.checked; g.applySettings(); } });
     rows.push(h('span', {}, 'Invert mouse Y'), inv, h('span'));
     const fade = h('input', { type: 'checkbox', checked: s.hudFade !== false ? true : null, onchange: (e) => { s.hudFade = e.target.checked; g.applySettings(); } });
@@ -538,9 +539,14 @@ export class Menus {
   }
 
   // ---------------- death / ending ----------------
-  showDeath(onRespawn) {
-    const el = h('div', { class: 'death' }, h('div', { class: 't' }, 'YOU WOKE UP'),
-      h('div', { class: 'muted', style: { fontFamily: 'var(--font-dream)', fontSize: '17px' } }, 'The dream loosened its grip. You drift back to your starship, lighter than before.'),
+  showDeath(onRespawn, why) {
+    const T = {
+      hollow: ['IT FOUND YOU', 'Something pale was kneeling over you when you woke. Its mouth was open. It is still out there.'],
+      walker: ['THE SKY CAME DOWN', 'Something very large passed over you. It did not notice you at all.'],
+      maw: ['THE GROUND WAS HUNGRY', 'You woke far from where it closed. Your legs remember.'],
+    }[why] || ['YOU WOKE UP', 'The dream loosened its grip. You drift back to your starship, lighter than before.'];
+    const el = h('div', { class: 'death' + (why ? ' horror' : '') }, h('div', { class: 't' }, T[0]),
+      h('div', { class: 'muted', style: { fontFamily: 'var(--font-dream)', fontSize: '17px' } }, T[1]),
       h('button', { class: 'btn primary center', onclick: () => { this.closeAll(true); onRespawn(); } }, 'Dream again'));
     this._overlay(el, 'overlay');
     this.open = 'death';

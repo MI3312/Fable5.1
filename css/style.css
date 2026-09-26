@@ -258,3 +258,7 @@ button { font-family: var(--font); }
 #hud .stats, #hud .tool, #hud .hotbar, #hud .location, #hud .compass, #hud .compass-center, #hud .quest, #hud .block-name {
   opacity: calc(1 - var(--calm, 0) * 0.85);
 }
+
+.death.horror { background: radial-gradient(ellipse at center, rgba(40, 0, 6, 0.82), rgba(0, 0, 0, 0.97)); }
+.death.horror .t { color: #e8d8d4; letter-spacing: 0.5em; text-shadow: 0 0 18px rgba(255, 30, 40, 0.5); animation: horrorShiver 0.12s infinite alternate; }
+@keyframes horrorShiver { from { transform: translate(-1px, 0); } to { transform: translate(1px, 1px); } }

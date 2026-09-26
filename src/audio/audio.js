@@ -334,6 +334,173 @@ export class AudioSystem {
     else if (kind === 'steps') { for (let i = 0; i < 6; i++) noise(0.09, 500, 0.05, 'bandpass', 1.2, i * 0.55 + Math.random() * 0.05); }
   }
 
+  // ---------------- horror ----------------
+  _pannedOut(pan = 0, wet = 0.6) {
+    const c = this.ctx;
+    const out = c.createGain();
+    const p = c.createStereoPanner ? c.createStereoPanner() : null;
+    const dry = c.createGain(); dry.gain.value = 1;
+    const rv = c.createGain(); rv.gain.value = wet;
+    if (p) { p.pan.value = Math.max(-1, Math.min(1, pan)); out.connect(p); p.connect(dry); p.connect(rv); }
+    else { out.connect(dry); out.connect(rv); }
+    dry.connect(this.sfxBus); rv.connect(this.reverb);
+    return out;
+  }
+
+  // one "lub-dub"
+  heartbeat(vol = 0.2) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    for (const [at, f, v] of [[0, 58, 1], [0.17, 50, 0.7]]) {
+      const o = c.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * 1.6, t + at); o.frequency.exponentialRampToValueAtTime(f, t + at + 0.09);
+      const g = c.createGain(); this._env(g, t + at, 0.008, vol * v, 0.2);
+      o.connect(g); g.connect(this.sfxBus); o.start(t + at); o.stop(t + at + 0.3);
+    }
+  }
+
+  breath(vol = 0.05, pan = 0) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const out = this._pannedOut(pan, 0.2);
+    for (const [at, dur, f] of [[0, 1.1, 900], [1.3, 1.4, 600]]) {
+      const n = this._noiseSrc(); const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.4;
+      bp.frequency.setValueAtTime(f, t + at); bp.frequency.linearRampToValueAtTime(f * 1.4, t + at + dur);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0, t + at); g.gain.linearRampToValueAtTime(vol, t + at + dur * 0.4); g.gain.linearRampToValueAtTime(0, t + at + dur);
+      n.connect(bp); bp.connect(g); g.connect(out); n.start(t + at, Math.random()); n.stop(t + at + dur + 0.1);
+    }
+  }
+
+  // the jumpscare: a torn, detuned shriek
+  screech(vol = 0.32) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const shaper = c.createWaveShaper();
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(x * 6); }
+    shaper.curve = curve;
+    const g = c.createGain(); this._env(g, t, 0.005, vol, 1.1);
+    shaper.connect(g); g.connect(this.sfxBus); g.connect(this.reverb);
+    for (const [f, d] of [[1250, 0], [1310, 13], [620, -9], [1880, 5]]) {
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.32, t + 1.0);
+      o.detune.value = d;
+      const lfo = c.createOscillator(); const lg = c.createGain(); lfo.frequency.value = 31; lg.gain.value = f * 0.06;
+      lfo.connect(lg); lg.connect(o.frequency);
+      o.connect(shaper); o.start(t); o.stop(t + 1.2); lfo.start(t); lfo.stop(t + 1.2);
+    }
+    this.noiseHit(0.5, 2500, vol * 0.8, 'highpass', 0.5);
+  }
+
+  // colossal footfall; k = closeness 0..1
+  boom(k = 1, pan = 0) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const out = this._pannedOut(pan, 0.9);
+    const o = c.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(52, t); o.frequency.exponentialRampToValueAtTime(24, t + 1.4);
+    const g = c.createGain(); this._env(g, t, 0.01, 0.34 * k, 1.8);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + 2);
+    const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 180;
+    const ng = c.createGain(); this._env(ng, t, 0.01, 0.3 * k, 1.2);
+    n.connect(f); f.connect(ng); ng.connect(out); n.start(t, Math.random()); n.stop(t + 1.4);
+  }
+
+  // many voices singing one wrong chord
+  choir(vol = 0.05, pan = 0, dur = 4) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const out = this._pannedOut(pan, 1.2);
+    const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 720; f1.Q.value = 5;
+    const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1150; f2.Q.value = 6;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.4); g.gain.linearRampToValueAtTime(0, t + dur);
+    f1.connect(g); f2.connect(g); g.connect(out);
+    for (const m of [57, 58, 63, 64, 69]) {
+      for (const det of [-9, 7]) {
+        const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = midi(m); o.detune.value = det;
+        o.connect(f1); o.connect(f2); o.start(t); o.stop(t + dur + 0.1);
+      }
+    }
+  }
+
+  // a swell that rises and is cut off dead
+  swell(vol = 0.12) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2;
+    f.frequency.setValueAtTime(200, t); f.frequency.exponentialRampToValueAtTime(3000, t + 1.2);
+    const o = c.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(420, t + 1.2);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 1.2); g.gain.setValueAtTime(0, t + 1.21);
+    n.connect(f); f.connect(g); o.connect(g); g.connect(this.sfxBus); g.connect(this.reverb);
+    n.start(t, Math.random()); n.stop(t + 1.3); o.start(t); o.stop(t + 1.3);
+  }
+
+  whisper(vol = 0.05, pan = 0) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const out = this._pannedOut(pan, 0.8);
+    for (let i = 0; i < 5; i++) {
+      const at = i * 0.28 + Math.random() * 0.1, dur = 0.2 + Math.random() * 0.25;
+      const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 8;
+      f.frequency.setValueAtTime(1400 + Math.random() * 1800, t + at); f.frequency.linearRampToValueAtTime(900 + Math.random() * 2400, t + at + dur);
+      const g = c.createGain(); this._env(g, t + at, 0.03, vol, dur);
+      n.connect(f); f.connect(g); g.connect(out); n.start(t + at, Math.random()); n.stop(t + at + dur + 0.1);
+    }
+  }
+
+  // dry clicks from something that should not be making them
+  clicks(vol = 0.06, pan = 0) {
+    if (!this.ctx) return;
+    const out = this._pannedOut(pan, 0.4);
+    const c = this.ctx, t = c.currentTime;
+    for (let i = 0; i < 7; i++) {
+      const at = i * (0.05 + Math.random() * 0.04);
+      const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800 + Math.random() * 900; f.Q.value = 9;
+      const g = c.createGain(); this._env(g, t + at, 0.002, vol, 0.03);
+      n.connect(f); f.connect(g); g.connect(out); n.start(t + at, Math.random()); n.stop(t + at + 0.06);
+    }
+  }
+
+  wet(vol = 0.2) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 8;
+    f.frequency.setValueAtTime(300, t); f.frequency.linearRampToValueAtTime(1400, t + 0.15); f.frequency.linearRampToValueAtTime(200, t + 0.5);
+    const g = c.createGain(); this._env(g, t, 0.01, vol, 0.6);
+    n.connect(f); f.connect(g); g.connect(this.sfxBus); n.start(t, Math.random()); n.stop(t + 0.7);
+    this.tone(70, 0.4, 'sawtooth', vol * 0.3, 0.5);
+  }
+
+  trackerBeep(k = 0.5) {
+    if (!this.ctx) return;
+    this.tone(900 + k * 500, 0.07, 'sine', 0.03 + k * 0.03);
+  }
+
+  // continuous dread: a low beating drone, and the music draining away
+  setDread(k) {
+    if (!this.ctx) return;
+    const c = this.ctx;
+    const L = this._loop('dread', () => {
+      const g = c.createGain(); g.gain.value = 0; g.connect(this.sfxBus); g.connect(this.reverb);
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 220; f.connect(g);
+      const oscs = [];
+      for (const [fr, ty] of [[41.2, 'sine'], [43.1, 'sine'], [61.7, 'triangle'], [87.3, 'sawtooth']]) {
+        const o = c.createOscillator(); o.type = ty; o.frequency.value = fr; o.connect(f); o.start(); oscs.push(o);
+      }
+      const n = this._noiseSrc(); const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 90; nf.Q.value = 3;
+      const ng = c.createGain(); ng.gain.value = 0.6; n.connect(nf); nf.connect(ng); ng.connect(g); n.start();
+      return { g, f, oscs };
+    });
+    if (!L) return;
+    const t = c.currentTime;
+    const v = Math.max(0, k - 0.18) * 0.16;
+    L.g.gain.setTargetAtTime(v, t, 0.8);
+    L.f.frequency.setTargetAtTime(160 + k * 420, t, 0.8);
+    this.musicBus.gain.setTargetAtTime(this.volumes.music * (1 - Math.min(0.85, k * 0.9)), t, 1.2);
+  }
+
   // dry wooden clicking - a Kodama's head rattling
   rattle() {
     if (!this.ctx) return;

@@ -27,7 +27,7 @@ const SAVE_KEY = 'lucidsky.save.v1';
 const SETTINGS_KEY = 'lucidsky.settings.v1';
 
 const DEFAULT_SETTINGS = {
-  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, hudFade: true,
+  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, hudFade: true, fear: 1,
 };
 
 function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
