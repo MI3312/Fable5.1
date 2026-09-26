@@ -88,6 +88,8 @@ export class HUD {
     this.questProg = h('div', { class: 'qp' });
     this.questEl = h('div', { class: 'quest' }, this.questTitle, this.questDesc, this.questProg);
     R.appendChild(this.questEl);
+    this.missionEl = h('div', { class: 'mission' });
+    R.appendChild(this.missionEl);
 
     // tool
     this.toolModes = h('div', { class: 'modes' });
@@ -294,6 +296,13 @@ export class HUD {
     this.set(this.questTitle, 'qt', title || '');
     this.set(this.questDesc, 'qd', desc || '');
     this.set(this.questProg, 'qp', prog || '');
+  }
+
+  setMission(text) {
+    if (this.cache.mission === text) return;
+    this.cache.mission = text;
+    this.missionEl.textContent = text ? '◈ ' + text : '';
+    this.missionEl.style.display = text ? '' : 'none';
   }
 
   setTool(mode, modes, hint) {

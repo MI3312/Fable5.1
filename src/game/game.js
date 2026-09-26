@@ -19,6 +19,7 @@ import { MEMORIES, STATION_CHATTER, ENDING } from '../data/lore.js';
 import { B, BLOCKS } from '../world/blocks.js';
 import { Ship } from '../entities/ship.js';
 import { Player } from '../entities/player.js';
+import { Missions } from './missions.js';
 import { Corruption } from './corruption.js';
 import { SurfaceMode } from './surfaceMode.js';
 import { SpaceMode } from './spaceMode.js';
@@ -56,6 +57,7 @@ export class Game {
     this.inventory.onChange = () => { this.invDirty = true; };
     this.ship = new Ship(1);
     this.corruption = new Corruption(this);
+    this.missions = new Missions(this);
     this.surface = new SurfaceMode(this);
     this.space = new SpaceMode(this);
 
@@ -765,6 +767,7 @@ export class Game {
     }
     const q = QUESTS[qi];
     this.hud.setQuest(q.title, q.desc, q.progress ? q.progress(this) : '');
+    this.hud.setMission(this.missions.hudLine());
   }
 
   // ---------------- main loop ----------------

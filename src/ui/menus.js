@@ -478,7 +478,8 @@ export class Menus {
 
   _renderJourney(b) {
     const g = this.game;
-    const left = h('div', { class: 'col grow' }, h('div', { class: 'section-title' }, 'The Lucid Path'));
+    const rk = g.missions.rank();
+    const left = h('div', { class: 'col grow' }, h('div', { class: 'section-title' }, `Dreamwalker rank: ${rk.title} (${rk.done} contracts)`), h('div', { class: 'section-title' }, 'The Lucid Path'));
     for (const q of g.questLog()) {
       left.appendChild(h('div', { class: 'recipe' + (q.done ? '' : q.current ? '' : ' locked') },
         h('div', {}, h('div', { class: 'rn' }, (q.done ? '✓ ' : q.current ? '▸ ' : '· ') + q.title), h('div', { class: 'ri muted' }, q.desc))));
@@ -495,7 +496,7 @@ export class Menus {
     if (tab) this.stationTab = tab;
     this.stationTab = this.stationTab || 'sell';
     const head = h('div', { class: 'panel-head' }, h('div', { class: 'ptitle' }, this.game.system.station.name.toUpperCase()));
-    for (const [id, label] of [['sell', 'Sell'], ['buy', 'Buy'], ['tech', 'Tech Merchant'], ['services', 'Services']]) {
+    for (const [id, label] of [['sell', 'Sell'], ['buy', 'Buy'], ['missions', 'Missions'], ['tech', 'Tech Merchant'], ['services', 'Services']]) {
       head.appendChild(h('div', { class: 'tab' + (this.stationTab === id ? ' on' : ''), onclick: () => { this.stationTab = id; this.openStation(); } }, label));
     }
     head.appendChild(h('div', { class: 'panel-close', onclick: () => { this.game.closeStationMenu(); } }, 'CLOSE [ESC]'));
@@ -536,6 +537,28 @@ export class Menus {
           h('div', { class: 'row-flex' },
             h('button', { class: 'btn small', disabled: inv.units >= price ? null : true, onclick: () => { g.buy(id, 1, price); this.renderStation(); } }, 'Buy 1'),
             h('button', { class: 'btn small', disabled: inv.units >= price * 10 ? null : true, onclick: () => { g.buy(id, 10, price); this.renderStation(); } }, 'Buy 10'))));
+      }
+    } else if (this.stationTab === 'missions') {
+      const M = g.missions, rk = M.rank();
+      col.appendChild(h('div', { class: 'section-title' }, `Dreamwalker rank: ${rk.title} · ${rk.done} contracts${rk.next ? ` · next rank at ${rk.next}` : ''}`));
+      if (M.S.active.length) {
+        col.appendChild(h('div', { class: 'section-title' }, 'Your contracts'));
+        for (const m of M.S.active) {
+          const prog = m.type === 'deliver' ? `${Math.min(inv.count(m.item), m.need)}/${m.need}` : `${m.have}/${m.need}`;
+          col.appendChild(h('div', { class: 'recipe' },
+            h('div', {}, h('div', { class: 'rn' }, `${m.title} · ${prog}`), h('div', { class: 'ri muted' }, `${m.desc} Reward ${fmt(m.units)}u + ${m.nanites} nanites.`)),
+            h('div', { class: 'row-flex' },
+              m.type === 'deliver' ? h('button', { class: 'btn small primary', disabled: M.canDeliver(m) ? null : true, onclick: () => { M.deliver(m); this.renderStation(); } }, 'Deliver') : null,
+              h('button', { class: 'btn small', onclick: () => { M.abandon(m); this.renderStation(); } }, 'Abandon'))));
+        }
+      }
+      col.appendChild(h('div', { class: 'section-title' }, 'Contracts posted in this system'));
+      const offers = M.offers();
+      if (!offers.length) col.appendChild(h('div', { class: 'muted' }, 'The board is empty. New contracts are posted as time passes.'));
+      for (const o of offers) {
+        col.appendChild(h('div', { class: 'recipe' },
+          h('div', {}, h('div', { class: 'rn' }, o.title), h('div', { class: 'ri muted' }, `${o.desc} Reward ${fmt(o.units)}u + ${o.nanites} nanites${o.bonus ? ' + ' + ITEMS[o.bonus[0]].name : ''}.`)),
+          h('button', { class: 'btn small primary', disabled: M.S.active.length < 3 ? null : true, onclick: () => { M.accept(o); this.renderStation(); } }, 'Accept')));
       }
     } else if (this.stationTab === 'tech') {
       col.appendChild(h('div', { class: 'section-title' }, 'Upgrades for nanites'));

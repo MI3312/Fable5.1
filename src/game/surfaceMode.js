@@ -967,6 +967,7 @@ export class SurfaceMode {
       if (player.pos.y < -20) { player.pos.y = this.world.groundAt(player.pos.x, player.pos.z) + 2; player.vel.set(0, 0, 0); }
     }
     if (this.rover.present && !this.rover.driving) this.rover.update(dt, false);
+    this._missionGuide(dt);
     if (!g.inShip && !this.rover.driving && ctl && input.hit('KeyG') && !this.interior) {
       if (this.rover.unlocked) this.rover.summon();
       else g.hud.notify('Install the Roamer Geobay (Tech) to summon an exocraft');
@@ -1364,6 +1365,31 @@ export class SurfaceMode {
     if (broke > 3) this.game.audio.noiseHit(0.4, 700, 0.12, 'lowpass');
   }
 
+  // contracts on this world: hunters you're paid to find show up more, zones get a waypoint
+  _missionGuide(dt) {
+    this.guideT = (this.guideT || 0) - dt;
+    if (this.guideT > 0 || !this.planet || this.interior) return;
+    this.guideT = 4;
+    const g = this.game, here = this.planet.id;
+    const act = g.missions.S.active.filter((m) => m.planet === here);
+    this.creatures.bounties = new Set(act.filter((m) => m.type === 'bounty').map((m) => m.plan));
+    const T = this.world.terrain, p = g.player.pos;
+    for (const m of act) {
+      if (m.type !== 'zone') continue;
+      let best = null;
+      for (let r = 24; r <= 640 && !best; r += 24) {
+        const n = Math.max(12, Math.floor(r / 10));
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+          const zi = T.zoneAt(x, z);
+          if (zi.type === m.zone && zi.blend > 0.7) { best = { x, z }; break; }
+        }
+      }
+      if (best) this._addMarker(new THREE.Vector3(best.x, T.heightAt(Math.floor(best.x), Math.floor(best.z)) + 4, best.z), '◈', ZONE_INFO[m.zone].name, '#ffc46b', 4.5, 'mz:' + m.zone);
+    }
+  }
+
   // a ring of dust thrown out from under the ship
   _shipDust(n, speed) {
     const W = this.world, ship = this.game.ship;
@@ -1636,6 +1662,7 @@ export class SurfaceMode {
       if (drop) { const k = drop[1] + Math.floor(Math.random() * (drop[2] - drop[1] + 1)); g.inventory.add(drop[0], k); g.hud.notify(null, drop[0], k); }
       if (c.sp.plan === 'lurker') { const k = 12 + Math.floor(Math.random() * 14); g.inventory.add('ferrite', k); g.hud.notify(null, 'ferrite', k); }
       g.audio.explosion(0.5);
+      g.missions.event('kill', { plan: c.sp.plan, planet: this.planet.id });
       if (c.sp.hostile) {
         if (!g.state.flags['slain_' + c.sp.plan]) { g.state.flags['slain_' + c.sp.plan] = true; g.hud.toast(`${c.sp.name} slain`, c.sp.note); }
       } else if (this.sentinels.raise(1)) { g.hud.toast('Sentinels Alerted', 'Fauna harmed'); g.audio.alert(); }
@@ -1827,6 +1854,7 @@ export class SurfaceMode {
       else g.hud.notify(null, id, n);
     }
     this.world.setBlock(hit.x, hit.y, hit.z, B.CHEST_OPEN);
+    if (this.planet && !this.interior) g.missions.event('cache', { planet: this.planet.id });
     this.debris.spawn(new THREE.Vector3(hit.x + 0.5, hit.y + 1, hit.z + 0.5), [1, 0.85, 0.6], 16, 3, 1.2, true);
     g.audio.discover();
   }
@@ -2009,6 +2037,7 @@ export class SurfaceMode {
         : { title: 'Unknown Fauna', rows: [['Status', 'Hold LMB to analyse'], ['Distance', Math.round(target.dist) + 'u']] };
       if (!known) onDone = () => {
         d.creatures[sp.id] = { name: sp.name, planet: this.planet.name };
+        g.missions.event('scan', { planet: this.planet.id });
         const units = sp.rarity === 'Rare' ? 5000 : sp.rarity === 'Uncommon' ? 2500 : 1200;
         g.inventory.add('units', units); g.inventory.add('nanites', 8);
         g.hud.toast('Fauna Discovered', `${sp.name} · +${units} units · +8 nanites`);
@@ -2028,6 +2057,7 @@ export class SurfaceMode {
           : { title: 'Unknown Flora', rows: [['Status', 'Hold LMB to analyse']] };
         if (!known) onDone = () => {
           d.flora[fk] = { name, planet: this.planet.name };
+          g.missions.event('scan', { planet: this.planet.id });
           g.inventory.add('units', 600);
           g.hud.toast('Flora Discovered', `${name} · +600 units`);
           g.audio.discover();
@@ -2143,6 +2173,7 @@ export class SurfaceMode {
     this.zoneCur = zone;
     const mood = { naraka: 'naraka', tilevoid: 'void', library: 'library' }[zone];
     g.audio.setMood(mood || this.P.biome, this.P.seed);
+    if (zone && this.planet) g.missions.event('zone', { zone, planet: this.planet.id });
     if (!zone || g.inShip) return zone;
     const info = ZONE_INFO[zone];
     const d = g.state.discoveries;

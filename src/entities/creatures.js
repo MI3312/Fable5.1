@@ -509,7 +509,8 @@ export class CreatureManager {
       if (!sp.hostile) continue;
       if (this.list.filter((q) => q.sp === sp && !q.dead).length >= CAP[sp.plan]) continue;
       if (sp.plan === 'swarm' && !ctx.night) continue;
-      if (Math.random() > CH[sp.plan] * (0.6 + Math.min(1, ctx.fauna))) continue;
+      const wanted = this.bounties && this.bounties.has(sp.plan) ? 3 : 1;
+      if (Math.random() > CH[sp.plan] * wanted * (0.6 + Math.min(1, ctx.fauna))) continue;
       const a = Math.random() * Math.PI * 2;
       const r = sp.plan === 'sandmaw' ? 50 : sp.plan === 'lurker' ? 18 + Math.random() * 22 : 30 + Math.random() * 25;
       const x = P.x + Math.cos(a) * r, z = P.z + Math.sin(a) * r;
