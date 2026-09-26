@@ -31,6 +31,9 @@ export class PostFX {
       uPulse: { value: 0 },
       uGlitch: { value: 0 },
       uFlash: { value: 0 },
+      uSunPos: { value: new THREE.Vector2(0.5, 0.5) },
+      uRays: { value: 0 },
+      uRayCol: { value: new THREE.Color(1, 0.95, 0.85) },
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -40,7 +43,9 @@ export class PostFX {
       fragmentShader: /* glsl */`
         uniform sampler2D tDiffuse;
         uniform float uTime, uVignette, uCA, uGrain, uSat, uFade, uDamage, uWarp, uUnderwater, uDream, uHazard, uVisor, uPixel;
-        uniform float uDread, uPulse, uGlitch, uFlash;
+        uniform float uDread, uPulse, uGlitch, uFlash, uRays;
+        uniform vec2 uSunPos;
+        uniform vec3 uRayCol;
         uniform vec2 uRes;
         uniform vec3 uTint, uFadeColor, uWaterColor, uHazardColor;
         varying vec2 vUv;
@@ -79,6 +84,20 @@ export class PostFX {
             }
             col = mix(col, acc / 10.0, clamp(uWarp, 0.0, 1.0));
             col += vec3(0.6, 0.5, 1.0) * uWarp * 0.25 * smoothstep(0.2, 0.9, r);
+          }
+          // light shafts through the fog: march toward the sun, gathering bright sky
+          if (uRays > 0.0) {
+            vec2 delta = (uSunPos - uv) / 28.0;
+            vec2 suv = uv;
+            float acc = 0.0, w = 1.0;
+            for (int i = 0; i < 28; i++) {
+              suv += delta;
+              vec3 sc = texture2D(tDiffuse, clamp(suv, 0.001, 0.999)).rgb;
+              acc += smoothstep(0.62, 1.1, dot(sc, vec3(0.33))) * w;
+              w *= 0.955;
+            }
+            float fall = 1.0 - smoothstep(0.0, 0.9, length((uv - uSunPos) * vec2(uRes.x / uRes.y, 1.0)));
+            col += uRayCol * acc / 28.0 * uRays * (0.35 + 0.65 * fall);
           }
           // grading: dread drains the colour out of the world
           float l = dot(col, vec3(0.299, 0.587, 0.114));

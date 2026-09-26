@@ -105,10 +105,10 @@ export class Universe {
         // the first world has already begun to slip into the dream
         params.zones = [['natural', 5], ['meadow', 2.2], ['poolscape', 1.6], ['library', 1.0], ['plasticity', 0.9], ['memory', 0.6], ['tilevoid', 0.5]];
         params.underlayer = true;
-        params.fog.density = 1 / 72;
-        params.fog.mistDensity = 0.032;
+        params.fog.density = 1 / 60;
+        params.fog.mistDensity = 0.04;
         params.fog.mistFalloff = 12;
-        params.fog.skyFog = 0.72;
+        params.fog.skyFog = 0.8;
       }
       const angle = prng.range(0, Math.PI * 2);
       const radius = biome === 'dead' ? prng.range(700, 1000) : prng.range(1100, 1700);

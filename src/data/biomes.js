@@ -230,11 +230,11 @@ export function makePlanetParams(seed, biome, opts = {}) {
 
   // Atmosphere: every world is misty; liminal worlds are drowned in dream-fog
   const FOG = {
-    lush: [1 / 150, 0.014, 2, 9, 0.35], frozen: [1 / 105, 0.022, 3, 12, 0.5], scorched: [1 / 120, 0.01, 1, 8, 0.4],
-    toxic: [1 / 80, 0.032, 3, 11, 0.6], radioactive: [1 / 90, 0.024, 2, 10, 0.55], barren: [1 / 135, 0.008, 1, 7, 0.35],
-    exotic: [1 / 95, 0.022, 4, 12, 0.55], liminal: [1 / 52, 0.04, 7, 14, 0.85], dead: [1 / 420, 0.0, 0, 5, 0.0],
-  }[biome] || [1 / 150, 0.01, 2, 8, 0.3];
-  const foggy = rng.chance(0.25) ? rng.range(1.3, 1.9) : rng.range(0.8, 1.15);
+    lush: [1 / 108, 0.02, 3, 10, 0.5], frozen: [1 / 78, 0.03, 4, 13, 0.62], scorched: [1 / 90, 0.015, 2, 9, 0.52],
+    toxic: [1 / 60, 0.044, 4, 12, 0.72], radioactive: [1 / 66, 0.034, 3, 11, 0.66], barren: [1 / 96, 0.013, 2, 8, 0.48],
+    exotic: [1 / 68, 0.032, 5, 13, 0.68], liminal: [1 / 44, 0.052, 8, 15, 0.9], dead: [1 / 170, 0.009, 1, 6, 0.25],
+  }[biome] || [1 / 108, 0.015, 2, 9, 0.42];
+  const foggy = rng.chance(0.35) ? rng.range(1.3, 2.0) : rng.range(0.85, 1.15);
   P.fog = {
     density: FOG[0] * foggy,
     mistDensity: FOG[1] * foggy,

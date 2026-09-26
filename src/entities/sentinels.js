@@ -140,6 +140,7 @@ export class SentinelManager {
       const look = (d.hostile || this.heat > 50) && dist < 60 ? P : d.pos.clone().add(d.vel);
       const yaw = Math.atan2(look.x - d.pos.x, look.z - d.pos.z) + Math.PI;
       d.model.rotation.y = yaw;
+      if (d.model.userData.ring) { d.model.userData.ring.rotation.z += dt * (d.hostile ? 3 : 0.8); d.model.userData.ring.rotation.x = Math.PI / 2 + Math.sin(d.bob) * 0.25; }
       const eye = d.model.userData.eyeMat;
       eye.color.copy(d.hostile ? EYE_HOSTILE : this.heat > 50 ? EYE_SUS : EYE_CALM);
       if (d.hostile) {

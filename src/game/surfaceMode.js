@@ -15,7 +15,8 @@ import { Horror } from './horror.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
-import { buildMultitool, buildTraveller } from '../entities/shipModel.js';
+import { buildTraveller } from '../entities/shipModel.js';
+import { buildMultitool, animateMultitool } from '../entities/multitool.js';
 import { STATION_FLOOR, STATION_PAD, STATION_TERMINALS, STATION_NPCS } from '../world/station.js';
 import { STATION_CHATTER } from '../data/lore.js';
 import { Universe } from '../universe/universe.js';
@@ -790,6 +791,17 @@ export class SurfaceMode {
     pu.uVignette.value = 0.3 + 0.15 * g.settings.dreamFx;
     pu.uCA.value = 0.001 + 0.0025 * g.settings.dreamFx;
     pu.uGrain.value = 0.02 + 0.03 * g.settings.dreamFx;
+    // sun shafts through the fog
+    {
+      const u = voxelUniforms;
+      _v.copy(u.uSunDir.value).multiplyScalar(500).add(g.camera.position).project(g.camera);
+      const facing = g.camera.getWorldDirection(_v2).dot(u.uSunDir.value);
+      const on = !this.interior && _v.z < 1 && facing > 0.1 ? smoothstep(0.1, 0.5, facing) : 0;
+      pu.uSunPos.value.set(_v.x * 0.5 + 0.5, _v.y * 0.5 + 0.5);
+      const fogginess = clamp(u.uFogDensity.value * 60 + (this.sky.uniforms.uSkyFog.value || 0) * 0.5, 0, 1.4);
+      pu.uRays.value = on * (this.daylight ?? 1) * (1 - (this.stormK || 0) * 0.7) * 0.55 * fogginess * (1 - (this.encK || 0));
+      pu.uRayCol.value.copy(u.uSunColor.value).lerp(u.uSunsetCol.value, u.uSunset.value * 0.6);
+    }
     // fear: shaking, swaying, a picture that will not hold still, lights that stutter
     const H = this.horror;
     const fear = g.settings.fear ?? 1;
@@ -995,10 +1007,16 @@ export class SurfaceMode {
     // viewmodel animation
     const t = this.tool;
     const bob = player.bob;
-    t.position.set(0.3 + Math.cos(bob * 0.5) * 0.01, -0.25 + Math.sin(bob) * 0.012 - this.recoil * 0.015, -0.72 + this.recoil * 0.05);
-    t.rotation.set(0.03 + this.recoil * 0.2, 0.08, 0);
-    t.userData.glowMat.color.set(this.overheated ? 0xff4020 : TOOL_COLORS[mode]);
+    // idle sway, breathing, and a little tremble when afraid
+    const tr = this.horror.dread > 0.5 ? (this.horror.dread - 0.5) * 0.006 : 0;
+    const br = Math.sin(g.time * 1.3) * 0.004;
+    t.position.set(0.27 + Math.cos(bob * 0.5) * 0.01 + (Math.random() - 0.5) * tr, -0.235 + Math.sin(bob) * 0.012 - this.recoil * 0.02 + br + (Math.random() - 0.5) * tr, -0.6 + this.recoil * 0.06);
+    t.rotation.set(0.04 + this.recoil * 0.22 + br * 0.5, 0.1, Math.sin(g.time * 0.9) * 0.01);
     if (beamOn) t.position.x += (Math.random() - 0.5) * 0.004;
+    animateMultitool(t, dt, {
+      mode, color: this.overheated ? 0xff4020 : TOOL_COLORS[mode], heat: this.heat || 0, overheated: this.overheated,
+      active: beamOn || this.recoil > 0.3, time: g.time, blips: this.horror.blips, dread: this.horror.dread, ping: this.horror.trackerPing || 0,
+    });
   }
 
   // Where the view-model's muzzle appears on screen, pushed into the world along that pixel's ray

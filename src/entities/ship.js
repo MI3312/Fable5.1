@@ -56,6 +56,7 @@ export class Ship {
   }
 
   updateFlames(t) {
+    for (const n of this.model.userData.nav || []) n.l.visible = ((t * 0.8 + n.phase) % 1) < 0.12;
     const flames = this.model.userData.flames || [];
     const flying = this.state !== 'landed';
     const k = !flying ? 0.05 : this.pulsing ? 5 : this.boosting ? 3 : 0.8 + this.speed / 120;
