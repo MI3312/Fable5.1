@@ -11,6 +11,10 @@ export class Input {
     this.sensitivity = 1;
     this.invertY = false;
     this.onLockChange = null;
+    this.avgMove = 4;
+    this.settleUntil = 0;
+    this.spikes = 0;
+    this.lastSpike = -1e9;
 
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -31,8 +35,18 @@ export class Input {
     window.addEventListener('mousemove', (e) => {
       this.mouse.x = e.clientX; this.mouse.y = e.clientY;
       if (this.locked) {
-        this.mouse.dx += e.movementX;
-        this.mouse.dy += e.movementY;
+        // Browsers occasionally report one bogus, enormous movement (pointer-lock re-entry, cursor
+        // warping at the window edge, frame hitches on some drivers). That's what whips the view
+        // round; throw such spikes away instead of turning the camera.
+        const mx = e.movementX || 0, my = e.movementY || 0;
+        const mag = Math.hypot(mx, my);
+        const now = performance.now();
+        if (now < this.settleUntil) return;
+        // a genuine fast swipe arrives as a run of large events; a glitch is a lone one
+        if (mag > 220 && mag > this.avgMove * 14 + 60 && now - this.lastSpike > 60) { this.lastSpike = now; this.spikes++; return; }
+        this.avgMove += (mag - this.avgMove) * 0.12;
+        this.mouse.dx += mx;
+        this.mouse.dy += my;
       }
     });
     canvas.addEventListener('wheel', (e) => {
@@ -42,6 +56,9 @@ export class Input {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
+      // the first events after (re)locking carry the jump from wherever the cursor was
+      this.settleUntil = performance.now() + 90;
+      this.mouse.dx = 0; this.mouse.dy = 0;
       if (!this.locked) { this.mouse.buttons = 0; this.keys.clear(); }
       if (this.onLockChange) this.onLockChange(this.locked);
     });
@@ -49,10 +66,20 @@ export class Input {
 
   lock() {
     if (!this.locked && this.canvas.requestPointerLock) {
+      // raw (unaccelerated) movement where the browser supports it - it also sidesteps the
+      // Chromium spike bug; fall back to a plain lock when it's refused
+      const plain = () => {
+        try {
+          const p = this.canvas.requestPointerLock();
+          if (p && p.catch) p.catch(() => {});
+        } catch (e) { /* ignore */ }
+      };
+      if (this.rawOk === false) { plain(); return; }
       try {
-        const p = this.canvas.requestPointerLock();
-        if (p && p.catch) p.catch(() => {});
-      } catch (e) { /* ignore */ }
+        const p = this.canvas.requestPointerLock({ unadjustedMovement: true });
+        if (p && p.catch) p.catch((err) => { if (err && err.name === 'NotSupportedError') { this.rawOk = false; plain(); } });
+        else if (!p) this.rawOk = false;
+      } catch (e) { this.rawOk = false; plain(); }
     }
   }
 
