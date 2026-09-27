@@ -351,3 +351,4 @@ button { font-family: var(--font); }
 .encounter .enc-detail { font-size: 12px; opacity: 0.85; margin-top: 2px; }
 .encounter .enc-bar { height: 3px; background: rgba(255, 255, 255, 0.14); margin-top: 5px; }
 .encounter .enc-bar i { display: block; height: 100%; width: 100%; background: currentColor; color: #fff; background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.5)); }
+.settings-grid + .gpu-line { margin-top: 12px; font-size: 12px; font-family: var(--font-ui, sans-serif); }

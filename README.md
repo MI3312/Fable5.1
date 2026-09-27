@@ -43,6 +43,9 @@ walks, builds, flies, drives and fishes in the same world, and sees each other's
   cd desktop && npm install && npm start   # Steam must be running
   ```
 
+  On Windows laptops the shell registers itself for the dedicated GPU automatically. Settings shows
+  which GPU the game is using. See [`desktop/README.md`](desktop/README.md) for details.
+
   `npm start` launches the prebuilt `dist/lucid-sky.html`. If it's missing or out of date, it
   installs the root build tools and rebuilds it first; `npm run start:fresh` always rebuilds.
 

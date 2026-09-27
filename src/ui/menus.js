@@ -253,9 +253,10 @@ export class Menus {
           !p.you && !fromTitle ? h('button', { class: 'btn small', onclick: () => N.travelTo(p.id) }, 'Travel to') : null));
       }
       body.appendChild(h('div', { class: 'row-flex' },
-        steam ? h('button', { class: 'btn small', onclick: () => N.invite() }, 'Invite friends') : null,
+        steam && N.t && N.t.overlay ? h('button', { class: 'btn small', onclick: () => N.invite() }, 'Invite friends') : null,
         h('button', { class: 'btn small', onclick: () => { N.leave(); this.showMultiplayer(back, fromTitle); } }, 'Leave shared dream')));
-      body.appendChild(h('div', { class: 'muted' }, 'Z ping a spot · X wave · Enter chat'));
+      if (steam && !(N.t && N.t.overlay)) body.appendChild(h('div', { class: 'muted' }, 'Friends join from your Steam friends list (Join Game) or Multiplayer > Find dreams.'));
+      body.appendChild(h('div', { class: 'muted' }, 'Z ping a spot · B wave · Enter chat'));
     } else {
       if (!fromTitle) {
         body.appendChild(h('div', { class: 'section-title' }, 'Share this dream'));
@@ -312,7 +313,8 @@ export class Menus {
     rows.push(h('span', {}, 'Fade HUD when idle'), fade, h('span'));
     const el = h('div', { class: 'dialog interactive', style: { width: 'min(720px, 94vw)' } },
       h('div', { class: 'dh' }, 'Settings'),
-      h('div', { class: 'db' }, h('div', { class: 'settings-grid' }, rows)),
+      h('div', { class: 'db' }, h('div', { class: 'settings-grid' }, rows),
+        h('div', { class: 'muted gpu-line' }, `GPU: ${g.gpuName()}`)),
       h('div', { class: 'dbtns' }, h('button', { class: 'btn small center primary', onclick: () => { g.saveSettings(); back(); } }, 'Done')));
     this._overlay(el);
     this.open = this.open || 'settings';

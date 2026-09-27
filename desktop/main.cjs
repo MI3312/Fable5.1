@@ -8,6 +8,7 @@
 // App ID 480 is Valve's public "Spacewar" test app; swap STEAM_APP_ID for a real one when shipping.
 const path = require('path');
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 const { app, BrowserWindow, ipcMain } = require('electron');
 
 const STEAM_APP_ID = Number(process.env.LUCID_STEAM_APP_ID || 480);
@@ -20,11 +21,48 @@ let lobby = null;       // current matchmaking.Lobby
 let win = null;
 const members = new Set();
 
+// ---------------------------------------------------------------- GPU
+// Laptops with two GPUs give an unknown program like electron.exe the power-saving integrated one,
+// while the browser has long since been assigned the dedicated one. So, before Chromium starts its
+// GPU process: on Windows, register this executable for the high-performance GPU (the same entry
+// Settings > System > Display > Graphics writes), and ask Chromium for the discrete GPU and never
+// a software fallback. Set LUCID_GPU=default to leave the system's choice alone.
+function preferDiscreteGpu() {
+  if (process.env.LUCID_GPU === 'default') return;
+  app.commandLine.appendSwitch('force_high_performance_gpu');
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  if (process.platform !== 'win32') return;
+  const key = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
+  const exe = process.execPath;
+  let cur = '';
+  try {
+    const out = execFileSync('reg', ['query', key, '/v', exe], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    const m = out.match(/REG_SZ\s+(.*)$/m);
+    cur = m ? m[1].trim() : '';
+  } catch (e) { /* no entry yet */ }
+  if (/GpuPreference=2;/.test(cur)) return;
+  if (/GpuPreference=1;/.test(cur)) { console.log('[lucid-sky] Windows is set to run this app on the power-saving GPU; leaving that choice alone.'); return; }
+  const value = cur.replace(/GpuPreference=\d;/, '') + 'GpuPreference=2;';
+  try {
+    execFileSync('reg', ['add', key, '/v', exe, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true, stdio: 'ignore' });
+    console.log(`[lucid-sky] registered ${exe} for the high-performance GPU`);
+  } catch (e) {
+    console.warn('[lucid-sky] could not set the GPU preference automatically:', e.message);
+  }
+}
+preferDiscreteGpu();
+
 // ---------------------------------------------------------------- Steam
-// The overlay needs Chromium switches, and those only take effect before the app is ready.
+// The Steam overlay (Shift+Tab, the invite dialog) is opt-in: it needs Chromium to run the GPU
+// inside the main process with DirectComposition off, which costs frame rate. Friends can still
+// join from the Steam friends list or Multiplayer > Find dreams without it.
+// Set LUCID_STEAM_OVERLAY=1 to turn it on. Its switches only take effect before the app is ready.
+const OVERLAY = process.env.LUCID_STEAM_OVERLAY === '1';
 try {
   steamworks = require('steamworks.js');
-  try { steamworks.electronEnableSteamOverlay(); } catch (e) { /* overlay is optional */ }
+  // the game redraws every frame anyway, so skip the helper's forced 60 Hz window invalidation
+  if (OVERLAY) { try { steamworks.electronEnableSteamOverlay(true); } catch (e) { /* overlay is optional */ } }
 } catch (e) {
   steamError = 'steamworks.js is not installed (run npm install in desktop/)';
 }
@@ -105,7 +143,7 @@ function adoptLobby(l) {
 ipcMain.handle('net:init', () => {
   if (!steam && !initSteam()) return { ok: false, error: steamError || 'Steam is not running' };
   const id = steam.localplayer.getSteamId();
-  return { ok: true, steamId: String(id.steamId64), name: steam.localplayer.getName(), appId: STEAM_APP_ID };
+  return { ok: true, steamId: String(id.steamId64), name: steam.localplayer.getName(), appId: STEAM_APP_ID, overlay: OVERLAY };
 });
 
 ipcMain.handle('net:createLobby', async (_e, type, max) => {
@@ -186,9 +224,20 @@ function createWindow() {
   win.on('closed', () => { win = null; });
 }
 
+// which GPU Chromium actually picked, and whether WebGL is hardware accelerated
+async function logGpu() {
+  try {
+    const status = app.getGPUFeatureStatus();
+    const info = await app.getGPUInfo('basic');
+    const devs = (info.gpuDevice || []).map((d) => `${d.active ? '*' : ' '} vendor 0x${(d.vendorId || 0).toString(16)} device 0x${(d.deviceId || 0).toString(16)}${d.driverVersion ? ' driver ' + d.driverVersion : ''}`);
+    console.log(`[lucid-sky] WebGL2: ${status.webgl2} · GPUs (* = in use):\n  ${devs.join('\n  ')}`);
+  } catch (e) { /* diagnostics only */ }
+}
+
 app.whenReady().then(() => {
   initSteam();
   createWindow();
+  logGpu();
   setInterval(pumpPackets, 1000 / 60);
 });
 

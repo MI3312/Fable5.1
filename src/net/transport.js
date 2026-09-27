@@ -36,6 +36,7 @@ export class SteamTransport extends Base {
     if (!info || !info.ok) throw new Error(info && info.error ? info.error : 'Steam is not running');
     this.id = info.steamId;
     this.name = info.name || 'Dreamer';
+    this.overlay = !!info.overlay;
     N.onPacket((from, text) => {
       let m;
       try { m = JSON.parse(text); } catch (e) { return; }

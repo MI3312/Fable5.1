@@ -25,8 +25,34 @@ plays together needs to run it with the same app ID.
    rebuild after changing the game, run `npm run start:fresh`.
 
 3. In game: **Esc → Multiplayer → Host · friends only** (or **public**). Friends can join from your
-   Steam profile (*Join Game*), from an invite (**Invite friends**), or from **Multiplayer → Find
-   dreams** on the title screen.
+   Steam profile (*Join Game*), from **Multiplayer → Find dreams** on the title screen, or from an
+   invite when the Steam overlay is on (see below).
+
+## Performance and graphics card
+
+On laptops with two GPUs, Windows gives an unrecognised program like `electron.exe` the
+power-saving integrated GPU. Your browser was assigned the dedicated one long ago, which is why
+the game can run well in the browser and badly here. The shell fixes this itself:
+
+- **Windows:** on first launch it registers its `electron.exe` for the **high-performance GPU**.
+  This is the same entry that *Settings > System > Display > Graphics* writes, under
+  `HKCU\Software\Microsoft\DirectX\UserGpuPreferences`. If you've deliberately chosen *Power
+  saving* for it there, that choice is left alone.
+- **Chromium:** it asks for the discrete GPU (`force_high_performance_gpu`), and it ignores the
+  GPU blocklist so WebGL never falls back to slow software rendering.
+- **Checking it:** *Settings* in the game shows the GPU that WebGL is actually running on, and the
+  console lists the adapters with the active one starred.
+
+If it still picks the wrong GPU, add
+`desktop\node_modules\electron\dist\electron.exe` under *Settings > System > Display >
+Graphics* and choose *High performance* (or use the NVIDIA / AMD control panel). Then restart the
+game. To make the shell leave GPU selection alone, set `LUCID_GPU=default`.
+
+**Steam overlay:** it's off by default. The overlay needs Chromium to run the GPU inside the main
+process with DirectComposition disabled, which costs frame rate. Friends can still join from the
+Steam friends list (*Join Game*) or *Multiplayer > Find dreams*. To turn the overlay and the in-game
+*Invite friends* dialog on, set `LUCID_STEAM_OVERLAY=1` before `npm start`
+(`set LUCID_STEAM_OVERLAY=1` in cmd, `$env:LUCID_STEAM_OVERLAY=1` in PowerShell).
 
 `steam_appid.txt` holds the app ID for launches outside Steam. To use your own app, set
 `LUCID_STEAM_APP_ID` or edit `STEAM_APP_ID` in `main.cjs` and `steam_appid.txt`.

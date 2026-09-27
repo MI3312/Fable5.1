@@ -962,6 +962,23 @@ export class Game {
     input.endFrame();
   }
 
+  // the graphics adapter WebGL is actually running on (so you can check it isn't the integrated one)
+  gpuName() {
+    if (this._gpuName) return this._gpuName;
+    let name = 'unknown';
+    try {
+      const gl = this.renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+      // "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)" -> the card
+      const m = name.match(/^ANGLE \(([^,]+),\s*(.+?)(?:\s+(?:Direct3D|D3D|OpenGL|Vulkan|Metal)[^,]*)?(?:,[^)]*)?\)$/);
+      if (m) name = m[2].trim();
+      if (/SwiftShader|llvmpipe|Software/i.test(name)) name += ' (software rendering - very slow)';
+    } catch (e) { /* not available */ }
+    this._gpuName = name;
+    return name;
+  }
+
   render() {
     // sometimes the picture simply stops
     const C = this.corruption;
