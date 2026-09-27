@@ -51,6 +51,8 @@ export class Buffs {
       const [k, sec] = dish.buff;
       this.add(k, sec);
       g.hud.toast(ITEMS[id].name, `${BUFFS[k].name} · ${BUFFS[k].desc} (${Math.round(sec / 60)} min)`);
+      // a meal shared: friends standing nearby get the buff too
+      if (g.net.active) g.net.shareMeal(id, k, sec);
     } else g.hud.notify(`Ate ${ITEMS[id].name}${heal ? ` · +${heal} health` : ''}`);
     if (!dish && Math.random() < 0.25) { st.life = Math.max(0, st.life - 6); g.hud.notify('That was not entirely cooked.'); }
     g.audio.tone(520, 0.12, 'sine', 0.06, 1.4);

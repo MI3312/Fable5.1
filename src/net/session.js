@@ -9,6 +9,8 @@
 import { SteamTransport, LocalTransport } from './transport.js';
 import { RemotePlayers, peerColor } from './avatars.js';
 import { CHUNK } from '../config.js';
+import { BUFFS } from '../data/food.js';
+import { ITEMS } from '../data/items.js';
 
 const SNAP_HZ = 12;
 
@@ -259,6 +261,15 @@ export class NetSession {
         g.audio.tone(1200, 0.12, 'triangle', 0.06, 0.7);
         break;
       }
+      case 'meal': {
+        const w = this._where(), p = g.player.pos;
+        if (m.p !== w.p || w.m !== 's' || Math.hypot(p.x - m.x, p.y - m.y, p.z - m.z) > 12) break;
+        if (!BUFFS[m.b]) break;
+        g.buffs.add(m.b, Math.min(600, Number(m.sec) || 0));
+        g.hud.toast(`${this._name(from)} shared a meal`, `${ITEMS[m.dish] ? ITEMS[m.dish].name : 'Something warm'} · ${BUFFS[m.b].name}`);
+        g.audio.tone(620, 0.2, 'sine', 0.05, 1.3);
+        break;
+      }
       case 'emote':
         this.remote.wave(from);
         g.hud.notify(`${this._name(from)} waves`);
@@ -352,6 +363,13 @@ export class NetSession {
     this.t.send('*', { k: 'ping', p: w.p, x: pt.x, y: pt.y + 0.5, z: pt.z }, true);
     this.pings.push({ x: pt.x, y: pt.y + 0.5, z: pt.z, name: 'You', color: '#ffffff', t: 20 });
     g.audio.tone(1200, 0.12, 'triangle', 0.06, 0.7);
+  }
+
+  shareMeal(dish, buff, sec) {
+    const w = this._where();
+    if (!this.active || w.m !== 's') return;
+    const p = this.game.player.pos;
+    this.t.send('*', { k: 'meal', dish, b: buff, sec, p: w.p, x: p.x, y: p.y, z: p.z }, true);
   }
 
   wave() { if (this.active) { this.t.send('*', { k: 'emote', e: 'wave' }, true); this.game.hud.notify('You wave'); } }

@@ -153,7 +153,7 @@ where everyone is. Other players' ships, Roamers and fishing lines are drawn in 
 - Install the **Dream Line** (Tech). It adds a fourth multi-tool mode (Q) that casts a glowing tether into water, dreaming pools, magma or acid.
 - Wait for the bobber to dip, hook it (LMB within a second), then reel: hold LMB to pull and ease off when the fish surges, or the line snaps.
 - What bites depends on the liquid, the hour, the weather and how far out you cast: Dream Minnows, Lucid Eels, Star Koi at dawn and dusk, deep-water Abyss Lanterns at night, Magma Rays, Bile Koi, Reverie Carp. Some catches are not fish.
-- Build a **Nutrient Processor** and cook dishes that heal and leave a buff: *Starlight Sashimi* (swift), *Deep Eel Broth* (slow breath), *Ember Stew* and *Acid Ceviche* (weatherproof), *Cloud Cake* (buoyant jetpack), *Lantern Soup* (you glow in the dark) and *Lullaby Soup* (fear takes longer).
+- Build a **Nutrient Processor** and cook dishes that heal and leave a buff: *Starlight Sashimi* (swift), *Deep Eel Broth* (slow breath), *Ember Stew* and *Acid Ceviche* (weatherproof), *Cloud Cake* (buoyant jetpack), *Lantern Soup* (you glow in the dark) and *Lullaby Soup* (fear takes longer). In a shared dream, friends standing nearby when you eat get the buff too.
 - An angler's log records every species and your personal bests. Missions boards post **Angler** contracts.
 
 **Contracts**
