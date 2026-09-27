@@ -606,6 +606,8 @@ export class Menus {
       stampede: ['STAMPEDE', 'The herd did not see you. There were a great many of them.'],
       diver: ['TAKEN FROM ABOVE', 'Listen for the screech.'],
       lurker: ['IT WAS NOT A ROCK', 'The ore was bait. It usually is.'],
+      lightning: ['STRUCK', 'Stay off the high ground when the sky turns white.'],
+      meteor: ['THE SKY FELL', 'You were standing exactly where it wanted to land.'],
     }[why];
     const text = T || beast || ['YOU WOKE UP', 'The dream loosened its grip. You drift back to your starship, lighter than before.'];
     const el = h('div', { class: 'death' + (T ? ' horror' : '') }, h('div', { class: 't' }, text[0]),

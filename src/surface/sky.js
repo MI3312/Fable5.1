@@ -28,6 +28,11 @@ export class Sky {
       uSkyFog: { value: 0 },
       uMistCol: voxelUniforms.uMistCol,
       uClouds: { value: null },
+      uAurora: { value: 0 },
+      uAuroraA: { value: new THREE.Color(0.2, 1.0, 0.55) },
+      uAuroraB: { value: new THREE.Color(0.75, 0.3, 1.0) },
+      uRainbow: { value: 0 },
+      uFlash: { value: 0 },
       uCloudOn: { value: 0 },
       uScreen: { value: new THREE.Vector2(1, 1) },
     };
@@ -54,6 +59,8 @@ export class Sky {
         uniform float uSkyFog;
         uniform vec3 uMistCol;
         uniform sampler2D uClouds;
+        uniform float uAurora, uRainbow, uFlash;
+        uniform vec3 uAuroraA, uAuroraB;
         uniform float uCloudOn;
         uniform vec2 uScreen;
         varying vec3 vDir;
@@ -98,6 +105,20 @@ export class Sky {
             vec3 dc = mix(uDreamCol, uDreamCol.bgr, 0.5 + 0.5 * sin(uTime * 0.1 + dir.x * 2.0));
             col += dc * rib * 0.35 * uDream * (0.5 + 0.5 * night + 0.3);
           }
+          // aurora: stacked curtains of rays drifting along a wavering band
+          if (uAurora > 0.01 && dir.y > 0.01) {
+            vec3 acc = vec3(0.0);
+            for (int i = 0; i < 3; i++) {
+              float fi = float(i);
+              vec2 p = dir.xz / (dir.y + 0.1) * (1.0 + fi * 0.3);
+              float wave = sin(p.x * 0.8 + uTime * 0.05 + fi * 1.7) * 0.6 + sin(p.x * 2.1 - uTime * 0.07) * 0.22;
+              float band = exp(-pow((p.y - wave - 1.1 + fi * 0.35) * 2.0, 2.0));
+              float rays = 0.5 + 0.5 * sin(p.x * 21.0 + uTime * 0.5 + sin(p.x * 3.0 + uTime * 0.1) * 4.0);
+              rays *= 0.55 + 0.45 * vnoise(vec3(p.x * 5.0, uTime * 0.25, fi * 7.0));
+              acc += mix(uAuroraA, uAuroraB, clamp(fi * 0.35 + dir.y * 0.9, 0.0, 1.0)) * band * rays;
+            }
+            col += acc * uAurora * smoothstep(0.01, 0.2, dir.y) * 0.6;
+          }
           // celestial bodies
           for (int i = 0; i < ${MAX_BODIES}; i++) {
             float sz = uBodySize[i];
@@ -130,6 +151,15 @@ export class Sky {
             vec4 cl = texture2D(uClouds, gl_FragCoord.xy / uScreen);
             col = col * cl.a + cl.rgb;
           }
+          // rainbow, 42 degrees from the point opposite the sun
+          if (uRainbow > 0.01) {
+            float ang = acos(clamp(dot(dir, -uSunDir), -1.0, 1.0)) * 57.29578;
+            float hue = clamp((42.4 - ang) / 1.9, 0.0, 1.0) * 0.78;
+            vec3 rb = clamp(abs(mod(hue * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+            float a = smoothstep(40.2, 40.7, ang) * (1.0 - smoothstep(42.0, 42.6, ang));
+            col += rb * a * uRainbow * 0.38 * smoothstep(-0.02, 0.12, dir.y);
+          }
+          col += vec3(0.75, 0.8, 1.0) * uFlash * 0.9;
           // the horizon dissolves into mist: the world ends in fog, not in a line
           float hz = 1.0 - smoothstep(-0.1, 0.55, dir.y);
           col = mix(col, mix(col, uMistCol, 0.8), uSkyFog * hz);

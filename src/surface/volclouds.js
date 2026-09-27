@@ -231,7 +231,7 @@ export class VolumetricClouds {
       this.rt.texture.minFilter = this.rt.texture.magFilter = THREE.LinearFilter;
     }
     const U = this.uniforms;
-    const cover = Math.min(0.92, this.cover + storm * 0.35);
+    const cover = Math.min(0.92, this.cover + storm * 0.35) * (1 - (this.clearSky || 0) * 0.75);
     cloudUniforms.uCloudCover.value = cover;
     U.uDensity.value = 1 + storm * 1.5;
     U.uStorm.value = storm;

@@ -16,6 +16,7 @@ import { Riding } from './riding.js';
 import { SunShadows, castShadows } from '../world/shadows.js';
 import { VolumetricClouds } from '../surface/volclouds.js';
 import { Exocraft } from './exocraft.js';
+import { SkyEvents } from '../surface/skyevents.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
@@ -91,6 +92,7 @@ export class SurfaceMode {
     this.shadows = new SunShadows(this.game.renderer);
     this.volClouds = new VolumetricClouds();
     this.rover = new Exocraft(this);
+    this.skyEvents = new SkyEvents(this);
     this.cloudIn = 0;
     // what creatures can do to the world and to you
     this.cfx = {
@@ -202,6 +204,7 @@ export class SurfaceMode {
     this.clouds.uniforms.uCover.value = this.P.sky.cloudCover;
     this.clouds.mesh.visible = this.P.sky.cloudCover > 0.01;
     this.volClouds.setPlanet(this.P, this.P.seed);
+    this.skyEvents.setPlanet(this.P);
     this.sky.uniforms.uStars.value = this.P.sky.stars || 0;
     this.sky.uniforms.uDream.value = this.P.sky.dream || 0;
     this.sky.uniforms.uDreamCol.value.setRGB(...this.P.accent);
@@ -621,6 +624,7 @@ export class SurfaceMode {
     if (this.rover.driving) this.rover.exit();
     this.game.state.rover = this.rover.present && this.planet ? { planet: this.planet.id, ...this.rover.save() } : this.game.state.rover;
     this.rover.clear();
+    this.skyEvents.clear();
     this._clearNPCs();
     this.world.clear();
     this.creatures.clear();
@@ -720,6 +724,7 @@ export class SurfaceMode {
     const a = (this.dayT - 0.25) * Math.PI * 2;
     const sunDir = _v.set(Math.cos(a), Math.sin(a), 0.35).normalize();
     u.uSunDir.value.copy(sunDir);
+    this.sunY = sunDir.y;
     const daylight = smoothstep(-0.14, 0.2, sunDir.y);
     this.daylight = daylight;
     u.uDaylight.value = daylight;
@@ -791,6 +796,12 @@ export class SurfaceMode {
       const mk = ZA.k * ZA.sky;
       u.uMistCol.value.setRGB(lerp(u.uMistCol.value.r, ZA.fog[0] * ml, mk), lerp(u.uMistCol.value.g, ZA.fog[1] * ml, mk), lerp(u.uMistCol.value.b, ZA.fog[2] * ml, mk));
     }
+    // lightning / impact flash
+    const fl = this.skyEvents.flash;
+    if (fl > 0.001) { u.uSkyLight.value.multiplyScalar(1 + fl * 2.2); u.uAmbient.value.addScalar(fl * 0.25); }
+    this.sky.uniforms.uFlash.value = fl;
+    this.sky.uniforms.uAurora.value = this.skyEvents.aurora;
+    this.sky.uniforms.uRainbow.value = this.skyEvents.rainbow;
     // flying through a cloud: the world whites out
     const cin = this.volClouds.densityAt(this.game.camera.position);
     this.cloudIn += (Math.min(1, cin * 2.2) - this.cloudIn) * Math.min(1, dt * 3);
@@ -913,6 +924,7 @@ export class SurfaceMode {
     this.shadows.update(this.scene, center, sun, !this.interior && gfx > 0, gfx, this.lastDt || 1 / 60);
     // volumetric clouds, marched at reduced resolution and composited by the sky
     const pr = g.post.rt;
+    this.volClouds.clearSky = this.skyEvents.aurora;
     const tex = this.volClouds.render(g.renderer, g.camera, pr.width, pr.height, gfx, g.time, this.stormK || 0, !this.interior);
     const su = this.sky.uniforms;
     su.uClouds.value = tex;
@@ -936,6 +948,7 @@ export class SurfaceMode {
       return;
     }
     this._updateWeather(dt);
+    this.skyEvents.update(dt);
     const ctl = input.locked;
     // ------- ship or foot -------
     let focus;
