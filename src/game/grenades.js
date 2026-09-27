@@ -94,6 +94,7 @@ export class Grenades {
     m.moves.shock(c.clone().setY(c.y - 0.6), 7, [1, 0.6, 0.3]);
     m.flashAt(c.clone(), [1.8, 0.9, 0.4], 0.35);
     g.audio.explosion(0.9);
+    m.liminal.noise(1.5);
     m.horror.shake = Math.max(m.horror.shake, Math.max(0.1, 0.9 - pd / 30));
     // hurt what's near
     for (const cr of m.creatures.list) {
@@ -120,7 +121,7 @@ export class Grenades {
     }
     // the crater, and what was in it
     const home = m.planet && g.bases.baseAt(m.planet.id, c.x, c.z);
-    if (home || m.pocket === 'station' || m.pocket === 'void') return;
+    if (home || m.pocket === 'station' || m.pocket === 'void' || m.liminal.inside) return;
     const got = {};
     let broken = 0;
     const cx = Math.floor(c.x), cy = Math.floor(c.y), cz = Math.floor(c.z);

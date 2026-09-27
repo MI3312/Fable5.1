@@ -236,7 +236,7 @@ export class Moves {
     }
     // soft ground gives way
     const home = m.planet && g.bases.baseAt(m.planet.id, c.x, c.z);
-    if (home || m.pocket || m.interior) return;
+    if (home || m.pocket || m.interior || m.liminal.inside) return;
     const cx = Math.floor(c.x), cy = Math.floor(c.y) - 1, cz = Math.floor(c.z);
     let n = 0;
     for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {

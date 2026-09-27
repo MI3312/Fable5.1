@@ -587,6 +587,24 @@ export class AudioSystem {
         const g2 = c.createGain(); g2.gain.value = 0.25;
         n.connect(f); f.connect(g); n2.connect(f2); f2.connect(g2); g2.connect(g); n.start(); n2.start();
         nodes.f = f;
+      } else if (name === 'fluoro') {
+        // a fluorescent tube: mains buzz, a ballast whine, a little hiss
+        const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 60;
+        const o2 = c.createOscillator(); o2.type = 'square'; o2.frequency.value = 120.3;
+        const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 480; f.Q.value = 3;
+        const g2 = c.createGain(); g2.gain.value = 0.35;
+        const n = this._noiseSrc(); const nf = c.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 6000;
+        const ng = c.createGain(); ng.gain.value = 0.12;
+        o.connect(f); o2.connect(g2); g2.connect(f); f.connect(g); n.connect(nf); nf.connect(ng); ng.connect(g);
+        o.start(); o2.start(); n.start();
+        nodes.f = f;
+      } else if (name === 'water') {
+        // still water lapping at tile
+        const n = this._noiseSrc(); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 650;
+        const wg = c.createGain(); wg.gain.value = 0.6;
+        const lfo = c.createOscillator(); lfo.frequency.value = 0.27; const lg = c.createGain(); lg.gain.value = 0.4;
+        lfo.connect(lg); lg.connect(wg.gain); n.connect(f); f.connect(wg); wg.connect(g);
+        n.start(); lfo.start();
       } else if (name === 'hum') {
         const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 120;
         const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 240; f.Q.value = 6;
@@ -596,8 +614,10 @@ export class AudioSystem {
     });
     if (!L) return;
     const t = c.currentTime;
-    const vols = { laser: 0.09, jetpack: 0.1, engine: 0.14, wind: 0.08, hum: 0.025, reentry: 0.3, rover: 0.13 };
-    L.g.gain.setTargetAtTime(on ? vols[name] * (name === 'wind' || name === 'reentry' ? param : 1) : 0, t, on ? 0.05 : 0.12);
+    const vols = { laser: 0.09, jetpack: 0.1, engine: 0.14, wind: 0.08, hum: 0.025, reentry: 0.3, rover: 0.13, fluoro: 0.06, water: 0.1 };
+    const scaled = name === 'wind' || name === 'reentry' || name === 'fluoro' || name === 'water';
+    L.g.gain.setTargetAtTime(on ? vols[name] * (scaled ? param : 1) : 0, t, on ? 0.05 : 0.12);
+    if (name === 'fluoro' && L.f) L.f.frequency.setTargetAtTime(420 + param * 380, t, 0.3);
     if (name === 'laser' && L.o) L.o.frequency.setTargetAtTime(170 + Math.sin(t * 30) * 12, t, 0.02);
     if (name === 'engine' && on) {
       const k = Math.min(1, param);

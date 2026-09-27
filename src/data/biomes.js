@@ -276,11 +276,14 @@ export function makePlanetParams(seed, biome, opts = {}) {
   // What gets built on this world: a few liminal kinds and a biome-flavoured set of ruins and
   // landmarks, picked per planet so each one has its own character
   const sr = new RNG(hash32(seed, 929));
-  const LIM = ['poolrooms', 'backrooms', 'hallway', 'arches', 'stairs', 'watcher', 'plastic_city', 'warehouse'];
+  const LIM = ['poolrooms', 'backrooms', 'hallway', 'library', 'arches', 'stairs', 'watcher', 'plastic_city', 'warehouse'];
+  const POCKETS = ['poolrooms', 'backrooms', 'hallway', 'library', 'warehouse'];
   P.structPalette = {
     liminal: sr.shuffle(LIM.slice()).slice(0, biome === 'liminal' ? 5 : sr.int(2, 3)).map((t) => [t, sr.range(0.6, 2)]),
     nms: [],
   };
+  // every world with liminal places has at least one of the buildings that are bigger inside
+  if (!P.structPalette.liminal.some(([t]) => POCKETS.includes(t))) P.structPalette.liminal[0] = [sr.pick(POCKETS), sr.range(1.2, 2)];
   const boost = {
     crystal_grove: ['frozen', 'exotic', 'radioactive'], bones: ['barren', 'scorched', 'dead', 'toxic'], mining_rig: ['barren', 'radioactive', 'scorched'],
     watchtower: ['lush', 'frozen', 'toxic'], henge: ['lush', 'frozen', 'exotic'], observatory: ['barren', 'frozen', 'dead'], wreck: ['barren', 'dead', 'scorched', 'frozen'],

@@ -7,6 +7,7 @@ import { CHUNK, HEIGHT, PW, MARGIN, GW } from '../config.js';
 import { stampStructures } from './structures.js';
 import { stationBlockAt } from './station.js';
 import { voidBlockAt, derelictBlockAt } from './pockets.js';
+import { pocketBlockAt, pocketBand } from './liminalGen.js';
 import { zoneAt, zoneFloor, writeZoneColumn, writeUnderlayer, writeManhole, stampProp, PROP_KINDS } from './zones.js';
 
 const CS = 4; // coarse sampling step for 3D noise
@@ -51,6 +52,7 @@ export class TerrainGen {
 
   // Terrain surface height (float) at a world column, ignoring 3D features
   heightAt(x, z) {
+    if (this.p.interior === 'liminal') return this.p.pocket.F - 1;
     if (this.p.interior) return 39;
     const t = this.p.terrain;
     const warp = t.warp;
@@ -140,6 +142,7 @@ export class TerrainGen {
   generate(cx, cz, edits) {
     if (this.p.interior === 'station') return this._generateInterior(cx, cz, edits, stationBlockAt, 46, 50, 30, 64);
     if (this.p.interior === 'void') return this._generateInterior(cx, cz, edits, voidBlockAt, 72, 72, 8, 92);
+    if (this.p.interior === 'liminal') return this._generateLiminal(cx, cz, edits);
     if (this.p.interior === 'derelict') {
       const seed = this.p.derelictSeed;
       return this._generateInterior(cx, cz, edits, (x, y, z) => derelictBlockAt(x, y, z, seed), 26, 64, 36, 54);
@@ -313,6 +316,20 @@ export class TerrainGen {
         data[edits[i] + PW * (edits[i + 2] + PW * edits[i + 1])] = edits[i + 3];
       }
     }
+    return data;
+  }
+
+  // A liminal pocket: unbounded, but only a thin band of height
+  _generateLiminal(cx, cz, edits) {
+    const d = this.p.pocket;
+    const data = new Uint8Array(PW * PW * HEIGHT);
+    const [y0, y1] = pocketBand(d);
+    const ox = cx * CHUNK - 1, oz = cz * CHUNK - 1;
+    for (let pz = 0; pz < PW; pz++) for (let px = 0; px < PW; px++) {
+      for (let y = 1; y < y0; y++) data[px + PW * (pz + PW * y)] = B.STONE;
+      for (let y = y0; y <= y1; y++) data[px + PW * (pz + PW * y)] = pocketBlockAt(d, ox + px, y, oz + pz);
+    }
+    if (edits) for (let i = 0; i < edits.length; i += 4) data[edits[i] + PW * (edits[i + 2] + PW * edits[i + 1])] = edits[i + 3];
     return data;
   }
 

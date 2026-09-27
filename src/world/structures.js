@@ -3,6 +3,7 @@
 // points of interest (monoliths, outposts, drop pods, sentinel pillars).
 import { hash32, RNG } from '../core/rng.js';
 import { B, IS_SOLID } from './blocks.js';
+import { isPocketKind, frameOf, toWorld, inBuilding, buildingBlock, BU0, BU1, BV0, BV1, BLD_W, BLD_D } from './liminalGen.js';
 
 export const REGION = 64;
 
@@ -15,6 +16,7 @@ export const STRUCTURE_INFO = {
   watcher: { name: 'Watcher Shrine', icon: '◉', liminal: true },
   plastic_city: { name: 'Plastic City', icon: '▣', liminal: true },
   warehouse: { name: 'Abandoned Warehouse', icon: '▤', liminal: true },
+  library: { name: 'The Endless Library', icon: '▥', liminal: true },
   monolith: { name: 'Ancient Monolith', icon: '▮', liminal: false },
   outpost: { name: 'Abandoned Outpost', icon: '⌂', liminal: false },
   pod: { name: 'Drop Pod', icon: '◈', liminal: false },
@@ -29,12 +31,12 @@ export const STRUCTURE_INFO = {
 };
 
 // default palettes; each planet normally brings its own (params.structPalette)
-const DEFAULT_LIMINAL = [['poolrooms', 3], ['backrooms', 3], ['hallway', 2], ['arches', 2], ['stairs', 2], ['watcher', 1], ['plastic_city', 2], ['warehouse', 2]];
+const DEFAULT_LIMINAL = [['poolrooms', 3], ['backrooms', 3], ['hallway', 2], ['library', 2], ['arches', 2], ['stairs', 2], ['watcher', 1], ['plastic_city', 2], ['warehouse', 2]];
 const DEFAULT_NMS = [['monolith', 2], ['outpost', 3], ['pod', 2], ['wreck', 1.2], ['watchtower', 1], ['henge', 0.8], ['observatory', 0.6]];
 
 const SIZES = {
-  poolrooms: () => [0, 0], backrooms: () => [25, 25], hallway: () => [0, 0], arches: () => [17, 17],
-  stairs: () => [16, 6], watcher: () => [11, 11], plastic_city: () => [34, 34], warehouse: () => [30, 22], monolith: () => [13, 13], outpost: () => [9, 9], pod: () => [5, 5], sentinel: () => [5, 5],
+  poolrooms: () => [BLD_W, BLD_D], backrooms: () => [BLD_W, BLD_D], hallway: () => [BLD_W, BLD_D], library: () => [BLD_W, BLD_D], arches: () => [17, 17],
+  stairs: () => [16, 6], watcher: () => [11, 11], plastic_city: () => [34, 34], warehouse: () => [BLD_W, BLD_D], monolith: () => [13, 13], outpost: () => [9, 9], pod: () => [5, 5], sentinel: () => [5, 5],
   wreck: () => [24, 14], watchtower: () => [9, 9], observatory: () => [15, 15], bones: () => [26, 15], crystal_grove: () => [15, 15], henge: () => [17, 17], mining_rig: () => [13, 13],
 };
 
@@ -55,10 +57,9 @@ export function planStructure(seed, params, terrain, rx, rz) {
     type = rng.weighted(opts);
   }
   let [w, d] = SIZES[type]();
-  if (type === 'poolrooms') { w = rng.int(17, 27); d = rng.int(17, 27); }
-  if (type === 'hallway') {
-    if (rng.chance(0.5)) { w = rng.int(30, 48); d = 5; } else { w = 5; d = rng.int(30, 48); }
-  }
+  // pocket buildings face any of four ways
+  const rot = isPocketKind(type) ? rng.int(0, 3) : 0;
+  if (rot & 1) [w, d] = [d, w];
   const margin = 4;
   const x = rx * REGION + margin + rng.int(0, Math.max(0, REGION - margin * 2 - w));
   const z = rz * REGION + margin + rng.int(0, Math.max(0, REGION - margin * 2 - d));
@@ -80,7 +81,7 @@ export function planStructure(seed, params, terrain, rx, rz) {
     ground = sea + 2;
   }
   if (ground > 112) return null;
-  return { type, x, z, w, d, y: ground + 1, seed: h, name: STRUCTURE_INFO[type].name };
+  return { type, x, z, w, d, rot, y: ground + 1, seed: h, name: STRUCTURE_INFO[type].name, pocket: isPocketKind(type) };
 }
 
 export function stampStructures(ctx, wx0, wz0, gw) {
@@ -134,186 +135,30 @@ function box(ctx, x0, y0, z0, w, h, d, fn) {
 }
 
 // ---------------- stampers ----------------
+// A pocket building: a small blank block with one door. The passage inside bends twice and ends in
+// a wall - unless you are inside the pocket, where it keeps going (see liminalGen.js).
+function pocketBuilding(ctx, s) {
+  const d = frameOf(s);
+  const F = s.y;
+  for (let v = BV0 - 4; v <= BV1 + 1; v++) for (let u = BU0 - 1; u <= BU1 + 1; u++) {
+    const [x, z] = toWorld(d, u, v);
+    if (inBuilding(u, v)) {
+      foundation(ctx, x, F - 2, z, B.STONE, 12);
+      for (let y = -1; y <= 5; y++) ctx.set(x, F + y, z, buildingBlock(d, u, y, v, false));
+      clearAbove(ctx, x, F + 6, z, 6);
+    } else {
+      // a clear apron all round, and a path up to the door
+      if (v < 0 && u >= -1 && u <= 2) {
+        foundation(ctx, x, F - 2, z, B.STONE, 8);
+        ctx.set(x, F - 1, z, u === -1 || u === 2 ? B.GRAVEL : B.CONCRETE);
+      }
+      clearAbove(ctx, x, F, z, 7);
+    }
+  }
+}
+
 const STAMPERS = {
-  poolrooms(ctx, s, rng) {
-    const { x: X, z: Z, w: W, d: D } = s;
-    const F = s.y; // floor level (air starts here)
-    const H = rng.int(6, 8);
-    const ceiling = rng.chance(0.7);
-    const wallTile = rng.chance(0.8) ? B.POOL_TILE : B.DREAM_TILE;
-    // pools
-    const pools = [];
-    const np = rng.int(1, 3);
-    for (let i = 0; i < np; i++) {
-      const pw = rng.int(4, Math.max(5, W - 8)), pd = rng.int(4, Math.max(5, D - 8));
-      const px = X + rng.int(2, Math.max(2, W - pw - 2)), pz = Z + rng.int(2, Math.max(2, D - pd - 2));
-      pools.push([px, pz, pw, pd, rng.int(1, 3)]);
-    }
-    const inPool = (x, z) => {
-      for (const p of pools) if (x >= p[0] && x < p[0] + p[2] && z >= p[1] && z < p[1] + p[3]) return p[4];
-      return 0;
-    };
-    const pillarStep = rng.int(5, 7);
-    const doorAxis = rng.int(0, 3);
-    for (let z = Z - 1; z <= Z + D; z++) for (let x = X - 1; x <= X + W; x++) {
-      const edge = x === X - 1 || z === Z - 1 || x === X + W || z === Z + D;
-      if (edge) { // walkway ring around outside
-        foundation(ctx, x, F - 1, z, B.STONE, 12);
-        ctx.set(x, F - 1, z, wallTile);
-        clearAbove(ctx, x, F, z, 4, B.AIR);
-        continue;
-      }
-      const wall = x === X || z === Z || x === X + W - 1 || z === Z + D - 1;
-      foundation(ctx, x, F - 2, z, B.STONE, 12);
-      const depth = inPool(x, z);
-      if (depth && !wall) {
-        for (let k = 1; k <= depth; k++) ctx.set(x, F - k, z, B.WATER);
-        ctx.set(x, F - depth - 1, z, B.POOL_DEEP);
-      } else {
-        ctx.set(x, F - 1, z, wallTile);
-      }
-      for (let y = F; y < F + H - 1; y++) {
-        let id = B.LIT_AIR;
-        if (wall) {
-          id = wallTile;
-          // doorways in middle of each wall
-          const mx = X + (W >> 1), mz = Z + (D >> 1);
-          const isDoorX = (z === Z || z === Z + D - 1) && Math.abs(x - mx) <= 1;
-          const isDoorZ = (x === X || x === X + W - 1) && Math.abs(z - mz) <= 1;
-          const arch = (isDoorX && y < F + 3 + (Math.abs(x - mx) === 0 ? 1 : 0)) || (isDoorZ && y < F + 3 + (Math.abs(z - mz) === 0 ? 1 : 0));
-          if (arch && (doorAxis !== 0 || isDoorX)) id = B.LIT_AIR;
-          // windows band
-          if (!arch && y === F + 2 && ((x + z) % 4 === 0) && ceiling) id = B.GLASS;
-        } else if (((x - X) % pillarStep === 0) && ((z - Z) % pillarStep === 0) && !depth) {
-          id = wallTile;
-        }
-        ctx.set(x, y, z, id);
-      }
-      if (ceiling) {
-        const lamp = ((x - X) % 4 === 2) && ((z - Z) % 4 === 2);
-        ctx.set(x, F + H - 1, z, lamp ? B.LIGHT_PANEL : wallTile);
-        clearAbove(ctx, x, F + H, z, 3, B.AIR);
-      } else {
-        const post = wall && ((x - X) % 4 === 0 || (z - Z) % 4 === 0);
-        if (wall) { for (let y = F + 2; y < F + H - 1; y++) ctx.set(x, y, z, post ? wallTile : B.AIR); }
-        if (wall && post) ctx.set(x, F + 2, z, B.LAMP);
-        clearAbove(ctx, x, F + H - 1, z, 4, B.AIR);
-      }
-    }
-    // a lone door standing in the room, leading somewhere else
-    if (rng.chance(0.6)) {
-      const lx = X + rng.int(3, W - 4), lz = Z + rng.int(3, D - 4);
-      if (!inPool(lx, lz)) { ctx.set(lx, F, lz, B.DREAM_DOOR); ctx.set(lx, F + 1, lz, B.DREAM_DOOR); ctx.set(lx, F + 2, lz, wallTile); }
-    }
-    // loot
-    ctx.set(X + 2, F, Z + 2, B.CHEST);
-    if (rng.chance(0.5)) ctx.set(X + W - 3, F, Z + D - 3, B.CHEST);
-    // strange floating tile cube over the pool
-    if (rng.chance(0.4) && pools.length) {
-      const p = pools[0];
-      ctx.set(p[0] + (p[2] >> 1), F + 1, p[1] + (p[3] >> 1), B.EYE);
-    }
-  },
-
-  backrooms(ctx, s, rng) {
-    const { x: X, z: Z } = s;
-    const F = s.y;
-    const NC = 6, CELL = 4, W = NC * CELL + 1;
-    // maze via DFS
-    const vis = new Uint8Array(NC * NC);
-    const walls = { h: new Uint8Array((NC + 1) * NC).fill(1), v: new Uint8Array(NC * (NC + 1)).fill(1) };
-    // h[x + NC*z]: wall on north side of cell (x,z) at line z;   v[x + (NC+1)*z]: wall on west side at line x
-    const stack = [[rng.int(0, NC - 1), rng.int(0, NC - 1)]];
-    vis[stack[0][0] + NC * stack[0][1]] = 1;
-    while (stack.length) {
-      const [cx, cz] = stack[stack.length - 1];
-      const n = [];
-      if (cx > 0 && !vis[cx - 1 + NC * cz]) n.push([cx - 1, cz, 'w']);
-      if (cx < NC - 1 && !vis[cx + 1 + NC * cz]) n.push([cx + 1, cz, 'e']);
-      if (cz > 0 && !vis[cx + NC * (cz - 1)]) n.push([cx, cz - 1, 'n']);
-      if (cz < NC - 1 && !vis[cx + NC * (cz + 1)]) n.push([cx, cz + 1, 's']);
-      if (!n.length) { stack.pop(); continue; }
-      const [nx, nz, dir] = rng.pick(n);
-      if (dir === 'w') walls.v[cx + (NC + 1) * cz] = 0;
-      if (dir === 'e') walls.v[cx + 1 + (NC + 1) * cz] = 0;
-      if (dir === 'n') walls.h[cx + NC * cz] = 0;
-      if (dir === 's') walls.h[cx + NC * (cz + 1)] = 0;
-      vis[nx + NC * nz] = 1;
-      stack.push([nx, nz]);
-    }
-    // knock out extra walls for open liminal rooms
-    for (let i = 0; i < 14; i++) {
-      const a = rng.int(1, NC - 1), b = rng.int(0, NC - 1);
-      if (rng.chance(0.5)) walls.v[a + (NC + 1) * b] = 0; else walls.h[b + NC * a] = 0;
-    }
-    // entrances
-    walls.v[0 + (NC + 1) * rng.int(0, NC - 1)] = 0;
-    walls.v[NC + (NC + 1) * rng.int(0, NC - 1)] = 0;
-    const isWall = (lx, lz) => {
-      const onX = lx % CELL === 0, onZ = lz % CELL === 0;
-      if (onX && onZ) return true; // corner posts
-      if (onX) { const gx = lx / CELL, gz = Math.floor(lz / CELL); return walls.v[gx + (NC + 1) * gz] === 1; }
-      if (onZ) { const gz = lz / CELL, gx = Math.floor(lx / CELL); return walls.h[gx + NC * gz] === 1; }
-      return false;
-    };
-    const H = 5;
-    for (let lz = -1; lz <= W; lz++) for (let lx = -1; lx <= W; lx++) {
-      const x = X + lx, z = Z + lz;
-      if (lx < 0 || lz < 0 || lx >= W || lz >= W) {
-        foundation(ctx, x, F - 1, z, B.STONE, 10);
-        ctx.set(x, F - 1, z, B.CARPET);
-        clearAbove(ctx, x, F, z, 4);
-        continue;
-      }
-      foundation(ctx, x, F - 2, z, B.STONE, 12);
-      ctx.set(x, F - 1, z, B.CARPET);
-      const wall = isWall(lx, lz);
-      const perim = lx === 0 || lz === 0 || lx === W - 1 || lz === W - 1;
-      for (let y = F; y < F + H - 2; y++) ctx.set(x, y, z, wall ? B.WALLPAPER : B.LIT_AIR);
-      const light = (lx % CELL === 2) && (lz % CELL === 2) && ((lx + lz) % 8 === 4 || rng.chance(0.4));
-      ctx.set(x, F + H - 2, z, light ? B.LIGHT_PANEL : B.CEILING_TILE);
-      ctx.set(x, F + H - 1, z, perim ? B.WALLPAPER : B.CEILING_TILE);
-      clearAbove(ctx, x, F + H, z, 3);
-    }
-    // a dream door somewhere on an inner wall line
-    {
-      const gx = rng.int(1, NC - 1), gz = rng.int(0, NC - 1);
-      const dx = X + gx * CELL, dz = Z + gz * CELL + 2;
-      ctx.set(dx, F, dz, B.DREAM_DOOR); ctx.set(dx, F + 1, dz, B.DREAM_DOOR);
-    }
-    // chests in random cells
-    for (let i = 0; i < 2; i++) {
-      const cx = rng.int(0, NC - 1), cz = rng.int(0, NC - 1);
-      ctx.set(X + cx * CELL + 2, F, Z + cz * CELL + 2, B.CHEST);
-    }
-  },
-
-  hallway(ctx, s, rng) {
-    const { x: X, z: Z, w: W, d: D } = s;
-    const F = s.y;
-    const alongX = W > D;
-    const wallB = rng.pick([B.WALLPAPER, B.DREAM_TILE, B.MARBLE, B.POOL_TILE]);
-    const floorB = rng.pick([B.CARPET, B.CHECKER, B.PLANKS, B.POOL_TILE]);
-    const H = 5;
-    for (let z = Z; z < Z + D; z++) for (let x = X; x < X + W; x++) {
-      const across = alongX ? z - Z : x - X; // 0..4
-      const along = alongX ? x - X : z - Z;
-      const side = across === 0 || across === 4;
-      foundation(ctx, x, F - 2, z, B.STONE, 14);
-      ctx.set(x, F - 1, z, floorB);
-      for (let y = F; y < F + H - 1; y++) {
-        let id = side ? wallB : B.LIT_AIR;
-        // doors to nowhere along the walls
-        if (side && along % 6 === 3 && y < F + 3) id = (across === 4 && Math.abs(along - (alongX ? W : D) / 2) < 3 && y < F + 2) ? B.DREAM_DOOR : B.PLANKS;
-        if (side && along % 6 === 3 && y === F + 1 && across === 0) id = B.LAMP;
-        ctx.set(x, y, z, id);
-      }
-      const lamp = !side && across === 2 && along % 4 === 1;
-      ctx.set(x, F + H - 1, z, lamp ? B.LIGHT_PANEL : (side ? wallB : B.CEILING_TILE));
-      clearAbove(ctx, x, F + H, z, 3);
-    }
-    ctx.set(alongX ? X + (W >> 1) : X + 2, F, alongX ? Z + 2 : Z + (D >> 1), B.CHEST);
-  },
+  backrooms: pocketBuilding, poolrooms: pocketBuilding, hallway: pocketBuilding, library: pocketBuilding, warehouse: pocketBuilding,
 
   arches(ctx, s, rng) {
     const { x: X, z: Z, w: W } = s;
@@ -448,43 +293,6 @@ const STAMPERS = {
     }
   },
 
-  warehouse(ctx, s, rng) {
-    const { x: X, z: Z, w: W, d: D } = s;
-    const F = s.y;
-    const H = 11;
-    const doorSide = rng.chance(0.5) ? 0 : 1;
-    for (let z = Z - 1; z <= Z + D; z++) for (let x = X - 1; x <= X + W; x++) {
-      const out = x < X || z < Z || x >= X + W || z >= Z + D;
-      foundation(ctx, x, F - 2, z, B.STONE, 12);
-      ctx.set(x, F - 1, z, B.CONCRETE);
-      if (out) { clearAbove(ctx, x, F, z, 6); continue; }
-      const lx = x - X, lz = z - Z;
-      const wall = lx === 0 || lz === 0 || lx === W - 1 || lz === D - 1;
-      for (let y = F; y < F + H - 1; y++) {
-        let id = B.LIT_AIR;
-        if (wall) {
-          id = y >= F + H - 4 && y < F + H - 2 && (lx + lz) % 4 !== 0 ? B.GLASS : B.METAL_PANEL;
-          const doorway = (doorSide === 0 ? lx === 0 : lx === W - 1) && lz >= D / 2 - 3 && lz <= D / 2 + 2 && y < F + 6;
-          if (doorway) id = B.LIT_AIR;
-        } else {
-          // shelving rows running along x, aisles every 5 blocks
-          const row = lz % 5 === 2 && lz > 1 && lz < D - 2;
-          const inRow = lx > 3 && lx < W - 4 && lx !== Math.floor(W / 2);
-          if (row && inRow && y < F + 4) id = B.SHELF;
-          if (!row && lz % 5 === 0 && lx % 7 === 3 && y < F + 1 + ((lx + lz) % 3)) id = B.PLANKS;
-        }
-        ctx.set(x, y, z, id);
-      }
-      ctx.set(x, F + H - 1, z, (lz % 5 === 0 && lx % 3 === 1) ? B.LIGHT_PANEL : B.CONCRETE);
-      clearAbove(ctx, x, F + H, z, 3);
-    }
-    ctx.set(X + W - 3, F, Z + 2, B.CHEST);
-    ctx.set(X + 2, F, Z + D - 3, B.CHEST);
-    if (rng.chance(0.5)) {
-      const dx = doorSide === 0 ? X + W - 2 : X + 1;
-      ctx.set(dx, F, Z + Math.floor(D / 2), B.DREAM_DOOR); ctx.set(dx, F + 1, Z + Math.floor(D / 2), B.DREAM_DOOR);
-    }
-  },
 
   monolith(ctx, s, rng) {
     const { x: X, z: Z, w: W } = s;

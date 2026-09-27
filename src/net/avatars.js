@@ -122,7 +122,8 @@ export class RemotePlayers {
   update(ctx) {
     for (const e of this.ents.values()) {
       const L = e.last;
-      const show = L && L.s === ctx.here.sys && (ctx.here.mode === 'space' ? L.m === 'x' : L.m === (ctx.here.mode === 'interior' ? 'i' : 's') && L.p === ctx.here.planet);
+      const hm = ctx.here.mode;
+      const show = L && L.s === ctx.here.sys && (hm === 'space' ? L.m === 'x' : hm === 'liminal' ? L.m === 'l' && L.lk === ctx.here.lk : L.m === (hm === 'interior' ? 'i' : 's') && L.p === ctx.here.planet);
       if (!show || e.snaps.length === 0) { e.body.visible = e.ship.visible = false; if (e.rover) e.rover.visible = false; if (e.line) e.line.visible = false; continue; }
       const { a, b, k } = this._sample(e, ctx.now);
       // body

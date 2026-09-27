@@ -27,7 +27,7 @@ class Chunk {
 const SPHERE_CENTER = new THREE.Vector3(8, 56, 8);
 
 export class World {
-  constructor(scene, materials) {
+  constructor(scene, materials, opts = {}) {
     this.scene = scene;
     this.materials = [materials.opaque, materials.cutout, materials.translucent];
     this.group = new THREE.Group();
@@ -41,7 +41,7 @@ export class World {
     this.terrain = null;
     this.edits = new Map(); // chunkKey -> Map(localIndex -> id)
     this.jobId = 1;
-    const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+    const n = opts.workers || Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
     this.workers = [];
     for (let i = 0; i < n; i++) {
       const w = makeWorker();

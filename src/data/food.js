@@ -35,6 +35,7 @@ export const FOOD_ITEMS = {
   cloud_cake: { name: 'Cloud Cake', symbol: 'Cc', color: '#f2f4ff', cat: 'food', value: 1100, stack: 10, desc: 'Mostly air. Your jetpack agrees.' },
   lantern_soup: { name: 'Lantern Soup', symbol: 'Ls', color: '#8fa2ff', cat: 'food', value: 2400, stack: 10, desc: 'The soup glows. So, for a while, do you.' },
   lullaby_soup: { name: 'Lullaby Soup', symbol: 'Lu', color: '#e6c8ff', cat: 'food', value: 1800, stack: 10, desc: 'Somebody used to make this for you. The dark feels further away.' },
+  almond_water: { name: 'Almond Water', symbol: 'Aw', color: '#f4ecd8', cat: 'food', value: 600, stack: 10, desc: 'A plastic bottle of something sweet and faintly nutty. Found in boxes in places that go on too long. Drinking it makes the fear recede.' },
   acid_ceviche: { name: 'Acid Ceviche', symbol: 'Ac', color: '#c8ff5a', cat: 'food', value: 1500, stack: 10, desc: 'Cured in its own sea. Toxic air cannot touch you.' },
 };
 
@@ -63,3 +64,5 @@ export const DISHES = [
 ];
 
 export const FOOD = Object.fromEntries(DISHES.filter((d) => !d.alt).map((d) => [d.id, d]));
+// found, not cooked
+FOOD.almond_water = { id: 'almond_water', in: [], heal: 35, buff: ['calm', 240], drink: true };

@@ -120,6 +120,17 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - Things get built where you are not looking. Some of them have doors that are not doors.
 - If the game crashes, give it a moment.
 
+**Bigger on the inside**
+- Some small buildings on liminal-touched worlds are not what they look like: a beige box with one door, a little tiled pool house, a brick doorway, a marble reading room, a locked metal shed. Walk in and follow the passage round its bend. When you turn around, the way you came in is gone.
+- Inside, the space goes on forever and you can't break the walls or build your way out. You have to find the exit, and every place has its own way out and its own rules:
+  - **The Backrooms**: a maze of damp carpet and yellow wallpaper. Follow the hum: it's loudest near the exit. Sometimes the lights go out. Keep your headlamp up when they do.
+  - **The Poolrooms**: bright tiled halls and still water. Wet footprints lead toward the warm pool, and the way out is the drain at the very bottom. You won't be the only thing swimming.
+  - **The Hallway**: one corridor, walked again and again. If anything is different, turn back. If nothing is, keep going. Get it right eight times in a row and there's a door. Get it wrong and you start again.
+  - **The Endless Library**: find the three books with your name on the spine. The shelves move when nobody is looking. Walk, don't run: something in there hates noise.
+  - **The Warehouse**: dark racks and pools of lamplight. Find the breaker in the office to power the loading door, then get to the daylight. Keep your torch on the mannequins.
+- **Almond Water** turns up in boxes in the Backrooms. Drink it to heal and steady your nerves.
+- Each visit is different; only the passage stays the same. Escaping pays well the first time. Time passes outside while you're in there.
+
 **Derelict freighters**
 - Dead ships drift in many systems (always one in your first). Fly to the hangar mouth at the stern and board.
 - Procedural interiors: a grated spine corridor under red emergency lights, crew quarters, cargo holds, a medbay, a mess, labs with specimen tanks, rooms the dream has grown into, hull breaches open to space, and the bridge.
@@ -151,10 +162,13 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - Each drops something worth having, and each has its own alchemy.
 
 **Graphics**
-- A GPU post pipeline: screen-space ambient occlusion from the depth buffer (normals rebuilt per pixel, depth-aware blur), HDR bloom through a six-level mip chain with a filmic shoulder, and sun shafts that every leaf and ridge cuts, using the depth buffer's open sky.
+- A GPU post pipeline: screen-space ambient occlusion from the depth buffer (normals rebuilt per pixel, depth-aware blur), HDR bloom through a six-level mip chain, and sun shafts that every leaf and ridge cuts, using the depth buffer's open sky.
+- **Screen-space reflections**: water, puddles and polished blocks (pool tile, marble, metal, ice, obsidian, neon, screens) reflect the world around them, traced against the last frame at half resolution. Rougher materials give blurrier reflections.
+- **Clear water**: you can see the bottom of shallow water, fading to deep colour with depth, with foam where it meets the shore. Sunlight reaches down through the sea and dances as **caustics** across the sea floor and the bottoms of pools.
+- **Eye adaptation**: the exposure follows what you're looking at, so stepping out of a dark cave is briefly blinding and night lets your eyes open up. A neutral tonemapper keeps colours true instead of washing them out.
 - Faces are shaded by the sun's real angle. Water has moving wave normals, fresnel sky reflections and sun glints. Ground mist lights up when you look toward the sun. Plasma sheaths, iridescent bubbles and bloom-lit glints finish the look.
 - The starship is a signed-distance hull, voxelised finely: swept wings, nacelles, spine, fin, canopy and painted livery.
-- **Real-time sun shadows**: a texel-snapped shadow map follows you. Terrain, trees, grass, creatures and your ship cast soft Poisson-filtered shadows that stretch long at dusk.
+- **Real-time sun shadows**: a texel-snapped shadow map follows you. Terrain, trees, grass, creatures and your ship cast soft Poisson-filtered shadows that stretch long at dusk. A second, wider cascade carries the shadows of distant hills and forests out to the fog.
 - **Volumetric clouds**: raymarched through a curved cloud shell with light marched toward the sun (Beer–Lambert, powder, silver-lining phase). Their shadows drift across the land. Storms thicken them, and flying through one whites out the world.
 - **Volumetric light**: a raymarched pass through the shadow map puts real light shafts in the fog and dust (and a cone around your headlamp), blurred at half resolution.
 - **Wind**: leaves, grass, flowers, mushroom caps and coral sway in gusts, in their shadows too. Storms make it stronger.
@@ -219,7 +233,7 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - Ruins of older buildings stand in the wild, sometimes with something left inside.
 
 **Lucid Blocks side**
-- Liminal structures generated on every world: **Poolrooms** (tiled halls with still water), **The Backrooms** (maze generator, damp carpet, humming lights), **Endless Hallways**, **Plastic Cities**, **Abandoned Warehouses**, **Reverie Arches**, **Stairways to Nowhere** and **Watcher Shrines**.
+- Liminal structures generated on every world: the pocket buildings (**Poolrooms**, **The Backrooms**, **Endless Hallways**, **The Endless Library** and **Abandoned Warehouses**, see *Bigger on the inside*), **Plastic Cities**, **Reverie Arches**, **Stairways to Nowhere** and **Watcher Shrines**.
 - **Dream Doors** stand in liminal places. Step through one and you come out somewhere else on the planet.
 - Dream-horror fauna: **Manikins** only move while you aren't looking at them, and **Colossal Spiders** have legs longer than they should be. Feed a creature and it becomes a **companion** that follows you.
 - Builder mode: break any block to carry it in your block bag, then place it anywhere in the galaxy. Placed blocks take on the colours of whichever world they are placed in.
@@ -279,15 +293,15 @@ lib/three.module.min.js     vendored three.js r186 (npm run vendor regenerates i
 src/core/                   seeded RNG, simplex noise, names, input, shader helpers
 src/data/                   items, biomes, recipes and alchemy, lore
 src/universe/               galaxy, star system and planet generation
-src/world/                  blocks, texture atlas, terrain, dream zones, pocket spaces (Void, derelicts), structures, mesher, worker, chunk manager, sun shadows
+src/world/                  blocks, texture atlas, terrain, dream zones, pocket spaces (Void, derelicts), liminal pockets, structures, mesher, worker, chunk manager, sun shadows
 src/surface/                sky, volumetric clouds, weather, sky events, horizon giants, effects
 src/entities/               player, ship, creatures and their behaviours, Lucid vermin, hunters, SDF voxel modelling, sentinels
 src/space/                  space scene, planet shaders
-src/game/                   game controller, surface and space modes, movement kit, grenades, encounters, dread director, corruption, riding, Roamer, missions, bases, fishing, food buffs, photo mode, inventory, quests
+src/game/                   game controller, surface and space modes, liminal pockets and their rules, movement kit, grenades, encounters, dread director, corruption, riding, Roamer, missions, bases, fishing, food buffs, photo mode, inventory, quests
 src/net/                    multiplayer: Steam and local transports, host-authoritative session, remote avatars
 desktop/                    Electron shell with Steamworks (lobbies, invites, relay P2P)
 src/ui/                     HUD, menus, galaxy map
 src/audio/                  procedural WebAudio music and SFX
-src/post/                   GPU post pipeline: SSAO, bloom, god rays, grading
+src/post/                   GPU post pipeline: SSAO, reflections history, bloom, god rays, eye adaptation, grading
 tools/                      single-file build and three.js vendoring
 ```

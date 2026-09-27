@@ -5,6 +5,7 @@ import { RNG, hash32, lerp, smoothstep, clamp } from '../core/rng.js';
 import { floraName } from '../core/names.js';
 import { createAtlasTexture } from '../world/atlas.js';
 import { createVoxelMaterials, voxelUniforms } from '../world/voxelMaterial.js';
+import { Liminal } from './liminal.js';
 import { World } from '../world/world.js';
 import { B, BLOCKS, IS_LIQUID, IS_CROSS, IS_AIRLIKE, IS_SOLID, isPlaceable } from '../world/blocks.js';
 import { planStructure, REGION, STRUCTURE_INFO } from '../world/structures.js';
@@ -78,6 +79,7 @@ export class SurfaceMode {
     this.atlas = createAtlasTexture();
     this.materials = createVoxelMaterials(this.atlas);
     this.world = new World(this.scene, this.materials);
+    this.ground = this.world; // the planet itself; this.world is whichever copy you're standing in
     this.sky = new Sky(this.scene);
     this.giants = new Giants(this.scene);
     this.horror = new Horror(this.scene);
@@ -106,6 +108,7 @@ export class SurfaceMode {
     this.moves = new Moves(this);
     this.grenades = new Grenades(this);
     this.encounters = new Encounters(this);
+    this.liminal = new Liminal(this);
     this.cloudIn = 0;
     // what creatures can do to the world and to you
     this.cfx = {
@@ -204,6 +207,7 @@ export class SurfaceMode {
     this.zoneCur = undefined;
     this.zAtm = null;
     this.encK = 0;
+    this.liminal.reset();
     this.world.setPlanet(this.P, g.state.edits[planet.id]);
     // caustics dance on the sea floor of water worlds
     voxelUniforms.uSeaLevel.value = !this.interior && (this.P.liquid === B.WATER || this.P.liquid === B.DREAM_WATER) ? this.P.seaLevel : -999;
@@ -680,6 +684,7 @@ export class SurfaceMode {
     this.encounters.clear();
     if (this.dmg) this.dmg.clear();
     this._clearNPCs();
+    this.liminal.reset();
     this.world.clear();
     this.creatures.clear();
     this.horror.clear();
@@ -703,7 +708,7 @@ export class SurfaceMode {
   }
 
   exportEdits() {
-    if (this.planet) this.game.state.edits[this.planet.id] = this.world.exportEdits();
+    if (this.planet) this.game.state.edits[this.planet.id] = this.ground.exportEdits();
   }
 
   exitDirection() {
@@ -726,9 +731,11 @@ export class SurfaceMode {
     if (this.rover.driving) this.rover.exit();
     if (this.rover.present) st.rover = { planet: this.planet.id, ...this.rover.save() };
     st.player = { x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch };
+    // saved inside a liminal pocket: you'll wake up on the doorstep
+    if (this.liminal.inside) { const o = this.liminal.outsidePos(); st.player = { x: o.x, y: o.y, z: o.z, yaw: o.yaw, pitch: 0 }; }
     st.inShip = this.game.inShip;
     st.shipSurface = { x: s.pos.x, y: s.pos.y, z: s.pos.z, yaw: s.yaw(), state: s.state === 'landed' ? 'landed' : 'flying' };
-    st.edits[this.planet.id] = this.world.exportEdits();
+    st.edits[this.planet.id] = this.ground.exportEdits();
     st.dayTime[this.planet.id] = this.dayT;
   }
 
@@ -977,6 +984,7 @@ export class SurfaceMode {
   photoFrame(dt) {
     const g = this.game, cam = g.camera;
     this._applySky(0.0001);
+    this.liminal.applyAtmos();
     this.world.update(cam.position.x, cam.position.z, 5);
     this.sky.update(cam);
     this.clouds.update(cam);
@@ -997,16 +1005,17 @@ export class SurfaceMode {
     const center = _v.copy(focus).addScaledVector(d, 18);
     const sun = voxelUniforms.uSunDir.value;
     const gfx = g.settings.gfx ?? 2;
-    this.shadows.update(this.scene, center, sun, !this.interior && gfx > 0, gfx, this.lastDt || 1 / 60);
+    const LP = this.liminal.inside;
+    this.shadows.update(this.scene, center, sun, !this.interior && gfx > 0 && (!LP || this.liminal.d.kind === 'poolrooms'), gfx, this.lastDt || 1 / 60);
     // volumetric clouds, marched at reduced resolution and composited by the sky
     const pr = g.post.rt;
     this.volClouds.clearSky = this.skyEvents.aurora;
-    const tex = this.volClouds.render(g.renderer, g.camera, pr.width, pr.height, gfx, g.time, this.stormK || 0, !this.interior);
+    const tex = this.volClouds.render(g.renderer, g.camera, pr.width, pr.height, gfx, g.time, this.stormK || 0, !this.interior && !LP);
     const su = this.sky.uniforms;
     su.uClouds.value = tex;
     su.uCloudOn.value = tex ? 1 : 0;
     su.uScreen.value.set(pr.width, pr.height);
-    this.clouds.mesh.visible = !tex && this.P.sky.cloudCover > 0.01 && !this.interior;
+    this.clouds.mesh.visible = !tex && this.P.sky.cloudCover > 0.01 && !this.interior && !LP;
   }
 
   update(dt, paused) {
@@ -1017,14 +1026,15 @@ export class SurfaceMode {
     const player = g.player;
     const ship = g.ship;
     this._applySky(dt);
+    this.liminal.applyAtmos();
     if (paused) {
       g.audio.setLoop('laser', false); g.audio.setLoop('jetpack', false); g.audio.setLoop('engine', false);
       this.beam.hide();
       this._updateCamera(0);
       return;
     }
-    this._updateWeather(dt);
-    this.skyEvents.update(dt);
+    if (!this.liminal.inside) { this._updateWeather(dt); this.skyEvents.update(dt); }
+    const LI = this.liminal.inside;
     const ctl = input.locked;
     // ------- ship or foot -------
     let focus;
@@ -1061,22 +1071,26 @@ export class SurfaceMode {
       this._updateTool(dt, ctl);
       if (player.pos.y < -20) { player.pos.y = this.world.groundAt(player.pos.x, player.pos.z) + 2; player.vel.set(0, 0, 0); }
     }
-    if (this.rover.present && !this.rover.driving) this.rover.update(dt, false);
-    this._missionGuide(dt);
+    if (this.rover.present && !this.rover.driving && !LI) this.rover.update(dt, false);
+    if (!LI) this._missionGuide(dt);
     this.baseT = (this.baseT || 0) - dt;
-    if (this.baseT <= 0 && !this.interior) { this.baseT = 1; g.bases.tick(this.world, this.planet); }
+    if (this.baseT <= 0 && !this.interior) { this.baseT = 1; g.bases.tick(this.ground, this.planet); }
     if (!g.inShip && !this.rover.driving && ctl && input.hit('KeyG') && !this.interior) {
       if (this.rover.unlocked) this.rover.summon();
       else g.hud.notify('Install the Roamer Geobay (Tech) to summon an exocraft');
     }
+    // the liminal pocket: arming, the swap, and whatever the place is doing to you
+    this.liminal.update(dt);
+    const inPocket = this.liminal.inside;
+    if (inPocket) focus = g.player.pos;
     this.world.update(focus.x, focus.z, 5);
     this.grenades.update(dt);
-    this.encounters.update(dt);
+    if (!inPocket) this.encounters.update(dt);
     if (this.pocket === 'station') g.shipyard.update(g.time);
     this._updateCamera(dt);
     this._updatePointLights(dt);
     // crashed ship smoke
-    if (!ship.thrustersRepaired && ship.state === 'landed') {
+    if (!ship.thrustersRepaired && ship.state === 'landed' && !inPocket) {
       this.smokeTimer -= dt;
       if (this.smokeTimer <= 0) {
         this.smokeTimer = 0.12;
@@ -1086,7 +1100,7 @@ export class SurfaceMode {
     }
     // creatures & sentinels
     const pc = g.inShip ? ship.pos : player.pos;
-    this.creatures.update(dt, {
+    if (!inPocket) this.creatures.update(dt, {
       world: this.world, player: pc, fauna: this.P.fauna, time: g.time, playerInShip: g.inShip,
       camPos: g.camera.position, camDir: g.camera.getWorldDirection(new THREE.Vector3()), night: this.daylight < 0.3, zone: this.zoneCur, torch: this.torch && !g.inShip,
       fx: this.cfx, riding: this.riding.active || this.rover.driving,
@@ -1106,13 +1120,13 @@ export class SurfaceMode {
     });
     this.horror.update(dt, {
       world: this.world, P: this.P, cam: g.camera, player: pc, daylight: this.daylight ?? 1, torch: this.torch && !g.inShip,
-      inShip: g.inShip, interior: this.interior, zone: this.zoneCur, enc: this.encK || 0, time: g.time, fogFar: this.fogFar || 100,
+      inShip: g.inShip, interior: this.interior, zone: this.zoneCur, enc: this.encK || 0, time: g.time, fogFar: this.fogFar || 100, liminal: inPocket ? this.liminal.dread : null,
       playTime: g.state.playTime || 0, audio: g.audio, hud: g.hud, toolOut: this.tool.visible, fear: g.settings.fear ?? 1, calm: g.buffs.mul('dread'),
       centerT: (t) => { this.centerT = t; },
       extraBlips: this.creatures.list.filter((c) => c.sp.watcher || c.sp.plan === 'manikin').map((c) => c.pos),
       onHurt: (dmg, why) => { this._hurtPlayer(dmg, why); },
     });
-    g.corruption.update(dt, {
+    if (!inPocket) g.corruption.update(dt, {
       world: this.world, cam: g.camera, camDir: g.camera.getWorldDirection(new THREE.Vector3()), daylight: this.pocket && this.pocket !== 'station' ? 0 : this.daylight ?? 1,
       inShip: g.inShip, dreamWorld: this.horror.dreamWorld, species: this.creatures.species, visorOn: this.visor, horror: this.horror,
       setMissing: (on) => this._setMissing(on), hideChunks: (on) => this._hideChunks(on),
@@ -1120,7 +1134,7 @@ export class SurfaceMode {
       hurt: (dmg, why) => this._hurtPlayer(dmg, why),
     });
     if (!g.inShip && !this.teleport) this._voidTouch(dt);
-    this.sentinels.update(dt, {
+    if (!inPocket) this.sentinels.update(dt, {
       world: this.world, player: pc, inShip: g.inShip, time: g.time,
       fire: (from, dir) => { this.bolts.fire(from, dir, 70, 'sentinel', 7, 0xff3020, 2); g.audio.enemyShoot(); },
       onEvent: (e) => {
@@ -1156,9 +1170,11 @@ export class SurfaceMode {
     }
     this.feeding = this.feeding.filter((f) => !f.done);
     this._survival(dt);
-    this._structures(dt);
-    this._whispers(dt);
-    this._doorsBehind(dt);
+    if (!inPocket) {
+      this._structures(dt);
+      this._whispers(dt);
+      this._doorsBehind(dt);
+    }
     this._updateHUD(dt);
   }
 
@@ -1264,7 +1280,7 @@ export class SurfaceMode {
       if (c[4] === B.CRYSTAL) u.uPLCol.value[i].setRGB(T[30] * 0.7, T[31] * 0.7, T[32] * 0.7);
       else u.uPLCol.value[i].setRGB(col[0], col[1], col[2]);
     }
-    u.uPLStrength.value = (this.pocket === 'station' ? 0.5 : this.interior ? 1.1 : lerp(1.0, 0.3, this.daylight ?? 1)) * this.horror.flicker;
+    u.uPLStrength.value = (this.pocket === 'station' ? 0.5 : this.interior ? 1.1 : this.liminal.inside ? 0.8 * Math.min(1.4, this.liminal.powerK) : lerp(1.0, 0.3, this.daylight ?? 1)) * this.horror.flicker;
   }
 
   _footEvents(ev) {
@@ -1275,6 +1291,7 @@ export class SurfaceMode {
     }
     if (ev.landed) {
       g.audio.land();
+      this.liminal.noise(0.2 + Math.min(0.6, ev.landed * 0.03));
       if (ev.landed > 20) this._hurtPlayer((ev.landed - 20) * 2.5, 'fall');
     }
     if (ev.splash) g.audio.splash();
@@ -1742,6 +1759,7 @@ export class SurfaceMode {
         this.bolts.fire(muzzle, dir.clone().add(spread), 150, 'player', 14, 0xffa45a, 1.5);
         this.recoil = 1;
         g.audio.shoot();
+      this.liminal.noise(0.3);
       }
     }
     if (!beamOn) this.beam.hide();
@@ -1772,6 +1790,7 @@ export class SurfaceMode {
   _mineBlock(hit, dt, how) {
     const g = this.game;
     if (this.pocket === 'station') { g.hud.setCenter('Station hull is protected', '#9fd8ff'); this.centerT = 1; return; }
+    if (this.liminal.inside) { g.hud.setCenter('Your beam slides off it. Nothing in here breaks.', '#d8d0c0'); this.centerT = 1.2; this.liminal.noise(dt * 1.5); return; }
     const def = BLOCKS[hit.id];
     if (!def || def.unbreakable || hit.id === B.BEDROCK) {
       this.game.hud.setCenter(def && def.interact ? '' : 'This will not break', '#ff9f9f');
@@ -1835,6 +1854,7 @@ export class SurfaceMode {
   _placeBlock(hit) {
     const g = this.game, W = this.world, inv = g.inventory, p = g.player;
     if (this.pocket === 'station') { g.hud.setCenter('Building is not permitted aboard the station', '#9fd8ff'); this.centerT = 1; return; }
+    if (this.liminal.inside) { g.hud.setCenter('Nothing you place here will stay.', '#d8d0c0'); this.centerT = 1.5; return; }
     if (this.pocket === 'void') { g.hud.setCenter('Nothing you place here will stay.', '#b8b8c8'); this.centerT = 1.5; return; }
     const id = inv.hotbar[g.selectedHot || 0];
     if (!id || !isPlaceable(id)) { g.hud.notify('Select a block (1-9)'); return; }
@@ -1893,6 +1913,7 @@ export class SurfaceMode {
       if (drop) { const k = drop[1] + Math.floor(Math.random() * (drop[2] - drop[1] + 1)); g.inventory.add(drop[0], k); g.hud.notify(null, drop[0], k); }
       if (c.sp.plan === 'lurker') { const k = 12 + Math.floor(Math.random() * 14); g.inventory.add('ferrite', k); g.hud.notify(null, 'ferrite', k); }
       g.audio.explosion(0.5);
+      this.liminal.noise(1);
       g.missions.event('kill', { plan: c.sp.plan, planet: this.planet.id });
       if (c.sp.hostile) {
         if (!g.state.flags['slain_' + c.sp.plan]) { g.state.flags['slain_' + c.sp.plan] = true; g.hud.toast(`${c.sp.name} slain`, c.sp.note); }
@@ -1940,6 +1961,7 @@ export class SurfaceMode {
       this.debris.spawn(d.pos, [0.8, 0.8, 0.85], 30, 7, 1.5);
       this.debris.spawn(d.pos, [1, 0.3, 0.2], 12, 5, 1, true);
       g.audio.explosion(1);
+      this.liminal.noise(1.5);
       const n = 4 + Math.floor(Math.random() * 6);
       g.inventory.add('pugneum', n);
       g.inventory.add('nanites', 6 + Math.floor(Math.random() * 8));
@@ -2016,14 +2038,19 @@ export class SurfaceMode {
   _interaction(target, dt = 1 / 60) {
     const g = this.game, input = g.input, ship = g.ship, p = g.player, hud = g.hud;
     let prompt = null, action = null;
-    const dShip = Math.hypot(ship.pos.x - p.pos.x, ship.pos.z - p.pos.z);
-    if (this.riding.active) {
+    const dShip = this.liminal.inside ? 99 : Math.hypot(ship.pos.x - p.pos.x, ship.pos.z - p.pos.z);
+    const li = this.liminal.inside && target && target.dist < 5.5 ? this.liminal.interaction(target) : null;
+    if (li) {
+      ({ prompt, action } = li);
+    } else if (this.liminal.inside && target && target.kind === 'block' && BLOCKS[target.hit.id].interact) {
+      // nothing else in here works the way it does outside
+    } else if (this.riding.active) {
       prompt = '<span class="key">E</span>Dismount';
       action = () => this.riding.dismount();
-    } else if (this.rover.canBoard(p.pos)) {
+    } else if (!this.liminal.inside && this.rover.canBoard(p.pos)) {
       prompt = '<span class="key">E</span>Drive the Roamer';
       action = () => this.rover.board();
-    } else if (!g.inShip && this.encounters.interaction(p.pos)) {
+    } else if (!g.inShip && !this.liminal.inside && this.encounters.interaction(p.pos)) {
       ({ prompt, action } = this.encounters.interaction(p.pos));
     } else if (dShip < 6.5 && Math.abs(ship.pos.y - p.pos.y) < 5 && ship.state === 'landed') {
       prompt = '<span class="key">E</span>Board starship';
@@ -2044,6 +2071,7 @@ export class SurfaceMode {
         else if (def.interact === 'basecore') { prompt = '<span class="key">E</span>Base Computer'; action = () => this._baseMenu(target.hit); }
         else if (def.interact === 'teleporter') { prompt = '<span class="key">E</span>Teleport'; action = () => this._teleportMenu(target.hit); }
         else if (def.interact === 'storage') { prompt = '<span class="key">E</span>Open storage crate'; action = () => this._storageMenu(target.hit); }
+        else if (def.interact === 'roller') { prompt = '<span class="key">E</span>Try the shutter'; action = () => { g.hud.setCenter('Locked from the inside.', '#d0d4dc'); this.centerT = 2; g.audio.noiseHit(0.3, 300, 0.2, 'lowpass'); }; }
         else if (def.interact === 'wreck') { prompt = '<span class="key">E</span>Inspect the crashed starship'; action = () => this._wreckMenu(target.hit); }
         else if (def.interact === 'cook') { prompt = '<span class="key">E</span>Nutrient Processor'; action = () => { g.input.unlock(); g.menus.showCooking(); g.audio.ui(); }; }
         else if (def.interact === 'planter') {
@@ -2394,14 +2422,15 @@ export class SurfaceMode {
         if (!g.state.discoveries.structures[k]) {
           g.state.discoveries.structures[k] = { name: s.name, planet: this.planet.name };
           const flavour = {
-            poolrooms: 'The water is perfectly still. The tiles go on forever.',
-            backrooms: 'The carpet is damp. The lights hum at 60 hertz.',
-            hallway: 'Every door leads back to this hallway.',
+            poolrooms: 'A little tiled building. From inside comes the sound of water, a lot of water.',
+            backrooms: 'A plain beige building with one door. Inside, something hums at 60 hertz.',
+            hallway: 'A brick doorway. The hallway behind it is longer than the building.',
+            library: 'A small marble reading room. It smells of old paper and nobody is at the desk.',
             arches: 'Arches that frame nothing, and everything.',
             stairs: 'It leads up. That is all it does.',
             watcher: 'It has been watching the horizon for a very long time.',
             plastic_city: 'Everything is smooth, bright and hollow. Nobody has ever lived here.',
-            warehouse: 'Rows of shelves vanish into fluorescent haze. Something was stored here once.',
+            warehouse: 'A metal shed, locked up for the night. The door at the side is open.',
             monolith: 'An ancient stone, humming with memory.',
             outpost: 'Someone left in a hurry. The terminal is still on.',
             pod: 'A drop pod. Something useful inside.',
@@ -2568,6 +2597,7 @@ export class SurfaceMode {
 
   _die() {
     const g = this.game;
+    this.liminal.bail(true);
     g.player.stats.health = 0;
     g.input.unlock();
     g.audio.stopAllLoops();
@@ -2609,6 +2639,7 @@ export class SurfaceMode {
     else if (this.pocket === 'derelict') hud.setLocation(this.planet.name, `Derelict freighter · ${g.system.name}`, ['No atmosphere', 'Life signs: none', 'Power: failing']);
     else if (this.interior) hud.setLocation(this.planet.name, `${g.system.name} system · Docked`, ['Pressurised', 'Sentinels: None', 'Trade · Tech · Services']);
     else hud.setLocation(g.nameOf(this.planet), `${P.adjective} ${this.planet.biomeLabel} · ${g.system.name}`, conds);
+    if (this.liminal.inside) this.liminal.hud();
     // markers
     for (const m of this.markers) m.t -= dt;
     this.markers = this.markers.filter((m) => m.t > 0);
@@ -2621,16 +2652,17 @@ export class SurfaceMode {
       list.push({ pos, icon, label, color, dist });
       compass.push({ bearing: (Math.atan2(pos.x - cp.x, -(pos.z - cp.z)) * 180 / Math.PI + 360) % 360, icon, color });
     };
-    if (!g.inShip) addM(ship.pos.clone().add(new THREE.Vector3(0, 3, 0)), '▲', 'Starship', '#ff9f5a');
-    if (this.rover.present && !this.rover.driving) addM(this.rover.pos.clone().add(new THREE.Vector3(0, 3, 0)), '◆', 'Roamer', '#ffc46b');
+    const lost = this.liminal.inside;
+    if (!g.inShip && !lost) addM(ship.pos.clone().add(new THREE.Vector3(0, 3, 0)), '▲', 'Starship', '#ff9f5a');
+    if (this.rover.present && !this.rover.driving && !lost) addM(this.rover.pos.clone().add(new THREE.Vector3(0, 3, 0)), '◆', 'Roamer', '#ffc46b');
     if (g.net.active) {
       for (const m of g.net.markers || []) addM(m.pos, '●', m.name, m.color);
       for (const q of g.net.pings) addM(new THREE.Vector3(q.x, q.y, q.z), '◎', q.name, q.color);
     }
-    if (this.planet && !this.interior) for (const b of g.bases.list) if (b.planet === this.planet.id) addM(new THREE.Vector3(b.x + 0.5, b.y + 3, b.z + 0.5), '⌂', b.name, '#8fe6ff');
+    if (lost) { /* no bearings in here */ } else if (this.planet && !this.interior) for (const b of g.bases.list) if (b.planet === this.planet.id) addM(new THREE.Vector3(b.x + 0.5, b.y + 3, b.z + 0.5), '⌂', b.name, '#8fe6ff');
     else if (ship.state === 'flying' && this.landSite) addM(new THREE.Vector3(this.landSite.x, this.landSite.y + 1.5, this.landSite.z), '▼', 'Landing zone', '#9fffd0');
-    for (const m of this.markers) addM(m.pos, m.icon, m.label, m.color);
-    const em = this.encounters.marker();
+    if (!lost) for (const m of this.markers) addM(m.pos, m.icon, m.label, m.color);
+    const em = lost ? null : this.encounters.marker();
     if (em) addM(em.pos, em.icon, em.label, em.color);
     for (const c of this.creatures.list) if (c.companion) addM(c.pos.clone().add(new THREE.Vector3(0, c.sp.size * 1.6 + 0.6, 0)), '♥', '', '#ff9bd6');
     hud.updateMarkers(cam, list, g.width, g.height);

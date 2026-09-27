@@ -729,6 +729,105 @@ function paintTiles() {
     const g0 = 0.75 + fbmT(u, v, 8, 1, 151) * 0.06;
     return [g0, g0 * 0.98, g0 * 0.94, UNT];
   }));
+  // ---- liminal spaces ----
+  const GLYPH = {
+    E: ['111', '100', '111', '100', '111'], X: ['101', '101', '010', '101', '101'],
+    I: ['111', '010', '010', '010', '111'], T: ['111', '010', '010', '010', '010'],
+  };
+  const glyphAt = (word, x0, y0, x, y) => {
+    const lx = x - x0, ly = y - y0;
+    if (ly < 0 || ly > 4 || lx < 0) return false;
+    const gi = Math.floor(lx / 4), gx = lx % 4;
+    return gi < word.length && gx < 3 && GLYPH[word[gi]][ly][gx] === '1';
+  };
+  const steelDoor = (x, y, u, v) => {
+    if (x <= 1 || x >= 14) return [0.2, 0.22, 0.22, UNT];
+    const g0 = 0.42 + fbmT(u, v, 8, 1, 161) * 0.05 + (x === 2 ? 0.06 : x === 13 ? -0.05 : 0);
+    return [g0 * 0.9, g0 * 1.02, g0 * 0.95, UNT];
+  };
+  t('exit_door_lo', (p) => field(p, (u, v, x, y) => {
+    if (x > 1 && x < 14 && (y === 4 || y === 5)) return y === 4 ? [0.82, 0.84, 0.86, UNT] : [0.5, 0.52, 0.54, UNT];
+    if (x > 1 && x < 14 && y >= 12) return [0.3, 0.32, 0.31, UNT];
+    return steelDoor(x, y, u, v);
+  }));
+  t('exit_door_hi', (p) => field(p, (u, v, x, y) => {
+    if (x >= 6 && x <= 9 && y >= 3 && y <= 10) {
+      if (x === 6 || x === 9 || y === 3 || y === 10) return [0.16, 0.17, 0.17, UNT];
+      const sheen = (x + y === 12) ? 0.25 : 0;
+      return [0.12 + sheen, 0.16 + sheen, 0.17 + sheen, UNT];
+    }
+    if (y === 0 && x > 1 && x < 14) return [0.25, 0.27, 0.27, UNT];
+    return steelDoor(x, y, u, v);
+  }));
+  t('exit_sign', (p) => field(p, (u, v, x, y) => {
+    if (y <= 2 || y >= 13) return [0.1, 0.12, 0.11, UNT];
+    if (glyphAt('EXIT', 0, 5, x, y)) return [0.35, 1.25, 0.5, UNT];
+    const glow = y >= 4 && y <= 10 ? 0.06 : 0;
+    return [0.02 + glow * 0.3, 0.16 + glow, 0.06 + glow * 0.4, UNT];
+  }));
+  t('glow_book', (p) => {
+    p.fill((x, y, r) => {
+      const board = y % 8 === 0 || y % 8 === 7;
+      if (board || x === 0 || x === 15) return [0.2, 0.13, 0.09, UNT];
+      if (x >= 6 && x <= 9 && y % 8 >= 1) {
+        const n = (r.next() - 0.5) * 0.06;
+        const band = (y % 8 === 3 || y % 8 === 5) ? 0.25 : 0;
+        return [1.2 + band + n, 0.86 + band + n, 0.34 + n, UNT];
+      }
+      const book = Math.floor(x / 2) + Math.floor(y / 8) * 11;
+      const rr = ((book * 9301 + 49297) % 233280) / 233280;
+      const n = (r.next() - 0.5) * 0.04;
+      return [0.18 + rr * 0.12 + n, 0.1 + rr * 0.06 + n, 0.08 + n, UNT];
+    });
+  });
+  t('drain', (p) => field(p, (u, v, x, y) => {
+    const r = Math.hypot(u - 0.5, v - 0.5);
+    if (r > 0.47) return [0.25, 0.45, 0.62, UNT];
+    const ring = Math.abs(Math.sin(r * 38)) < 0.35;
+    const slot = Math.abs(Math.sin(Math.atan2(v - 0.5, u - 0.5) * 4)) < 0.3;
+    if (ring || slot) return [0.72, 0.78, 0.82, UNT];
+    const k = 1.2 - r * 1.6;
+    return [0.35 * k, 0.95 * k, 1.1 * k, UNT];
+  }));
+  t('roller', (p) => field(p, (u, v, x, y) => {
+    const rib = y % 4;
+    const k = rib === 0 ? 0.36 : rib === 1 ? 0.62 : rib === 2 ? 0.55 : 0.46;
+    const rust = smooth01(fbmT(u, v, 2, 3, 163) * 1.8 - 0.7) * 0.25;
+    return [k + rust * 0.5, k + rust * 0.15, k * 1.03, UNT];
+  }));
+  const poster = (odd) => (p) => field(p, (u, v, x, y) => {
+    if (x === 0 || x === 15 || y === 0 || y === 15) return [0.93, 0.94, 0.95, UNT];
+    if (x === 1 || x === 14 || y === 1 || y === 14) return [0.15, 0.13, 0.12, UNT];
+    const sx = 9.5, sy = 5.5, sr = Math.hypot(x - sx, y - sy);
+    if (sr < 2.6) {
+      if (odd && (x === 8 || x === 10) && y === 5) return [0.05, 0.02, 0.02, UNT];
+      if (odd && y === 7 && x >= 8 && x <= 10) return [0.4, 0.02, 0.03, UNT];
+      return odd ? [1.0, 0.92, 0.75, UNT] : [1.0, 0.82, 0.25, UNT];
+    }
+    const hill = 10 + Math.sin(x * 0.55) * 1.4;
+    if (y > hill) return odd ? [0.5, 0.12, 0.1, UNT] : [0.35, 0.62, 0.3, UNT];
+    return [0.55, 0.75, 0.92, UNT];
+  });
+  t('poster', poster(false));
+  t('poster_odd', poster(true));
+  t('breaker', (p) => field(p, (u, v, x, y) => {
+    if (frame(x, y) === 0) return [0.2, 0.2, 0.22, UNT];
+    if (y >= 12) return ((x + y) >> 1) & 1 ? [0.95, 0.78, 0.1, UNT] : [0.08, 0.08, 0.08, UNT];
+    if (x >= 7 && x <= 8 && y >= 3 && y <= 9) return [0.12, 0.12, 0.13, UNT];
+    if (x >= 5 && x <= 10 && y >= 2 && y <= 3) return [0.95, 0.15, 0.1, UNT];
+    const g0 = 0.52 + fbmT(u, v, 8, 1, 167) * 0.05;
+    return [g0, g0 * 1.01, g0 * 1.03, UNT];
+  }));
+  const officeDoor = (hi) => (p) => field(p, (u, v, x, y) => {
+    if (x <= 1 || x >= 14) return [0.34, 0.3, 0.27, UNT];
+    const panel = hi ? (x >= 4 && x <= 11 && y >= 3 && y <= 13) : (x >= 4 && x <= 11 && y >= 1 && y <= 10);
+    const edge = panel && (x === 4 || x === 11 || y === (hi ? 3 : 1) || y === (hi ? 13 : 10));
+    if (!hi && x === 12 && (y === 2 || y === 3)) return [0.85, 0.8, 0.6, UNT];
+    const g0 = 0.62 + fbmT(u, v, 2, 3, hi ? 171 : 173) * 0.06 - (edge ? 0.1 : 0);
+    return [g0 * 0.95, g0 * 0.88, g0 * 0.78, UNT];
+  });
+  t('office_door_lo', officeDoor(false));
+  t('office_door_hi', officeDoor(true));
   t('dream_water', (p) => {
     p.fill((x, y, r) => {
       const w = Math.sin((x - y * 0.5) * 0.7) * 0.06;

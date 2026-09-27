@@ -18,6 +18,8 @@ export const TILE = {
   void: 80, emergency: 81, hull: 82, grate: 83, missing: 84,
   base_side: 85, base_top: 86, tele_side: 87, tele_top: 88, planter_side: 89, planter_top: 90, crate_side: 91, crate_top: 92,
   cook_side: 93, cook_top: 94,
+  exit_door_lo: 95, exit_door_hi: 96, exit_sign: 97, glow_book: 98, drain: 99, roller: 100, poster: 101, poster_odd: 102,
+  breaker: 103, office_door_lo: 104, office_door_hi: 105,
 };
 
 // Tint channels. The palette of each planet supplies an RGB colour per channel.
@@ -45,6 +47,8 @@ export const B = {
   BOOKSHELF: 71, SILVER: 72, TV: 73, DARK_WOOD: 74, FLESH: 75, ONYX: 76,
   VOID: 77, EMERGENCY: 78, HULL: 79, GRATE: 80, MISSING: 81,
   BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85, NUTRIENT: 86, WRECK_BEACON: 87, LIT_DIM: 88, LIT_DARK: 89,
+  EXIT_DOOR: 90, EXIT_DOOR_TOP: 91, EXIT_SIGN: 92, GLOW_BOOK: 93, DRAIN: 94, ROLLER: 95, POSTER: 96, POSTER_ODD: 97,
+  BREAKER: 98, OFFICE_DOOR: 99, OFFICE_DOOR_TOP: 100,
 };
 
 const T = TILE;
@@ -163,6 +167,18 @@ BLOCKS[B.PLANTER] = def('Dream Planter', [T.planter_top, T.metal_plate, T.plante
 BLOCKS[B.STORAGE] = def('Storage Crate', [T.crate_top, T.crate_top, T.crate_side], { hardness: 0.9, interact: 'storage', drops: [['ferrite', 1, 2]], color: [0.9, 0.6, 0.2] });
 BLOCKS[B.NUTRIENT] = def('Nutrient Processor', [T.cook_top, T.metal_plate, T.cook_side], { hardness: 0.9, emissive: 0.35, interact: 'cook', drops: [['ferrite', 1, 2]], color: [1.0, 0.55, 0.3] });
 BLOCKS[B.WRECK_BEACON] = def('Distress Beacon', [T.metal_plate, T.metal_plate, T.terminal], { hardness: 999, unbreakable: true, collect: false, interact: 'wreck', emissive: 0.7, color: [1.0, 0.35, 0.25] });
+// liminal spaces: the way out, and the things you find on the way
+BLOCKS[B.EXIT_DOOR] = def('Exit', [T.metal_plate, T.metal_plate, T.exit_door_lo], { hardness: 999, unbreakable: true, collect: false, interact: 'exit', color: [0.45, 0.55, 0.5] });
+BLOCKS[B.EXIT_DOOR_TOP] = def('Exit', [T.metal_plate, T.metal_plate, T.exit_door_hi], { hardness: 999, unbreakable: true, collect: false, interact: 'exit', color: [0.45, 0.55, 0.5] });
+BLOCKS[B.EXIT_SIGN] = def('Exit Sign', [T.metal_plate, T.metal_plate, T.exit_sign], { hardness: 999, unbreakable: true, collect: false, emissive: 1, color: [0.2, 1.0, 0.4] });
+BLOCKS[B.GLOW_BOOK] = def('A Book With Your Name', [T.dark_wood, T.dark_wood, T.glow_book], { hardness: 999, unbreakable: true, collect: false, interact: 'book', emissive: 0.7, color: [1.0, 0.8, 0.35] });
+BLOCKS[B.DRAIN] = def('Drain', [T.drain, T.pool_deep, T.pool_deep], { hardness: 999, unbreakable: true, collect: false, interact: 'drain', emissive: 0.8, color: [0.5, 0.9, 1.0] });
+BLOCKS[B.ROLLER] = def('Loading Door', T.roller, { hardness: 999, unbreakable: true, collect: false, interact: 'roller', color: [0.55, 0.56, 0.58] });
+BLOCKS[B.POSTER] = def('Poster', [T.pool_tile, T.pool_tile, T.poster], { hardness: 999, unbreakable: true, collect: false, color: [0.6, 0.8, 0.95] });
+BLOCKS[B.POSTER_ODD] = def('Poster', [T.pool_tile, T.pool_tile, T.poster_odd], { hardness: 999, unbreakable: true, collect: false, color: [0.6, 0.8, 0.95] });
+BLOCKS[B.BREAKER] = def('Breaker Panel', [T.metal_plate, T.metal_plate, T.breaker], { hardness: 999, unbreakable: true, collect: false, interact: 'breaker', emissive: 0.25, color: [0.9, 0.3, 0.2] });
+BLOCKS[B.OFFICE_DOOR] = def('Door', [T.dark_wood, T.dark_wood, T.office_door_lo], { hardness: 999, unbreakable: true, collect: false, color: [0.55, 0.5, 0.45] });
+BLOCKS[B.OFFICE_DOOR_TOP] = def('Door', [T.dark_wood, T.dark_wood, T.office_door_hi], { hardness: 999, unbreakable: true, collect: false, color: [0.55, 0.5, 0.45] });
 
 export const BLOCK_COUNT = BLOCKS.length;
 

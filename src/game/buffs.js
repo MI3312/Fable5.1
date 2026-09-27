@@ -35,7 +35,7 @@ export class Buffs {
 
   // can this item be eaten? returns the verb for the inventory button
   verb(id) {
-    if (FOOD[id]) return 'Eat';
+    if (FOOD[id]) return FOOD[id].drink ? 'Drink' : 'Eat';
     const it = ITEMS[id];
     if (it && it.cat === 'fish' && id !== 'kelp_tangle') return 'Eat raw';
     return null;

@@ -140,15 +140,17 @@ export class NetSession {
 
   // ---------------- world hooks ----------------
   _hookWorld() {
-    const W = this.game.surface.world;
+    const W = this.game.surface.ground;
     W.onEdit = (x, y, z, id) => { if (!this.applying && this.active) this.edits.push(x, y, z, id); };
   }
 
-  _unhookWorld() { this.game.surface.world.onEdit = null; }
+  _unhookWorld() { this.game.surface.ground.onEdit = null; }
 
   _where() {
     const g = this.game, S = g.surface;
     const sys = g.system ? g.system.key : '';
+    // inside a liminal pocket: only someone in the same pocket can see you
+    if (g.mode === 'surface' && S.planet && !S.interior && S.liminal.inside) return { m: 'l', s: sys, p: S.planet.id, pi: S.planet.index, lk: S.liminal.d.key + ':' + S.liminal.d.seed };
     if (g.mode === 'surface' && S.planet && !S.interior) return { m: 's', s: sys, p: S.planet.id, pi: S.planet.index };
     // inside a station (or another walkable interior): visible to whoever is in the same one
     if (g.mode === 'surface' && S.planet && S.interior) return { m: 'i', s: sys, p: S.planet.id, st: S.pocket === 'station' ? 1 : 0 };
@@ -178,7 +180,7 @@ export class NetSession {
     const now = performance.now();
     this.markers = [];
     this.remote.update({
-      here: { mode: here.m === 'x' ? 'space' : here.m === 'i' ? 'interior' : 'surface', sys: here.s, planet: here.p },
+      here: { mode: here.m === 'x' ? 'space' : here.m === 'i' ? 'interior' : here.m === 'l' ? 'liminal' : 'surface', sys: here.s, planet: here.p, lk: here.lk },
       now, dt,
       markers: (pos, name, color) => this.markers.push({ pos, name, color }),
     });
@@ -275,7 +277,7 @@ export class NetSession {
         if (!this.isHost || m.what !== 'edits') break;
         const w = this._where();
         const S = g.surface;
-        const data = w.p === m.p && w.m === 's' ? S.world.exportEdits() : (g.state.edits[m.p] || {});
+        const data = w.p === m.p && w.m === 's' ? S.ground.exportEdits() : (g.state.edits[m.p] || {});
         T.send(from, { k: 'eds', p: m.p, d: data }, true);
         break;
       }
@@ -346,7 +348,7 @@ export class NetSession {
 
   // apply a flat [x,y,z,id,...] list without echoing it back out
   _apply(e) {
-    const W = this.game.surface.world;
+    const W = this.game.surface.ground;
     this.applying = true;
     for (let i = 0; i + 3 < e.length; i += 4) W.editBlock(e[i], e[i + 1], e[i + 2], e[i + 3]);
     this.applying = false;

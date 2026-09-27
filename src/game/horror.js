@@ -53,6 +53,20 @@ export class Horror {
   // ------------------------------------------------------------------ main
   update(dt, ctx) {
     if (this.interior || !this.P) { this._fx(dt, ctx, 0); return; }
+    // inside a liminal pocket the place itself decides how afraid you are; the things out in the
+    // fog stay out there
+    if (ctx.liminal != null) {
+      if (!this.inPocket) {
+        this.inPocket = true;
+        for (const c of [...this.group.children]) this.group.remove(c);
+        this.hollow = null; this.walker = null; this.choir = null; this.visitor = null; this.eyes = []; this.maws = [];
+      }
+      const t = clamp(ctx.liminal * (ctx.calm ?? 1), 0, 1);
+      this.dread += (t - this.dread) * Math.min(1, dt * (t > this.dread ? 0.6 : 0.25));
+      this._fx(dt, ctx, this.dread);
+      return;
+    }
+    this.inPocket = false;
     this.ctx = ctx;
     const cam = ctx.cam;
     this.camDir = cam.getWorldDirection(this._camDir || (this._camDir = new THREE.Vector3()));

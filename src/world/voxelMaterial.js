@@ -49,6 +49,7 @@ export const voxelUniforms = {
   uShadowTexel2: { value: 1 / 1536 },
   uShadowDepth2: { value: 1 / 500 },
   uSeaLevel: { value: -999 },
+  uPanelK: { value: 1 }, // ceiling panels and lamps: 1 = on, near 0 = the power's out
   uCloudNoise: cloudUniforms.uCloudNoise,
   uCloudCover: cloudUniforms.uCloudCover,
   uCloudWind: cloudUniforms.uCloudWind,
@@ -72,6 +73,8 @@ const GLOSS = {
   onyx: [0.5, 0.05], plastic_r: [0.3, 0.1], plastic_y: [0.3, 0.1], plastic_b: [0.3, 0.1], plastic_w: [0.32, 0.1],
   concrete: [0.12, 0.3], grate: [0.18, 0.25], hull: [0.2, 0.2], tv: [0.45, 0.03], neon: [0.25, 0.08], salt: [0.18, 0.2],
   base_top: [0.3, 0.1], tele_top: [0.35, 0.08], ceiling_tile: [0.08, 0.3], light_panel: [0.2, 0.05],
+  exit_door_lo: [0.28, 0.14], exit_door_hi: [0.32, 0.1], poster: [0.4, 0.02], poster_odd: [0.4, 0.02], roller: [0.22, 0.2],
+  breaker: [0.25, 0.12], drain: [0.4, 0.06], exit_sign: [0.3, 0.03],
 };
 function glossTexture() {
   const data = new Uint8Array(256 * 4);
@@ -162,7 +165,7 @@ uniform mat4 uShadowMatrix;
 uniform float uShadowOn, uShadowTexel, uShadowDepth;
 uniform sampler2D uShadowMap2;
 uniform mat4 uShadowMatrix2;
-uniform float uShadowOn2, uShadowTexel2, uShadowDepth2, uSeaLevel;
+uniform float uShadowOn2, uShadowTexel2, uShadowDepth2, uSeaLevel, uPanelK;
 const vec2 POISSON[12] = vec2[](
   vec2(-0.326, -0.406), vec2(-0.840, -0.074), vec2(-0.696, 0.457), vec2(-0.203, 0.621),
   vec2(0.962, -0.195), vec2(0.473, -0.480), vec2(0.519, 0.767), vec2(0.185, -0.893),
@@ -320,7 +323,9 @@ void main() {
     float ca = caustics(vWorld.xz * 0.16 + vec2(uTime * 0.012, 0.0), uTime * 0.55);
     col += base * ca * depthK * (0.25 * max(sky, art) + 0.75 * direct * uDaylight * sky + uArtificial.r * art * 0.8) * 2.6 * ao;
   }
-  col = mix(col, base * (0.85 + 0.25 * ao), emit);
+  int tileId = int(uvl.z + 0.5);
+  float panel = (tileId == ${TILE.light_panel} || tileId == ${TILE.lamp}) ? uPanelK : 1.0;
+  col = mix(col, base * (0.85 + 0.25 * ao) * panel, emit * min(1.0, panel * 4.0 + 0.2));
   float alpha = uAlpha;
   // polished tile, stone and metal mirror what's around them
   if (uSSR > 0.0 && uLiquid <= 0.0 && vDist3 < 90.0) {
