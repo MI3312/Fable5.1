@@ -802,6 +802,15 @@ export class SurfaceMode {
       zen[i] = lerp(zen[i], gray * 0.6, storm * 0.6);
       hor[i] = lerp(hor[i], (hor[0] + hor[1] + hor[2]) / 3 * 0.75, storm * 0.5);
     }
+    // the mood: skies washed toward slate, as if seen through damp air
+    const mood = this.game.settings.mood ?? 0.8;
+    if (mood > 0) {
+      const muteArr = (c, k, tint) => { const l = c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11; for (let i = 0; i < 3; i++) c[i] = lerp(c[i], l * tint[i], k); };
+      muteArr(zen, 0.38 * mood, [0.92, 0.98, 1.1]);
+      muteArr(hor, 0.32 * mood, [0.98, 1.0, 1.02]);
+      // haze that's a shade darker than the sky gives the distance weight instead of washing it out
+      for (let i = 0; i < 3; i++) hor[i] *= 1 - 0.16 * mood;
+    }
     const ZA = this._zoneAtmos(dt);
     // a wrong night: the sky bleeds
     const LN = this.horror ? this.horror.longNightK * (1 - daylight) : 0;
@@ -824,10 +833,12 @@ export class SurfaceMode {
     else u.uSunsetCol.value.setRGB(1.0, 0.48, 0.28);
     u.uGroundCol.value.setRGB(hor[0] * 0.55, hor[1] * 0.55, hor[2] * 0.6);
     u.uSunColor.value.setRGB(S.sun[0], S.sun[1] * (1 - sunset * 0.3), S.sun[2] * (1 - sunset * 0.5));
+    if (mood > 0) { const sc = u.uSunColor.value, sl = (sc.r + sc.g + sc.b) / 3; sc.setRGB(lerp(sc.r, sl, 0.3 * mood), lerp(sc.g, sl, 0.3 * mood), lerp(sc.b, sl * 1.04, 0.3 * mood)).multiplyScalar(1 - 0.12 * mood); }
     // lighting for voxels
     const dream = P.biome === 'liminal' ? 1 : 0;
     const amb = lerp(0.15, 0.4, daylight);
     u.uAmbient.value.setRGB(amb * (1 + dream * 0.1) + hor[0] * 0.08, amb + hor[1] * 0.08, amb * (1 + dream * 0.15) + hor[2] * 0.1 + (1 - daylight) * 0.05);
+    if (mood > 0) { const am = u.uAmbient.value; am.setRGB(am.r * (1 - 0.2 * mood), am.g * (1 - 0.16 * mood), am.b * (1 - 0.08 * mood)); }
     const sk = lerp(0.2, 0.78, daylight) * (1 - storm * 0.3);
     const moon = 1 - daylight;
     u.uSkyLight.value.setRGB(sk * lerp(1, 1.1, sunset) * (1 - moon * 0.25), sk * lerp(1, 0.85, sunset) * (1 - moon * 0.1), sk * lerp(1.05, 0.75, sunset) * (1 + moon * 0.25));
@@ -841,8 +852,8 @@ export class SurfaceMode {
     const FG = P.fog;
     const fogK = (1 + storm * 1.6) * (this.game.inShip && (this.game.ship.state === 'flying' || this.game.ship.state === 'entry') ? 0.6 : 1);
     const HM = this.horror || { fogMul: 1, mistMul: 1, longNightK: 0 };
-    u.uFogDensity.value = FG.density * fogK * lerp(1, ZA.dens, ZA.k) * HM.fogMul;
-    u.uMistDensity.value = FG.mistDensity * (1 + storm) * lerp(1, ZA.mist, ZA.k) * HM.mistMul;
+    u.uFogDensity.value = FG.density * fogK * lerp(1, ZA.dens, ZA.k) * HM.fogMul * (1 + 0.12 * mood);
+    u.uMistDensity.value = FG.mistDensity * (1 + storm) * lerp(1, ZA.mist, ZA.k) * HM.mistMul * (1 + 0.18 * mood);
     u.uMistBase.value = FG.mistBase;
     u.uMistFalloff.value = FG.mistFalloff;
     // mist glows softly in daylight, turns to deep velvet at night
@@ -853,6 +864,7 @@ export class SurfaceMode {
       lerp(mc[1] * ml, u.uSunsetCol.value.g, sunset * 0.35) + (1 - daylight) * 0.02,
       lerp(mc[2] * ml, u.uSunsetCol.value.b, sunset * 0.35) + (1 - daylight) * 0.05,
     );
+    if (mood > 0) { const mc2 = u.uMistCol.value, ml2 = (mc2.r + mc2.g + mc2.b) / 3; mc2.lerp(_c.setRGB(ml2 * 0.96, ml2, ml2 * 1.05), 0.4 * mood).multiplyScalar(1 - 0.18 * mood); }
     if (LN > 0.001) u.uMistCol.value.lerp(_c.setRGB(0.16, 0.02, 0.03), LN * 0.85);
     if (ZA.k > 0.001) {
       const mk = ZA.k * ZA.sky;
@@ -1349,9 +1361,11 @@ export class SurfaceMode {
       else pu.uWaterColor.value.setRGB(t[15], t[16], t[17]);
     }
     pu.uDream.value = (this.P.sky.dream || 0) * g.settings.dreamFx;
-    pu.uVignette.value = 0.3 + 0.15 * g.settings.dreamFx;
-    pu.uCA.value = 0.001 + 0.0025 * g.settings.dreamFx;
-    pu.uGrain.value = 0.02 + 0.03 * g.settings.dreamFx;
+    const mood = g.settings.mood ?? 0.8;
+    pu.uDream.value *= 1 - 0.6 * mood;
+    pu.uVignette.value = 0.3 + 0.15 * g.settings.dreamFx + 0.12 * mood;
+    pu.uCA.value = (0.001 + 0.0025 * g.settings.dreamFx) * (1 - 0.6 * mood);
+    pu.uGrain.value = 0.02 + 0.03 * g.settings.dreamFx + 0.012 * mood;
     // sun shafts through the fog
     {
       const u = voxelUniforms;

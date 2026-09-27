@@ -313,6 +313,7 @@ export class PostFX {
       uFlare: { value: 0 },
       tExposure: { value: null },
       uAutoExp: { value: 0 },
+      uMood: { value: 0.8 },
     };
     this.quality = 2;
     this.levels = [];
@@ -326,7 +327,7 @@ export class PostFX {
         uniform float uTime, uVignette, uCA, uGrain, uSat, uFade, uDamage, uWarp, uUnderwater, uDream, uHazard, uVisor, uPixel;
         uniform float uDread, uPulse, uGlitch, uFlash, uRays, uBloom, uHasMask, uFilmic;
         uniform sampler2D tBloom, tMask, tDepth, tVol;
-        uniform float uVol, uFlare, uAutoExp;
+        uniform float uVol, uFlare, uAutoExp, uMood;
         uniform sampler2D tExposure;
         // hue-preserving highlight compression (Khronos PBR Neutral)
         vec3 neutralTone(vec3 c) {
@@ -351,6 +352,18 @@ export class PostFX {
         uniform vec3 uTint, uFadeColor, uWaterColor, uHazardColor;
         varying vec2 vUv;
         float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+        vec3 rgb2hsv(vec3 c) {
+          vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+          vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+          vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+          float d = q.x - min(q.w, q.y);
+          return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+        }
+        vec3 hsv2rgb(vec3 c) {
+          vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+          return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+        }
+        float bump(float x, float c, float w) { float d = (x - c) / w; return exp(-d * d); }
         vec3 sampleCA(vec2 uv, float amt) {
           vec2 d = (uv - 0.5) * amt;
           return vec3(texture2D(tDiffuse, uv - d).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv + d).b);
@@ -447,7 +460,7 @@ export class PostFX {
               vec2 sd = (uv - uSunPos) * asp;
               fc += uRayCol * exp(-abs(sd.y) * 90.0) * exp(-abs(sd.x) * 3.0) * 0.35;
               fc += uRayCol * pow(max(0.0, 1.0 - length(sd) * 3.0), 3.0) * 0.25;
-              col += fc * fl;
+              col += fc * fl * (1.0 - 0.45 * uMood);
             }
           }
           // HDR bloom, then a filmic shoulder so bright things roll off instead of clipping
@@ -466,9 +479,31 @@ export class PostFX {
             else if (F == 5) { col = vec3(col.g * 0.9 + 0.1, col.b * 0.8 + col.r * 0.3, col.r); col = mix(vec3(lf), col, 1.3); }
             else if (F == 6) col = vec3(lf) * vec3(1.1, 0.92, 0.72) + vec3(0.04, 0.02, 0.0);
           }
-          // grading: dread drains the colour out of the world
-          float l = dot(col, vec3(0.299, 0.587, 0.114));
-          col = mix(vec3(l), col, uSat * (1.0 - uDread * 0.55));
+          // grading. The mood: a damp, overcast film stock. Greens sink to olive and moss, pinks and
+          // violets to dusty mauve, blues to slate; warm light (fire, lamps, a low sun) keeps most
+          // of its colour, so it's what draws the eye. Shadows go cold, the curve gets weight, the
+          // blacks lift into a soft matte. Dread drains whatever colour is left.
+          float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+          if (uMood > 0.0) {
+            vec3 hsv = rgb2hsv(max(col, 0.0));
+            float hh = hsv.x;
+            float wGreen = bump(hh, 0.27, 0.13), wCyan = bump(hh, 0.54, 0.1), wViolet = bump(hh, 0.8, 0.13), wWarm = max(bump(hh, 0.05, 0.08), bump(hh, 1.05, 0.08));
+            float satMul = 1.0 - uMood * (0.34 + wGreen * 0.3 + wCyan * 0.24 + wViolet * 0.4 - wWarm * 0.14);
+            hsv.x = mix(hh, 0.2, wGreen * 0.28 * uMood);          // lime and emerald lean olive
+            hsv.y *= clamp(satMul, 0.0, 1.2);
+            hsv.y *= 1.0 - uMood * 0.25 * (smoothstep(0.55, 1.0, hsv.z) + smoothstep(0.25, 0.0, hsv.z));
+            hsv.z *= 1.0 - uMood * wGreen * 0.12;
+            col = hsv2rgb(hsv);
+            l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+          }
+          col = mix(vec3(l), col, uSat * mix(1.0, 0.94, uMood) * (1.0 - uDread * 0.55));
+          vec3 split = mix(vec3(0.82, 0.93, 1.07), vec3(1.06, 1.0, 0.88), smoothstep(0.03, 0.72, l));
+          float mid = clamp(1.0 - abs(l * 2.2 - 0.9), 0.0, 1.0);
+          split *= mix(vec3(1.0), vec3(0.97, 1.01, 0.96), mid);
+          col = mix(col, col * split, uMood);
+          vec3 cc = clamp(col, 0.0, 1.0);
+          col = mix(col, cc * cc * (3.0 - 2.0 * cc), 0.34 * uMood);
+          col = mix(col, col * 0.95 + vec3(0.014, 0.019, 0.025), uMood);
           col = mix(col, col * vec3(0.92, 0.96, 1.04), uDread * 0.6);
           col *= uTint;
           if (uDream > 0.0) {
@@ -492,7 +527,7 @@ export class PostFX {
           col *= 1.0 - clamp(vig, 0.0, 0.95) * smoothstep(0.35 - uDread * 0.15, 0.85, r + uPulse * 0.03);
           // grain
           float g = hash(uv * uRes + fract(uTime * 7.13) * 100.0) - 0.5;
-          col += g * (uGrain + uDread * 0.06 + uGlitch * 0.12);
+          col += g * (uGrain + uDread * 0.06 + uGlitch * 0.12) * mix(1.0, 1.5 - l, uMood);
           if (uGlitch > 0.0) col *= 1.0 - 0.25 * uGlitch * step(0.5, fract(uv.y * uRes.y * 0.25 + uTime * 40.0));
           col = mix(col, vec3(1.0), clamp(uFlash, 0.0, 1.0));
           col = mix(col, uFadeColor, clamp(uFade, 0.0, 1.0));
@@ -683,6 +718,10 @@ export class PostFX {
     A.tLum.value = L[L.length - 1].texture;
     A.tPrev.value = this.expA.texture;
     A.uDt.value = Math.min(0.25, dt);
+    // the mood exposes a little darker and won't open up as far in the gloom
+    const mood = this.uniforms.uMood.value;
+    A.uKey.value = 0.72 - 0.13 * mood;
+    A.uMax.value = 1.3 - 0.12 * mood;
     A.uReset.value = this.expReset ? 1 : 0;
     this.expReset = false;
     this._pass(this.adaptPass, this.expB);
@@ -733,7 +772,7 @@ export class PostFX {
       r.render(passes[i].scene, passes[i].camera);
     }
     if (q >= 1) this._bloom();
-    this.uniforms.uBloom.value = q >= 1 ? (opts.bloom ?? 0.42) : 0;
+    this.uniforms.uBloom.value = q >= 1 ? (opts.bloom ?? 0.42) * (1 - 0.4 * this.uniforms.uMood.value) : 0;
     if (opts.exposure !== false && !this.noAutoExp) this._adapt(opts.dt ?? 1 / 60);
     else this.uniforms.uAutoExp.value = 0;
     r.setRenderTarget(null);

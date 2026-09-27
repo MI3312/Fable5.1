@@ -18,6 +18,7 @@ import { ITEMS } from '../data/items.js';
 import { ALCHEMY, UPGRADES } from '../data/recipes.js';
 import { MEMORIES, STATION_CHATTER, ENDING } from '../data/lore.js';
 import { B, BLOCKS } from '../world/blocks.js';
+import { voxelUniforms } from '../world/voxelMaterial.js';
 import { Ship } from '../entities/ship.js';
 import { Player } from '../entities/player.js';
 import { Missions } from './missions.js';
@@ -35,7 +36,7 @@ const SAVE_KEY = 'lucidsky.save.v1';
 const SETTINGS_KEY = 'lucidsky.settings.v1';
 
 const DEFAULT_SETTINGS = {
-  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, hudFade: true, fear: 1, gfx: 2, playerName: 'Dreamer',
+  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, mood: 0.8, hudFade: true, fear: 1, gfx: 2, playerName: 'Dreamer',
 };
 
 function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
@@ -131,6 +132,9 @@ export class Game {
     this.audio.setVolumes({ master: s.master, music: s.music, sfx: s.sfx });
     if (this.post.scale !== s.renderScale) { this.post.scale = s.renderScale; this.resize(); }
     this.post.quality = s.gfx ?? 2;
+    // the colour mood: vivid (0) to damp and bleak (1)
+    this.post.uniforms.uMood.value = s.mood ?? 0.8;
+    voxelUniforms.uMood.value = s.mood ?? 0.8;
   }
 
   saveSettings() { safeSet(SETTINGS_KEY, JSON.stringify(this.settings)); }

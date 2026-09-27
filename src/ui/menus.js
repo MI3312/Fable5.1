@@ -338,6 +338,7 @@ export class Menus {
     slider('Master volume', 'master', 0, 1, 0.05, (v) => Math.round(v * 100));
     slider('Music volume', 'music', 0, 1, 0.05, (v) => Math.round(v * 100));
     slider('Effects volume', 'sfx', 0, 1, 0.05, (v) => Math.round(v * 100));
+    slider('Colour mood', 'mood', 0, 1, 0.05, (v) => `${['Vivid', 'Natural', 'Muted', 'Damp', 'Bleak'][Math.min(4, Math.floor(Number(v) * 5))]} · ${Math.round(v * 100)}%`);
     slider('Dream filter', 'dreamFx', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
     slider('Fear intensity', 'fear', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
     const inv = h('input', { type: 'checkbox', checked: s.invertY ? true : null, onchange: (e) => { s.invertY = e.target.checked; g.applySettings(); } });

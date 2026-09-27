@@ -49,7 +49,8 @@ export const voxelUniforms = {
   uShadowTexel2: { value: 1 / 1536 },
   uShadowDepth2: { value: 1 / 500 },
   uSeaLevel: { value: -999 },
-  uPanelK: { value: 1 }, // ceiling panels and lamps: 1 = on, near 0 = the power's out
+  uPanelK: { value: 1 },
+  uMood: { value: 0.8 }, // 0 = the old bright look, 1 = damp, grey and cold // ceiling panels and lamps: 1 = on, near 0 = the power's out
   uCloudNoise: cloudUniforms.uCloudNoise,
   uCloudCover: cloudUniforms.uCloudCover,
   uCloudWind: cloudUniforms.uCloudWind,
@@ -165,7 +166,7 @@ uniform mat4 uShadowMatrix;
 uniform float uShadowOn, uShadowTexel, uShadowDepth;
 uniform sampler2D uShadowMap2;
 uniform mat4 uShadowMatrix2;
-uniform float uShadowOn2, uShadowTexel2, uShadowDepth2, uSeaLevel, uPanelK;
+uniform float uShadowOn2, uShadowTexel2, uShadowDepth2, uSeaLevel, uPanelK, uMood;
 const vec2 POISSON[12] = vec2[](
   vec2(-0.326, -0.406), vec2(-0.840, -0.074), vec2(-0.696, 0.457), vec2(-0.203, 0.621),
   vec2(0.962, -0.195), vec2(0.473, -0.480), vec2(0.519, 0.767), vec2(0.185, -0.893),
@@ -284,6 +285,27 @@ void main() {
   // true face normal from screen-space derivatives, turned to face the eye (plants are two-sided)
   vec3 fn = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   fn = faceforward(fn, viewDir, fn);
+  // everything is a little damp: colour sinks toward grey, and water gathers in patches, in
+  // corners and in streaks down the walls, darkening and cooling whatever it soaks into
+  float damp = 0.0;
+  if (uLiquid <= 0.0 && uMood > 0.0) {
+    float live = uMood * (1.0 - emit);
+    float bl = dot(base, vec3(0.299, 0.587, 0.114));
+    // planet-tinted surfaces (grass, leaves, stone) give up more of their colour
+    base = mix(base, vec3(bl), live * (0.24 + 0.2 * mask));
+    base *= 1.0 - live * mask * 0.1;
+    float n1 = fogNoise(vWorld * 0.085 + vec3(3.1, 7.7, 1.3));
+    float n2 = fogNoise(vWorld * 0.42 + vec3(11.7, 2.9, 5.3));
+    damp = smoothstep(0.38, 0.8, n1 * 0.72 + n2 * 0.36) + (1.0 - ao) * 0.7;
+    if (abs(fn.y) < 0.5) {
+      // drip streaks: long in y, narrow across the face
+      float st = fogNoise(vec3((vWorld.x + vWorld.z) * 2.6, vWorld.y * 0.32, 4.2));
+      damp += smoothstep(0.58, 0.92, st) * 0.4;
+    } else if (fn.y < -0.5) damp += 0.25; // undersides stay wet
+    damp = clamp(damp, 0.0, 1.0) * live;
+    base *= 1.0 - damp * 0.38;
+    base = mix(base, base * vec3(0.84, 0.95, 0.88), damp * 0.6);
+  }
   // the sun rakes across faces that turn toward it; the far sides fall into shade
   float ndl = dot(fn, uSunDir);
   float direct = max(ndl, 0.0);
@@ -326,6 +348,10 @@ void main() {
   int tileId = int(uvl.z + 0.5);
   float panel = (tileId == ${TILE.light_panel} || tileId == ${TILE.lamp}) ? uPanelK : 1.0;
   col = mix(col, base * (0.85 + 0.25 * ao) * panel, emit * min(1.0, panel * 4.0 + 0.2));
+  if (damp > 0.05 && fn.y > 0.5) {
+    float gz = pow(1.0 - clamp(dot(-viewDir, fn), 0.0, 1.0), 4.0);
+    col += skyGradient(reflect(viewDir, fn)) * gz * damp * 0.1 * sky * (0.3 + 0.7 * uDaylight);
+  }
   float alpha = uAlpha;
   // polished tile, stone and metal mirror what's around them
   if (uSSR > 0.0 && uLiquid <= 0.0 && vDist3 < 90.0) {
@@ -333,10 +359,10 @@ void main() {
     if (gl.r > 0.01) {
       float jr = fract(sin(dot(gl_FragCoord.xy, vec2(39.3468, 11.1353))) * 24634.6345) - 0.5;
       float jr2 = fract(sin(dot(gl_FragCoord.xy, vec2(73.156, 52.235))) * 13758.5453) - 0.5;
-      vec3 n = normalize(fn + vec3(jr, 0.0, jr2) * gl.g * 1.2);
+      vec3 n = normalize(fn + vec3(jr, 0.0, jr2) * (gl.g + 0.1 * uMood) * 1.2);
       vec3 r = reflect(viewDir, n);
       float cosT = clamp(dot(-viewDir, fn), 0.0, 1.0);
-      float F = gl.r * (0.22 + 0.78 * pow(1.0 - cosT, 4.0));
+      float F = gl.r * (0.22 + 0.78 * pow(1.0 - cosT, 4.0)) * (1.0 - 0.55 * uMood);
       vec4 s = ssrTrace(vWorld + fn * 0.02, r);
       col = mix(col, s.rgb * (0.85 + 0.15 * ao), F * s.a * (1.0 - smoothstep(60.0, 90.0, vDist3)));
     }
@@ -367,16 +393,16 @@ void main() {
       vec4 hc = histClip(vWorld);
       float behind = texture(uHist, hc.xy / hc.w * 0.5 + 0.5).a;
       float thick = max(behind - hc.w, 0.0);
-      clarity = exp(-thick * 0.2) * (1.0 - emit);
-      col = mix(col * vec3(0.55, 0.75, 0.95), col, clarity * 0.5 + 0.5);
+      clarity = exp(-thick * (0.2 + 0.14 * uMood)) * (1.0 - emit);
+      col = mix(col * mix(vec3(0.55, 0.75, 0.95), vec3(0.4, 0.48, 0.46), uMood), col, clarity * 0.5 + 0.5);
       // a line of foam where the water meets the ground
       float foam = smoothstep(0.35, 0.0, thick) * smoothstep(0.35, 0.75, fogNoise(vec3(vWorld.xz * 2.2, uTime * 0.6)));
-      col = mix(col, vec3(0.92, 0.97, 1.0) * (0.35 + 0.65 * uDaylight), foam * 0.6 * (1.0 - emit));
+      col = mix(col, vec3(0.85, 0.88, 0.87) * (0.35 + 0.65 * uDaylight), foam * (0.6 - 0.2 * uMood) * (1.0 - emit));
     }
     vec3 h = normalize(uSunDir - viewDir);
     float nh = max(dot(n, h), 0.0);
-    float spec = (pow(nh, 260.0) * 4.0 + pow(nh, 30.0) * 0.1) * uDaylight;
-    col = mix(col, refl, clamp(fres * 1.15, 0.0, 0.88) * (1.0 - emit));
+    float spec = (pow(nh, 260.0) * 4.0 + pow(nh, 30.0) * 0.1) * uDaylight * (1.0 - 0.6 * uMood);
+    col = mix(col, refl, clamp(fres * 1.15, 0.0, 0.88 - 0.22 * uMood) * (1.0 - emit));
     col += uSunColor * spec * (1.0 - emit);
     alpha = mix(clamp(uAlpha + fres * 0.4 - clarity * 0.5, 0.18, 0.97), 1.0, emit);
   }
@@ -396,7 +422,7 @@ void main() {
     float k = mix(0.35, 1.0, puddle) * wet;
     col = mix(col, refl, clamp(fres * k * 1.5, 0.0, 0.85));
     vec3 hv = normalize(uSunDir - viewDir);
-    col += uSunColor * pow(max(dot(n, hv), 0.0), 140.0) * 2.0 * k * uDaylight;
+    col += uSunColor * pow(max(dot(n, hv), 0.0), 140.0) * 2.0 * k * uDaylight * (1.0 - 0.6 * uMood);
   }
   col = applyFog(col, vWorld, viewDir, vDist, vDist3, plGlow * uPLStrength);
   gl_FragColor = vec4(col, alpha);

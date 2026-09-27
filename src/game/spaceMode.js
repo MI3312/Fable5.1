@@ -461,9 +461,11 @@ export class SpaceMode {
     const pu = g.post.uniforms;
     pu.uWarp.value = ship.pulsing ? 0.25 : Math.max(0, pu.uWarp.value - dt);
     pu.uDream.value = (g.system.isCore ? 1 : 0.3) * g.settings.dreamFx;
-    pu.uVignette.value = 0.3 + 0.15 * g.settings.dreamFx;
-    pu.uCA.value = 0.001 + 0.0025 * g.settings.dreamFx;
-    pu.uGrain.value = 0.02 + 0.03 * g.settings.dreamFx;
+    const mood = g.settings.mood ?? 0.8;
+    pu.uDream.value *= 1 - 0.6 * mood;
+    pu.uVignette.value = 0.3 + 0.15 * g.settings.dreamFx + 0.12 * mood;
+    pu.uCA.value = (0.001 + 0.0025 * g.settings.dreamFx) * (1 - 0.6 * mood);
+    pu.uGrain.value = 0.02 + 0.03 * g.settings.dreamFx + 0.012 * mood;
     this._hud(dt);
   }
 
