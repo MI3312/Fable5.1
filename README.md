@@ -255,6 +255,17 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - **The Lucid Path** questline takes you from repairing your crashed ship to reaching the **Dream Core** at the centre of the galaxy.
 - Autosave and manual save to `localStorage`, including every block you change on every planet.
 
+## The Tab screen
+
+Press **Tab** (or I) for the exosuit screen. A rail down the left holds its pages, and each page says in one line what it's for.
+- **Inventory**: your cargo, plus life-system bars with one-click recharges that pick the right item for you. Select anything to see what it's for (every recipe, upgrade and use, each one clickable) and where to find more (which rocks or plants, which worlds, which creatures, what refines into it).
+- **Crafting**: every recipe, grouped into *Ready to make*, Refining, Components, Fuel & power, Base parts and Building blocks, with a search box. Each ingredient shows what you need and what you have, in green or red. If a part is missing but you can make it, **Make it all** does every step in order (e.g. a Warp Cell from raw copper, carbon, oxygen and ferrite).
+- **Technology**: exosuit and starship upgrades, each marked Ready, Parts can be made, Missing or Installed, with **Make parts & install**. Your ship's fuel, shields and hull sit alongside, each with the fuels you carry.
+- **Apotheosis**: the dream alchemy bench. It tells you before you try whether a pair is known, already failed, or untried, and what an untried pair will cost you. Your dream book lets you brew any known recipe again with a click, and failed pairs are remembered. For 30 Nanites a **whisper** will give up one of its two ingredients.
+- **Blocks**: your hotbar and block bag, and the recipe to make more of any block.
+- **Codex**: everything you've ever carried, searchable, with the same *what it's for / where to find more* card.
+- **Discoveries** and **Journey**: this world's fauna and flora, your atlas, the next step on the Lucid Path, contracts and remembered fragments.
+
 ## Controls
 
 | Key | Action |
@@ -281,7 +292,7 @@ are drawn in your world. Creatures are still simulated separately on each machin
 | P | Photo mode |
 | R | Quick-recharge life support and hazard protection |
 | T | Headlamp (a beam; some things do not like it) |
-| Tab / I | Inventory, fabrication, alchemy, technology, discoveries, journey |
+| Tab / I | The exosuit screen: inventory, crafting, technology, alchemy, blocks, codex, discoveries, journey |
 | M | Galaxy map |
 | F2 | Hide HUD |
 | Esc | Pause |

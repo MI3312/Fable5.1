@@ -746,8 +746,11 @@ export class Game {
     if (!inv.has(need)) return;
     const idx = ALCHEMY.findIndex((r) => (r.a === a && r.b === b) || (r.a === b && r.b === a));
     if (idx < 0) {
-      // failed dream: lose one of the ingredients, gain somnium sometimes
+      // failed dream: lose one of the first ingredient, and remember that it didn't work
       inv.remove(a, 1);
+      const key = [a, b].sort().join('|');
+      const tried = this.state.alchemyTried || (this.state.alchemyTried = []);
+      if (!tried.includes(key)) { tried.push(key); if (tried.length > 80) tried.shift(); }
       this.audio.alchemy(false);
       const msg = ['The dream dissolves.', 'Nothing remembers this combination.', 'It fades like a word on waking.'][Math.floor(Math.random() * 3)];
       this.hud.notify(msg);

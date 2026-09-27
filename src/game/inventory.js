@@ -9,6 +9,7 @@ export class Inventory {
     this.hotbar = new Array(9).fill(0);
     this.units = 0;
     this.nanites = 0;
+    this.seen = new Set(); // every item you've ever carried (the Codex)
     this.onChange = null;
   }
 
@@ -30,6 +31,7 @@ export class Inventory {
     if (id === 'nanites') { this.nanites += n; this.changed(); return n; }
     if (id.startsWith('block:')) { this.addBlock(Number(id.slice(6)), n); return n; }
     if (!ITEMS[id]) return 0;
+    this.seen.add(id);
     const lim = itemStackLimit(id);
     let left = n;
     for (const s of this.slots) {
@@ -143,7 +145,7 @@ export class Inventory {
   }
 
   serialize() {
-    return { capacity: this.capacity, slots: this.slots, blocks: this.blocks, hotbar: this.hotbar, units: this.units, nanites: this.nanites };
+    return { capacity: this.capacity, slots: this.slots, blocks: this.blocks, hotbar: this.hotbar, units: this.units, nanites: this.nanites, seen: [...this.seen] };
   }
 
   load(o) {
@@ -155,6 +157,8 @@ export class Inventory {
     while (this.hotbar.length < 9) this.hotbar.push(0);
     this.units = o.units || 0;
     this.nanites = o.nanites || 0;
+    this.seen = new Set((o.seen || []).filter((id) => ITEMS[id]));
+    for (const sl of this.slots) if (sl) this.seen.add(sl.id);
     this.changed();
   }
 }

@@ -1,17 +1,13 @@
-// Menus: title, loading, inventory (exosuit / blocks / fabricate / alchemy / tech /
-// discoveries / journey), pause, settings, dialogs, space station, death, ending.
+// Menus: title, loading, the Tab screen (tabMenu.js), pause, settings, dialogs, space station,
+// death, ending.
 import { h, clear, fmt } from './dom.js';
 import { ITEMS } from '../data/items.js';
-import { BLOCKS, isPlaceable } from '../world/blocks.js';
+import { BLOCKS } from '../world/blocks.js';
 import { getBlockIcon } from '../world/atlas.js';
-import { RECIPES, ALCHEMY, UPGRADES, outLabel } from '../data/recipes.js';
+import { UPGRADES } from '../data/recipes.js';
 import { DISHES, BUFFS, FISH } from '../data/food.js';
 import { SHIP_CLASSES, shipStats, shipName, specLabel, PAINTS } from '../data/ships.js';
-
-const TABS = [
-  ['exosuit', 'Exosuit'], ['blocks', 'Blocks'], ['fabricate', 'Fabricate'], ['alchemy', 'Apotheosis'],
-  ['tech', 'Technology'], ['discoveries', 'Discoveries'], ['journey', 'Journey'],
-];
+import { TabMenu } from './tabMenu.js';
 
 function itemTile(id, n, onClick, selected) {
   const it = ITEMS[id];
@@ -26,13 +22,6 @@ function blockTile(id, n, onClick, selected) {
     h('img', { src: getBlockIcon(id), alt: '' }), n != null ? h('span', { class: 'n' }, fmt(n)) : null);
 }
 
-function outTile(out, onClick) {
-  const [id, n] = out;
-  if (id.startsWith('block:')) return blockTile(Number(id.slice(6)), n, onClick);
-  if (id === 'nanites') return h('div', { class: 'slot' }, h('div', { class: 'sym', style: { background: '#7ef0ff' } }, 'Nn'), h('span', { class: 'n' }, n));
-  if (id === 'lore') return h('div', { class: 'slot' }, h('div', { class: 'sym', style: { background: '#ffd9a8' } }, '✧'));
-  return itemTile(id, n, onClick);
-}
 
 export class Menus {
   constructor(root, game) {
@@ -41,11 +30,7 @@ export class Menus {
     this.layer = h('div', {});
     root.appendChild(this.layer);
     this.open = null; // 'inventory' | 'pause' | 'dialog' | 'station' | 'galaxy' | ...
-    this.tab = 'exosuit';
-    this.sel = null;
-    this.hotSel = 0;
-    this.alch = [null, null];
-    this.fabFilter = 'craft';
+    this.tabs = new TabMenu(this, game);
   }
 
   anyOpen() { return !!this.open; }
@@ -364,7 +349,7 @@ export class Menus {
       ['Q', 'Cycle multi-tool mode (Mining / Builder / Boltcaster / Dream Line)'], ['1–9 · Wheel', 'Select hotbar block'],
       ['F', 'Scanner pulse (resources, points of interest)'], ['V', 'Analysis visor (hold LMB on creatures/flora to discover)'],
       ['E', 'Interact · board / exit ship · land · dock'], ['R', 'Quick recharge life support & hazard protection'],
-      ['T', 'Toggle headlamp'], ['G', 'Summon the Roamer exocraft (once installed)'], ['L', 'Roamer headlights'], ['P', 'Photo mode'], ['Tab / I', 'Inventory, fabrication, alchemy, tech'], ['M', 'Galaxy map'], ['Esc', 'Pause menu'],
+      ['T', 'Toggle headlamp'], ['G', 'Summon the Roamer exocraft (once installed)'], ['L', 'Roamer headlights'], ['P', 'Photo mode'], ['Tab / I', 'Exosuit screen: inventory, crafting, technology, alchemy, codex'], ['M', 'Galaxy map'], ['Esc', 'Pause menu'],
       ['F2', 'Hide HUD (photo mode)'], ['Enter or /', 'Chat'], ['Z / B', 'Ping where you look / wave (multiplayer)'],
     ];
     const el = h('div', { class: 'dialog interactive', style: { width: 'min(720px, 94vw)' } },
@@ -376,114 +361,9 @@ export class Menus {
   }
 
   // ---------------- inventory ----------------
-  openInventory(tab) {
-    if (tab) this.tab = tab;
-    this.sel = null;
-    const head = h('div', { class: 'panel-head' }, h('div', { class: 'ptitle' }, 'EXOSUIT'));
-    for (const [id, label] of TABS) {
-      head.appendChild(h('div', { class: 'tab' + (this.tab === id ? ' on' : ''), onclick: () => { this.game.audio.ui(); this.tab = id; this.sel = null; this.openInventory(); } }, label));
-    }
-    head.appendChild(h('div', { class: 'panel-close', onclick: () => { this.closeAll(); } }, 'CLOSE [TAB]'));
-    this.body = h('div', { class: 'panel-body' });
-    const panel = h('div', { class: 'panel interactive' }, head, this.body);
-    this._overlay(panel);
-    this.open = 'inventory';
-    this.renderTab();
-  }
+  openInventory(tab) { this.tabs.open(tab); }
 
-  refresh() { if (this.open === 'inventory') this.renderTab(); else if (this.open === 'station') this.renderStation(); }
-
-  renderTab() {
-    const b = clear(this.body);
-    const g = this.game;
-    const inv = g.inventory;
-    const currency = h('div', { class: 'currency' }, h('span', {}, 'Units ', h('b', {}, fmt(inv.units))), h('span', {}, 'Nanites ', h('b', { class: 'nan' }, fmt(inv.nanites))));
-    switch (this.tab) {
-      case 'exosuit': {
-        const grid = h('div', { class: 'grid' });
-        inv.slots.forEach((s, i) => {
-          if (s) grid.appendChild(itemTile(s.id, s.n, () => { this.sel = i; this.renderTab(); }, this.sel === i));
-          else grid.appendChild(h('div', { class: 'slot empty' }));
-        });
-        const left = h('div', { class: 'col grow' }, currency,
-          h('div', { class: 'section-title' }, `Cargo · ${inv.slots.filter(Boolean).length}/${inv.capacity} slots`), grid,
-          h('div', { class: 'row-flex' }, h('button', { class: 'btn small', onclick: () => { inv.sortSlots(); this.renderTab(); } }, 'Sort')));
-        b.appendChild(left);
-        b.appendChild(this._exoDetail());
-        break;
-      }
-      case 'blocks': {
-        const hot = h('div', { class: 'grid' });
-        inv.hotbar.forEach((id, i) => {
-          const el = id ? blockTile(id, inv.blockCount(id), () => { this.hotSel = i; this.renderTab(); }, this.hotSel === i)
-            : h('div', { class: 'slot' + (this.hotSel === i ? ' sel' : ''), onclick: () => { this.hotSel = i; this.renderTab(); } }, h('span', { class: 'muted' }, String(i + 1)));
-          hot.appendChild(el);
-        });
-        const bag = h('div', { class: 'grid' });
-        const ids = Object.keys(inv.blocks).map(Number).filter((id) => inv.blocks[id] > 0).sort((a, c) => a - c);
-        for (const id of ids) {
-          bag.appendChild(blockTile(id, inv.blocks[id], () => {
-            inv.hotbar[this.hotSel] = id;
-            g.selectedHot = this.hotSel;
-            g.audio.ui();
-            inv.changed();
-            this.renderTab();
-          }));
-        }
-        if (!ids.length) bag.appendChild(h('div', { class: 'muted' }, 'Your block bag is empty. Switch the multi-tool to BUILDER (Q) and break blocks to collect them - every block of every world can be carried and placed.'));
-        b.appendChild(h('div', { class: 'col grow' },
-          h('div', { class: 'section-title' }, 'Hotbar - select a slot, then click a block to assign'), hot,
-          h('div', { class: 'section-title' }, `Block Bag · ${ids.length} kinds`), bag,
-          h('div', { class: 'lore' }, 'Blocks take on the dream-colours of whatever world they are placed in. Build a poolroom on a toxic moon; it will remember being somewhere else.')));
-        break;
-      }
-      case 'fabricate': {
-        const filters = [['refine', 'Refiner'], ['craft', 'Products'], ['block', 'Block Fabricator']];
-        const bar = h('div', { class: 'row-flex' }, filters.map(([f, l]) => h('button', { class: 'btn small' + (this.fabFilter === f ? ' primary' : ''), onclick: () => { this.fabFilter = f; this.renderTab(); } }, l)));
-        const list = h('div', { class: 'recipes' });
-        for (const r of RECIPES.filter((x) => x.type === this.fabFilter)) list.appendChild(this._recipeRow(r));
-        b.appendChild(h('div', { class: 'col grow' }, currency, bar, list));
-        break;
-      }
-      case 'alchemy': this._renderAlchemy(b); break;
-      case 'tech': this._renderTech(b); break;
-      case 'discoveries': this._renderDiscoveries(b); break;
-      case 'journey': this._renderJourney(b); break;
-    }
-  }
-
-  _exoDetail() {
-    const g = this.game, inv = g.inventory;
-    const d = h('div', { class: 'detail' });
-    const s = this.sel != null ? inv.slots[this.sel] : null;
-    if (s) {
-      const it = ITEMS[s.id];
-      d.append(h('div', { class: 'dc' }, it.cat), h('div', { class: 'dn' }, it.name), h('div', { class: 'dd' }, it.desc),
-        h('div', { class: 'muted' }, `Held: ${s.n} · Value ${fmt(it.value)}u each`));
-      const acts = h('div', { class: 'row-flex' });
-      const use = g.itemUse(s.id);
-      if (use) acts.appendChild(h('button', { class: 'btn small primary', onclick: () => { g.useItem(s.id); this.renderTab(); } }, use));
-      acts.appendChild(h('button', { class: 'btn small', onclick: () => { inv.remove(s.id, 1); this.renderTab(); } }, 'Discard 1'));
-      acts.appendChild(h('button', { class: 'btn small', onclick: () => { this.dialog('Discard all?', `Throw away ${s.n} ${it.name}?`, [{ label: 'Cancel', action: () => this.openInventory() }, { label: 'Discard', primary: true, action: () => { inv.remove(s.id, s.n); this.sel = null; this.openInventory(); } }]); } }, 'Discard all'));
-      d.appendChild(acts);
-    } else {
-      const st = g.player.stats;
-      d.append(h('div', { class: 'dc' }, 'Exosuit'), h('div', { class: 'dn' }, 'Life Systems'));
-      const rows = [
-        ['Health', st.health], ['Shield', st.shield], ['Hazard Protection', st.hazard], ['Life Support', st.life], ['Jetpack', st.jet],
-      ];
-      for (const [k, v] of rows) d.appendChild(h('div', { class: 'list-row' }, h('span', {}, k), h('span', { class: 'muted' }, Math.round(v) + '%')));
-      d.appendChild(h('div', { class: 'section-title' }, 'Recharge'));
-      const rc = (label, stat, item) => {
-        const has = inv.count(item);
-        return h('button', { class: 'btn small', disabled: has <= 0 ? true : null, onclick: () => { g.rechargeStat(stat, item); this.renderTab(); } }, `${label} · ${ITEMS[item].name} (${has})`);
-      };
-      d.append(rc('Life Support', 'life', 'oxygen'), rc('Life Support', 'life', 'life_support_gel'),
-        rc('Hazard', 'hazard', 'sodium'), rc('Hazard', 'hazard', 'sodium_nitrate'), rc('Hazard', 'hazard', 'ion_battery'));
-      d.appendChild(h('div', { class: 'dd' }, 'Select an item to inspect it.'));
-    }
-    return d;
-  }
+  refresh() { if (this.open === 'inventory') this.tabs.render(); else if (this.open === 'station') this.renderStation(); }
 
   _ingredients(list, times = 1) {
     const inv = this.game.inventory;
@@ -492,145 +372,6 @@ export class Menus {
       const name = ITEMS[id] ? ITEMS[id].name : id;
       return h('span', {}, i ? ' + ' : '', h('span', { class: have >= n * times ? 'ok' : 'no' }, `${n * times} ${name}`), h('span', { class: 'muted' }, ` (${fmt(have)})`));
     }));
-  }
-
-  _recipeRow(r) {
-    const g = this.game, inv = g.inventory;
-    const max = inv.maxCraftable(r.in);
-    const btns = h('div', { class: 'row-flex' });
-    const mk = (label, n) => h('button', { class: 'btn small', disabled: max < n || n <= 0 ? true : null, onclick: () => { g.craft(r, n); this.renderTab(); } }, label);
-    btns.append(mk('×1', 1), mk('×10', 10), mk('Max', max));
-    return h('div', { class: 'recipe' + (max < 1 ? ' locked' : '') },
-      h('div', {}, h('div', { class: 'rn' }, outLabel(r.out, ITEMS, BLOCKS)), this._ingredients(r.in)),
-      btns);
-  }
-
-  _renderAlchemy(b) {
-    const g = this.game, inv = g.inventory;
-    const known = new Set(g.state.alchemyKnown);
-    const [a, c] = this.alch;
-    const slotA = a ? itemTile(a, null, () => { this.alch[0] = null; this.renderTab(); }) : h('div', { class: 'slot' }, h('span', { class: 'muted' }, 'A'));
-    const slotB = c ? itemTile(c, null, () => { this.alch[1] = null; this.renderTab(); }) : h('div', { class: 'slot' }, h('span', { class: 'muted' }, 'B'));
-    let preview = h('div', { class: 'slot' }, h('span', { class: 'muted' }, '?'));
-    const idx = a && c ? ALCHEMY.findIndex((r) => (r.a === a && r.b === c) || (r.a === c && r.b === a)) : -1;
-    if (idx >= 0 && known.has(idx)) preview = outTile(ALCHEMY[idx].out);
-    const canTry = a && c && inv.count(a) >= (a === c ? 2 : 1) && inv.count(c) >= 1;
-    const bench = h('div', { class: 'alchemy-bench' }, slotA, h('span', { class: 'plus' }, '+'), slotB, h('span', { class: 'arrow' }, '→'), preview,
-      h('button', { class: 'btn primary', disabled: canTry ? null : true, onclick: () => { g.alchemy(a, c); this.renderTab(); } }, 'Dream it'));
-    const pick = h('div', { class: 'grid' });
-    inv.slots.forEach((s) => {
-      if (!s) return;
-      if (pick.querySelector(`[data-id="${s.id}"]`)) return;
-      const t = itemTile(s.id, inv.count(s.id), () => {
-        if (!this.alch[0]) this.alch[0] = s.id; else this.alch[1] = s.id;
-        g.audio.ui();
-        this.renderTab();
-      });
-      t.dataset.id = s.id;
-      pick.appendChild(t);
-    });
-    const disc = h('div', { class: 'col' });
-    ALCHEMY.forEach((r, i) => {
-      if (!known.has(i)) return;
-      disc.appendChild(h('div', { class: 'list-row' }, h('span', {}, `${ITEMS[r.a].name} + ${ITEMS[r.b].name}`), h('span', { class: 'muted' }, '→ ' + outLabel(r.out, ITEMS, BLOCKS))));
-    });
-    if (!known.size) disc.appendChild(h('div', { class: 'muted' }, 'No dream recipes remembered yet.'));
-    const hints = h('div', { class: 'col' });
-    const unknown = ALCHEMY.map((r, i) => i).filter((i) => !known.has(i));
-    const day = Math.floor(g.state.playTime / 120);
-    for (let k = 0; k < Math.min(3, unknown.length); k++) {
-      const r = ALCHEMY[unknown[(day + k * 7) % unknown.length]];
-      hints.appendChild(h('div', { class: 'lore' }, '“' + r.hint + '”'));
-    }
-    b.appendChild(h('div', { class: 'col grow' },
-      h('div', { class: 'section-title' }, 'Apotheosis - fuse any two things and see what they become. No recipe book: just dream.'), bench,
-      h('div', { class: 'section-title' }, 'Your ingredients (click to place)'), pick));
-    b.appendChild(h('div', { class: 'detail' }, h('div', { class: 'dc' }, `Remembered ${known.size}/${ALCHEMY.length}`), disc, h('div', { class: 'section-title' }, 'Whispers'), hints));
-  }
-
-  _renderTech(b) {
-    const g = this.game, inv = g.inventory, ship = g.ship;
-    const shipCol = h('div', { class: 'col grow' });
-    shipCol.appendChild(h('div', { class: 'section-title' }, 'Starship'));
-    const stat = (k, v) => h('div', { class: 'list-row' }, h('span', {}, k), h('span', { class: 'muted' }, v));
-    shipCol.append(
-      stat('Launch thrusters', ship.thrustersRepaired ? `${Math.round(ship.fuel.launch)}% fuel` : 'DAMAGED'),
-      stat('Pulse engine', `${Math.round(ship.fuel.pulse)}% fuel`),
-      stat('Shields', `${Math.round(ship.shield)}%`),
-      stat('Hull integrity', `${Math.round(ship.hull)}%`),
-      stat('Hyperdrive range', `${g.hyperdriveRange()} ly · ${inv.count('warp_cell')} warp cells · ${inv.count('lucid_core')} lucid cores`),
-    );
-    const fuelBtns = h('div', { class: 'row-flex' });
-    const fb = (label, kind, item) => h('button', { class: 'btn small', disabled: inv.count(item) > 0 ? null : true, onclick: () => { g.refuelShip(kind, item); this.renderTab(); } }, `${label} · ${ITEMS[item].name} (${inv.count(item)})`);
-    fuelBtns.append(fb('Launch', 'launch', 'dihydrogen_jelly'), fb('Launch', 'launch', 'launch_fuel'), fb('Launch', 'launch', 'uranium'),
-      fb('Pulse', 'pulse', 'tritium'), fb('Shield', 'shield', 'starshield_battery'), fb('Shield', 'shield', 'ferrite'), fb('Hull', 'hull', 'metal_plating'));
-    shipCol.appendChild(fuelBtns);
-    const upCol = h('div', { class: 'col grow' }, h('div', { class: 'section-title' }, 'Technology upgrades'));
-    const list = h('div', { class: 'recipes' });
-    for (const u of UPGRADES) {
-      const n = g.upgradeCount(u.id);
-      const done = (u.once && n > 0) || (u.max && n >= u.max);
-      const can = !done && inv.has(u.cost);
-      list.appendChild(h('div', { class: 'recipe' + (done ? '' : can ? '' : ' locked') },
-        h('div', {}, h('div', { class: 'rn' }, `${u.name}${n && !u.once ? ` (${n})` : ''}`), h('div', { class: 'ri muted' }, u.desc), done ? h('div', { class: 'ri ok' }, 'Installed') : this._ingredients(u.cost)),
-        done ? h('span', { class: 'muted' }, '✓') : h('button', { class: 'btn small', disabled: can ? null : true, onclick: () => { g.installUpgrade(u); this.renderTab(); } }, 'Install')));
-    }
-    upCol.appendChild(list);
-    b.append(h('div', { class: 'col', style: { width: '380px', flexShrink: 0 } }, shipCol), upCol);
-  }
-
-  _renderDiscoveries(b) {
-    const g = this.game;
-    const info = g.discoveryInfo();
-    const left = h('div', { class: 'col grow' });
-    if (info.planet) {
-      const back = () => this.openInventory('discoveries');
-      left.appendChild(h('div', { class: 'row-flex' }, h('div', { class: 'section-title grow' }, `${g.nameOf(info.planet)} · ${info.planet.params.adjective} ${info.planet.biomeLabel}`),
-        info.planet.isStation ? null : h('button', { class: 'btn small', onclick: () => this.prompt('Rename planet', g.nameOf(info.planet), (v) => g.rename(info.planet, v), back) }, 'Rename')));
-      left.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Fauna'), h('span', { class: 'muted' }, `${info.fauna.filter((f) => f.found).length}/${info.fauna.length}`)));
-      for (const f of info.fauna) {
-        const back = () => this.openInventory('discoveries');
-        left.appendChild(h('div', { class: 'list-row' }, h('span', {}, f.found ? g.nameOf(f.sp) : '??????'),
-          h('span', { class: 'row-flex' }, h('span', { class: 'muted' }, f.found ? `${f.sp.temper} · ${f.sp.diet} · ${f.sp.rarity}` : 'Undiscovered'),
-            f.found ? h('button', { class: 'btn small', onclick: () => this.prompt('Rename species', g.nameOf(f.sp), (v) => g.rename(f.sp, v), back) }, '✎') : null)));
-      }
-      left.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Flora'), h('span', { class: 'muted' }, `${info.flora.filter((f) => f.found).length}/${info.flora.length}`)));
-      for (const f of info.flora) left.appendChild(h('div', { class: 'list-row' }, h('span', {}, f.found ? f.name : '??????'), h('span', { class: 'muted' }, f.found ? f.kind : 'Undiscovered')));
-    } else {
-      left.appendChild(h('div', { class: 'muted' }, 'You are not on a planet.'));
-    }
-    const right = h('div', { class: 'detail' }, h('div', { class: 'dc' }, 'Atlas of the Dream'));
-    right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Systems visited'), h('span', { class: 'muted' }, String(Object.keys(g.state.discoveries.systems).length))));
-    right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Planets discovered'), h('span', { class: 'muted' }, String(Object.keys(g.state.discoveries.planets).length))));
-    right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Species catalogued'), h('span', { class: 'muted' }, String(Object.keys(g.state.discoveries.creatures).length))));
-    right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Flora catalogued'), h('span', { class: 'muted' }, String(Object.keys(g.state.discoveries.flora).length))));
-    right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Distance to Dream Core'), h('span', { class: 'muted' }, g.coreDistanceLabel())));
-    // the dream places you have wandered into
-    const zones = Object.values(g.state.discoveries.zones || {});
-    right.appendChild(h('div', { class: 'list-row' }, h('span', {}, 'Dream places entered'), h('span', { class: 'muted' }, String(zones.length))));
-    if (zones.length) {
-      right.appendChild(h('div', { class: 'section-title' }, 'Dream Journal'));
-      for (const z of zones.slice(-8).reverse()) right.appendChild(h('div', { class: 'list-row' }, h('span', {}, z.name), h('span', { class: 'muted' }, z.planet)));
-    }
-    right.appendChild(h('div', { class: 'section-title' }, 'Planets'));
-    const planets = Object.values(g.state.discoveries.planets).slice(-12).reverse();
-    for (const p of planets) right.appendChild(h('div', { class: 'list-row' }, h('span', {}, p.custom || p.name), h('span', { class: 'muted' }, p.biome)));
-    b.append(left, right);
-  }
-
-  _renderJourney(b) {
-    const g = this.game;
-    const rk = g.missions.rank();
-    const left = h('div', { class: 'col grow' }, h('div', { class: 'section-title' }, `Dreamwalker rank: ${rk.title} (${rk.done} contracts)`), h('div', { class: 'section-title' }, 'The Lucid Path'));
-    for (const q of g.questLog()) {
-      left.appendChild(h('div', { class: 'recipe' + (q.done ? '' : q.current ? '' : ' locked') },
-        h('div', {}, h('div', { class: 'rn' }, (q.done ? '✓ ' : q.current ? '▸ ' : '· ') + q.title), h('div', { class: 'ri muted' }, q.desc))));
-    }
-    const right = h('div', { class: 'col grow' }, h('div', { class: 'section-title' }, 'Remembered fragments'));
-    const lore = g.state.lore.slice().reverse();
-    if (!lore.length) right.appendChild(h('div', { class: 'muted' }, 'Touch monoliths, read terminals and dream memories to remember.'));
-    for (const l of lore) right.appendChild(h('div', { class: 'lore' }, l));
-    b.append(left, right);
   }
 
   // ---------------- station ----------------
