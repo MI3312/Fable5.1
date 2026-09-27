@@ -4,7 +4,7 @@
 // geometry (terrain, creatures, the ship), then foliage alpha-tested against the atlas so grass
 // and leaves cast their real shapes. Receivers sample it with a rotated Poisson PCF kernel.
 import * as THREE from 'three';
-import { voxelUniforms } from './voxelMaterial.js';
+import { voxelUniforms, WIND_GLSL } from './voxelMaterial.js';
 
 export const LAYER_SOLID = 1;
 export const LAYER_CUTOUT = 2;
@@ -32,11 +32,19 @@ export class SunShadows {
     this.cam = new THREE.OrthographicCamera(-E, E, E, -E, 1, this.depth);
     this.solidMat = new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
     this.cutoutMat = new THREE.ShaderMaterial({
-      uniforms: { uAtlas: voxelUniforms.uAtlas },
+      uniforms: { uAtlas: voxelUniforms.uAtlas, uTime: voxelUniforms.uTime, uWindDir: voxelUniforms.uWindDir, uWindK: voxelUniforms.uWindK },
       vertexShader: /* glsl */`
         attribute vec3 uvl;
+        attribute float sway;
+        uniform float uTime;
         varying vec3 vUvl;
-        void main() { vUvl = uvl; gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }`,
+        ${WIND_GLSL}
+        void main() {
+          vUvl = uvl;
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          wp.xyz += windOffset(wp.xyz, sway);
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }`,
       fragmentShader: /* glsl */`
         precision highp sampler2DArray;
         uniform sampler2DArray uAtlas;

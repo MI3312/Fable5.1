@@ -26,7 +26,7 @@ self.onmessage = (e) => {
     const transfer = [data.buffer, heights.buffer, mesh.lights.buffer];
     for (const k of ['opaque', 'cutout', 'translucent']) {
       const m = mesh[k];
-      transfer.push(m.pos.buffer, m.uvl.buffer, m.tint.buffer, m.light.buffer, m.idx.buffer);
+      transfer.push(m.pos.buffer, m.uvl.buffer, m.tint.buffer, m.light.buffer, m.sway.buffer, m.idx.buffer);
     }
     self.postMessage({ type: 'chunk', id: msg.id, key: msg.key, cx: msg.cx, cz: msg.cz, data, heights, mesh }, transfer);
   }

@@ -652,7 +652,8 @@ export class SurfaceMode {
     pu.uUnderwater.value = 0;
     pu.uHazard.value = 0;
     pu.uVisor.value = 0;
-    pu.uDread.value = 0; pu.uPulse.value = 0; pu.uGlitch.value = 0; pu.uFlash.value = 0; pu.uRays.value = 0;
+    pu.uDread.value = 0; pu.uPulse.value = 0; pu.uGlitch.value = 0; pu.uFlash.value = 0; pu.uRays.value = 0; pu.uFlare.value = 0; pu.uVol.value = 0;
+    voxelUniforms.uWet.value = 0;
     this.game.audio.setDread(0);
     this.game.hud.setVisor(false);
     this.visor = false;
@@ -899,7 +900,10 @@ export class SurfaceMode {
     const P = this.P;
     const s = this.storm;
     const zw = this._zoneWeather();
-    if (P.stormChance <= 0 || P.weather === 'none') { this.stormK = 0; this.weather.update(dt, this.game.camera, zw.zoneBase * zw.cover, this.game.time); return; }
+    const wd = this.creatures.wind;
+    voxelUniforms.uWindDir.value.set(wd.x, wd.z).normalize();
+    voxelUniforms.uWindK.value = 0.55 + (this.stormK || 0) * 1.7;
+    if (P.stormChance <= 0 || P.weather === 'none') { this.stormK = 0; voxelUniforms.uWet.value = 0; this.weather.update(dt, this.game.camera, zw.zoneBase * zw.cover, this.game.time); return; }
     if (s.on) {
       s.t -= dt;
       if (s.t <= 0) { s.on = false; s.next = 150 + Math.random() * 300; this.game.hud.notify('The storm is passing'); }
@@ -915,6 +919,11 @@ export class SurfaceMode {
       }
     }
     this.stormK = clamp((this.stormK || 0) + (s.on ? dt * 0.2 : -dt * 0.15), 0, 1);
+    // soaked by rain, drying slowly afterwards; wind picks up with the storm
+    const rains = P.weather === 'rain' || P.weather === 'toxic';
+    const wu = voxelUniforms.uWet;
+    wu.value = rains && this.stormK > 0.2 ? Math.min(1, wu.value + dt * 0.08) : Math.max(0, wu.value - dt * 0.012);
+    voxelUniforms.uWindK.value = 0.55 + this.stormK * 1.7;
     const base = ['snow', 'dream', 'sparkle', 'dust', 'ash'].includes(P.weather) ? 0.25 : 0.0;
     const underCover = (this.game.inShip ? 0.6 : 1) * zw.cover;
     this.weather.update(dt, this.game.camera, (Math.max(base, zw.zoneBase) + this.stormK * 0.75) * underCover, this.game.time);
@@ -1261,6 +1270,7 @@ export class SurfaceMode {
       const fogginess = clamp(u.uFogDensity.value * 60 + (this.sky.uniforms.uSkyFog.value || 0) * 0.5, 0, 1.4);
       pu.uRays.value = on * (this.daylight ?? 1) * (1 - (this.stormK || 0) * 0.7) * 0.55 * fogginess * (1 - (this.encK || 0));
       pu.uRayCol.value.copy(u.uSunColor.value).lerp(u.uSunsetCol.value, u.uSunset.value * 0.6);
+      pu.uFlare.value = (g.settings.gfx ?? 2) > 0 ? on * (this.daylight ?? 1) * (1 - (this.stormK || 0)) * (1 - (this.encK || 0)) * 0.9 : 0;
     }
     // fear: shaking, swaying, a picture that will not hold still, lights that stutter
     const H = this.horror;

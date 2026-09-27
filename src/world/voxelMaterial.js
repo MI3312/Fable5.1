@@ -46,15 +46,34 @@ export const voxelUniforms = {
   uCloudWind: cloudUniforms.uCloudWind,
   uCloudShadow: cloudUniforms.uCloudShadow,
   uCloudBase: cloudUniforms.uCloudBase,
+  uWindDir: { value: new THREE.Vector2(0.8, 0.6) },
+  uWindK: { value: 1 },
+  uWet: { value: 0 },
 };
+
+// wind: tips of grass and flowers lean and bob, leaves shiver; gusts roll across the land
+export const WIND_GLSL = /* glsl */`
+uniform vec2 uWindDir;
+uniform float uWindK;
+vec3 windOffset(vec3 wp, float s) {
+  if (s <= 0.0) return vec3(0.0);
+  float ph = dot(wp.xz, vec2(0.37, 0.23)) + uTime * 1.9;
+  float gust = 0.55 + 0.45 * sin(uTime * 0.37 + wp.x * 0.045 + wp.z * 0.035);
+  float bend = (sin(ph) * 0.5 + 0.55 + sin(ph * 2.7 + wp.y) * 0.18) * gust * uWindK;
+  vec2 off = uWindDir * bend * s * 0.24 + vec2(sin(ph * 3.1), cos(ph * 2.3)) * s * 0.03 * uWindK;
+  return vec3(off.x, -dot(off, off) * 0.35 * s, off.y);
+}
+`;
 
 const vert = /* glsl */`
 attribute vec3 uvl;
 attribute vec3 tint;
 attribute vec4 light;
+attribute float sway;
 uniform float uCurve;
 uniform float uTime;
 uniform float uWave;
+${WIND_GLSL}
 varying vec3 vUvl;
 varying vec3 vTint;
 varying vec4 vLight;
@@ -67,6 +86,7 @@ void main() {
   if (uWave > 0.0) {
     wp.y += (sin(wp.x * 0.7 + uTime * 1.6) * sin(wp.z * 0.6 + uTime * 1.3)) * 0.05 * uWave;
   }
+  wp.xyz += windOffset(wp.xyz, sway);
   vec2 cd = wp.xz - cameraPosition.xz;
   wp.y -= dot(cd, cd) * uCurve;
   vec4 mv = viewMatrix * wp;
@@ -97,6 +117,7 @@ precision highp sampler3D;
 uniform sampler3D uCloudNoise;
 uniform float uCloudCover, uCloudShadow, uCloudBase;
 uniform vec3 uCloudWind;
+uniform float uWet;
 uniform sampler2D uShadowMap;
 uniform mat4 uShadowMatrix;
 uniform float uShadowOn, uShadowTexel, uShadowDepth;
@@ -176,6 +197,13 @@ void main() {
   // soft knee: stacked lights roll off instead of clipping to white
   vec3 over = max(lightCol - 1.0, 0.0);
   lightCol = min(lightCol, vec3(1.0)) + over / (1.0 + over * 2.5);
+  // rain: soaked ground darkens, puddles gather in hollows
+  float wet = uLiquid > 0.0 ? 0.0 : uWet * smoothstep(0.4, 0.9, sky) * (1.0 - emit);
+  float puddle = 0.0;
+  if (wet > 0.01) {
+    base *= mix(1.0, 0.68, wet);
+    if (fn.y > 0.5) puddle = smoothstep(0.5, 0.62, fogNoise(vec3(vWorld.x * 0.28, 1.7, vWorld.z * 0.28))) * wet;
+  }
   vec3 col = base * lightCol * ao;
   col = mix(col, base * (0.85 + 0.25 * ao), emit);
   float alpha = uAlpha;
@@ -202,6 +230,23 @@ void main() {
     col = mix(col, refl, clamp(fres * 1.15, 0.0, 0.88) * (1.0 - emit));
     col += uSunColor * spec * (1.0 - emit);
     alpha = mix(clamp(uAlpha + fres * 0.4, 0.0, 0.97), 1.0, emit);
+  }
+  if (wet > 0.01 && fn.y > 0.5) {
+    // raindrop rings on the wet surface, then sky and sun reflected in it
+    vec2 q = vWorld.xz * 1.6;
+    vec2 cell = floor(q), f = fract(q) - 0.5;
+    float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+    float tt = fract(uTime * 1.2 + h);
+    vec2 c0 = f - (vec2(h, fract(h * 13.1)) - 0.5) * 0.5;
+    float ring = sin((length(c0) - tt * 0.55) * 42.0) * (1.0 - tt) * smoothstep(0.0, 0.08, tt) * step(length(c0), tt * 0.55 + 0.05);
+    vec3 n = normalize(vec3(c0.x * ring * 0.6, 1.0, c0.y * ring * 0.6));
+    vec3 r = reflect(viewDir, n);
+    float fres = 0.04 + 0.96 * pow(1.0 - clamp(dot(-viewDir, n), 0.0, 1.0), 5.0);
+    vec3 refl = skyGradient(normalize(vec3(r.x, max(r.y, 0.03), r.z))) * (0.35 + 0.65 * uDaylight);
+    float k = mix(0.35, 1.0, puddle) * wet;
+    col = mix(col, refl, clamp(fres * k * 1.5, 0.0, 0.85));
+    vec3 hv = normalize(uSunDir - viewDir);
+    col += uSunColor * pow(max(dot(n, hv), 0.0), 140.0) * 2.0 * k * uDaylight;
   }
   col = applyFog(col, vWorld, viewDir, vDist, vDist3, plGlow * uPLStrength);
   gl_FragColor = vec4(col, alpha);

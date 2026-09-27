@@ -23,6 +23,10 @@ for (let i = 0; i < BLOCKS.length; i++) {
 FACE_TINT[B.GRASS] = [TINT.grass, TINT.dirt, TINT.grass];
 FACE_TINT[B.SNOW_GRASS] = [TINT.none, TINT.dirt, TINT.dirt];
 
+// how much each block moves in the wind (per vertex; cross plants sway from the tip)
+const SWAY = new Uint8Array(256);
+SWAY[B.LEAVES] = 70; SWAY[B.MUSHROOM_CAP] = 18; SWAY[B.CORAL] = 30;
+
 const NATURAL = new Uint8Array(256);
 for (let i = 0; i < BLOCKS.length; i++) if (BLOCKS[i] && BLOCKS[i].tint !== TINT.none) NATURAL[i] = 1;
 
@@ -59,6 +63,7 @@ class Buf {
     this.uvl = new Float32Array(q * 12);
     this.tint = new Uint8Array(q * 12);
     this.light = new Uint8Array(q * 16);
+    this.sway = new Uint8Array(q * 4);
     this.idx = new Uint32Array(q * 6);
     this.q = 0;
   }
@@ -67,7 +72,7 @@ class Buf {
     const o = this;
     const n = new Buf(0);
     n.alloc(this.cap * 2);
-    n.pos.set(o.pos); n.uvl.set(o.uvl); n.tint.set(o.tint); n.light.set(o.light); n.idx.set(o.idx);
+    n.pos.set(o.pos); n.uvl.set(o.uvl); n.tint.set(o.tint); n.light.set(o.light); n.sway.set(o.sway); n.idx.set(o.idx);
     n.q = o.q;
     Object.assign(this, n);
   }
@@ -78,6 +83,7 @@ class Buf {
       uvl: this.uvl.slice(0, q * 12),
       tint: this.tint.slice(0, q * 12),
       light: this.light.slice(0, q * 16),
+      sway: this.sway.slice(0, q * 4),
       idx: this.idx.slice(0, q * 6),
     };
   }
@@ -201,6 +207,7 @@ export function meshChunk(data, heights, tints, ox, oz) {
             buf.light[o4 + 1] = sky * 255;
             buf.light[o4 + 2] = emit * 255;
             buf.light[o4 + 3] = art * 255;
+            buf.sway[q * 4 + v] = SWAY[id];
           }
           const base = q * 4, io = q * 6;
           if (aoVals[0] + aoVals[2] >= aoVals[1] + aoVals[3]) {
@@ -246,6 +253,7 @@ function emitCross(buf, def, id, px, y, pz, wx, wz, tints, sky, emit, art) {
       buf.light[o4 + 1] = sky * 255;
       buf.light[o4 + 2] = emit * 255;
       buf.light[o4 + 3] = art * 255;
+      buf.sway[q * 4 + v] = v < 2 ? 0 : 255;
     }
     const base = q * 4, io = q * 6;
     buf.idx[io] = base; buf.idx[io + 1] = base + 1; buf.idx[io + 2] = base + 2;

@@ -186,6 +186,7 @@ export class World {
       g.setAttribute('uvl', new THREE.BufferAttribute(m.uvl, 3));
       g.setAttribute('tint', new THREE.BufferAttribute(m.tint, 3, true));
       g.setAttribute('light', new THREE.BufferAttribute(m.light, 4, true));
+      if (m.sway) g.setAttribute('sway', new THREE.BufferAttribute(m.sway, 1, true));
       g.setIndex(new THREE.BufferAttribute(m.idx, 1));
       g.boundingSphere = new THREE.Sphere(SPHERE_CENTER, 92);
       const mesh3 = new THREE.Mesh(g, this.materials[i]);

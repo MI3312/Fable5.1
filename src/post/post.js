@@ -3,9 +3,11 @@
 //   -> SSAO from the depth buffer (normals reconstructed per pixel, rotated hemisphere kernel,
 //      depth-aware blur + upsample) multiplied into the world before the viewmodel is drawn
 //   -> HDR bloom (soft-knee bright pass, 6-level mip chain, tent-filtered upsample)
+//   -> volumetric light: shadow-mapped in-scattering marched through the haze (+ headlamp beam)
 //   -> composite: depth-masked god rays, filmic shoulder, grading, vignette, chromatic
 //      aberration, grain, fades, damage flash, warp streaks, underwater wobble, dread.
 import * as THREE from 'three';
+import { voxelUniforms } from '../world/voxelMaterial.js';
 
 const FS_VERT = /* glsl */`
   varying vec2 vUv;
@@ -83,6 +85,67 @@ const BLUR_FRAG = /* glsl */`
       sky += s.g;
     }
     gl_FragColor = vec4(sum / wsum, sky / 7.0, 0.0, 1.0);
+  }`;
+
+// Volumetric light: march each view ray through the haze, sampling the sun's shadow map, so shafts
+// pour through canopies and gaps; the headlamp gets a beam of its own.
+const VOL_FRAG = /* glsl */`
+  uniform sampler2D tDepth, uShadowMap;
+  uniform mat4 uShadowMatrix, uInvProj, uCamWorld;
+  uniform vec3 uCam, uSunDir, uSunColor, uTorch, uTorchDir;
+  uniform float uShadowOn, uDaylight, uDensity, uMistBase, uMistFalloff, uTorchOn, uTime, uSteps, uMaxDist;
+  varying vec2 vUv;
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  void main() {
+    float d = texture2D(tDepth, vUv).x;
+    vec4 vp = uInvProj * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vp /= vp.w;
+    vec3 wp = (uCamWorld * vec4(vp.xyz, 1.0)).xyz;
+    vec3 rd = wp - uCam;
+    float dist = min(length(rd), uMaxDist);
+    rd = normalize(rd);
+    float steps = uSteps;
+    float stepLen = dist / steps;
+    float t = stepLen * hash(gl_FragCoord.xy + fract(uTime * 7.1) * 31.0);
+    float cosT = dot(rd, uSunDir);
+    float g = 0.55;
+    float phase = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cosT, 1.5) * 0.08 + 0.02;
+    vec3 sun = vec3(0.0), lamp = vec3(0.0);
+    float T = 1.0;
+    for (int i = 0; i < 32; i++) {
+      if (float(i) >= steps) break;
+      vec3 p = uCam + rd * t;
+      float dens = uDensity * (0.35 + exp(-max(p.y - uMistBase, 0.0) / max(uMistFalloff, 1.0)));
+      if (uShadowOn > 0.0) {
+        vec4 sc = uShadowMatrix * vec4(p, 1.0);
+        vec3 c = sc.xyz / sc.w;
+        float lit = 1.0;
+        if (c.x > 0.0 && c.x < 1.0 && c.y > 0.0 && c.y < 1.0 && c.z < 1.0) lit = step(c.z - 0.002, texture2D(uShadowMap, c.xy).x);
+        sun += lit * dens * T * stepLen;
+      }
+      if (uTorchOn > 0.0) {
+        vec3 tv = p - uTorch;
+        float td = length(tv);
+        float cone = smoothstep(0.86, 0.97, dot(tv / max(td, 0.001), uTorchDir)) * pow(clamp(1.0 - td / 30.0, 0.0, 1.0), 1.5);
+        lamp += cone * dens * T * stepLen;
+      }
+      T *= exp(-dens * stepLen * 0.35);
+      t += stepLen;
+    }
+    vec3 col = sun * uSunColor * phase * uShadowOn * (0.4 + 0.6 * uDaylight) * 0.42 + lamp * vec3(1.0, 0.93, 0.82) * uTorchOn * 0.5;
+    col = col / (1.0 + col * 0.8);
+    gl_FragColor = vec4(col, 1.0);
+  }`;
+
+const VOLBLUR_FRAG = /* glsl */`
+  uniform sampler2D tSrc;
+  uniform vec2 uDir;
+  varying vec2 vUv;
+  void main() {
+    vec3 c = texture2D(tSrc, vUv).rgb * 0.227;
+    c += (texture2D(tSrc, vUv + uDir * 1.385).rgb + texture2D(tSrc, vUv - uDir * 1.385).rgb) * 0.316;
+    c += (texture2D(tSrc, vUv + uDir * 3.231).rgb + texture2D(tSrc, vUv - uDir * 3.231).rgb) * 0.070;
+    gl_FragColor = vec4(c, 1.0);
   }`;
 
 // multiply the AO into the lit world
@@ -194,6 +257,9 @@ export class PostFX {
       uFocus: { value: 12 },
       uAperture: { value: 0 },
       uFilter: { value: 0 },
+      tVol: { value: null },
+      uVol: { value: 0 },
+      uFlare: { value: 0 },
     };
     this.quality = 2;
     this.levels = [];
@@ -206,7 +272,8 @@ export class PostFX {
         uniform sampler2D tDiffuse;
         uniform float uTime, uVignette, uCA, uGrain, uSat, uFade, uDamage, uWarp, uUnderwater, uDream, uHazard, uVisor, uPixel;
         uniform float uDread, uPulse, uGlitch, uFlash, uRays, uBloom, uHasMask, uFilmic;
-        uniform sampler2D tBloom, tMask, tDepth;
+        uniform sampler2D tBloom, tMask, tDepth, tVol;
+        uniform float uVol, uFlare;
         uniform float uNear, uFar, uDof, uFocus, uAperture, uFilter;
         float linDepth(vec2 p) { float z = texture2D(tDepth, p).x * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
         float coc(float d) { return clamp(abs(d - uFocus) / max(d, 0.01) * uAperture, 0.0, 1.0); }
@@ -288,7 +355,32 @@ export class PostFX {
               w *= 0.955;
             }
             float fall = 1.0 - smoothstep(0.0, 0.9, length((uv - uSunPos) * vec2(uRes.x / uRes.y, 1.0)));
-            col += uRayCol * acc / 28.0 * uRays * (0.35 + 0.65 * fall);
+            col += uRayCol * acc / 28.0 * uRays * (0.35 + 0.65 * fall) * (1.0 - min(uVol, 1.0) * 0.75);
+          }
+          // volumetric light shafts
+          if (uVol > 0.0) col += texture2D(tVol, uv).rgb * uVol;
+          // lens flare: ghosts strung along the line through the sun and the centre, plus a streak
+          if (uFlare > 0.0) {
+            float vis = uHasMask > 0.5 ? texture2D(tMask, clamp(uSunPos, 0.001, 0.999)).g : 1.0;
+            float fl = uFlare * vis;
+            if (fl > 0.001) {
+              vec2 asp = vec2(uRes.x / uRes.y, 1.0);
+              vec2 axis = vec2(0.5) - uSunPos;
+              vec3 fc = vec3(0.0);
+              for (int i = 0; i < 5; i++) {
+                float k = float(i);
+                float pos = 0.4 + k * 0.38;
+                vec2 gp = uSunPos + axis * pos * 2.0;
+                float sz = 0.025 + fract(k * 0.618) * 0.06;
+                float dd = length((uv - gp) * asp);
+                float disc = smoothstep(sz, sz * 0.6, dd) * 0.5 + smoothstep(sz * 1.02, sz * 0.97, dd) * 0.25;
+                fc += disc * mix(vec3(0.5, 0.8, 1.0), vec3(1.0, 0.6, 0.9), fract(k * 0.37)) * 0.1;
+              }
+              vec2 sd = (uv - uSunPos) * asp;
+              fc += uRayCol * exp(-abs(sd.y) * 90.0) * exp(-abs(sd.x) * 3.0) * 0.35;
+              fc += uRayCol * pow(max(0.0, 1.0 - length(sd) * 3.0), 3.0) * 0.25;
+              col += fc * fl;
+            }
           }
           // HDR bloom, then a filmic shoulder so bright things roll off instead of clipping
           if (uBloom > 0.0) col += texture2D(tBloom, uv).rgb * uBloom;
@@ -380,6 +472,14 @@ export class PostFX {
     });
     this.bright = this._fs(BRIGHT_FRAG, { tSrc: { value: null }, uTexel: V2(), uThreshold: { value: 0.9 }, uKnee: { value: 0.35 } });
     this.down = this._fs(DOWN_FRAG, { tSrc: { value: null }, uTexel: V2() });
+    const V = voxelUniforms;
+    this.vol = this._fs(VOL_FRAG, {
+      tDepth: { value: null }, uShadowMap: V.uShadowMap, uShadowMatrix: V.uShadowMatrix, uShadowOn: V.uShadowOn,
+      uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCam: { value: new THREE.Vector3() },
+      uSunDir: V.uSunDir, uSunColor: V.uSunColor, uDaylight: V.uDaylight, uTorch: V.uTorch, uTorchDir: V.uTorchDir, uTorchOn: V.uTorchOn,
+      uDensity: { value: 0.02 }, uMistBase: V.uMistBase, uMistFalloff: V.uMistFalloff, uTime: V.uTime, uSteps: { value: 24 }, uMaxDist: { value: 80 },
+    });
+    this.volBlur = this._fs(VOLBLUR_FRAG, { tSrc: { value: null }, uDir: V2() });
     this.up = this._fs(UP_FRAG, { tSrc: { value: null }, uTexel: V2(), uScatter: { value: 0.85 } }, {
       blending: THREE.AdditiveBlending, transparent: true,
     });
@@ -415,6 +515,10 @@ export class PostFX {
     for (let i = 0; i < 6 && bw > 2 && bh > 2; i++) { this.levels.push(this._target(bw, bh)); bw = Math.ceil(bw / 2); bh = Math.ceil(bh / 2); }
     this.uniforms.tBloom.value = this.levels[0]?.texture || null;
     this.uniforms.tMask.value = this.aoA.texture;
+    for (const t of [this.volA, this.volB]) t?.dispose();
+    this.volA = this._target(aw, ah);
+    this.volB = this._target(aw, ah);
+    this.uniforms.tVol.value = this.volA.texture;
     this.uniforms.tDepth.value = this.rt.depthTexture;
   }
 
@@ -442,6 +546,24 @@ export class PostFX {
     this._pass(this.blur, this.aoA);
     this.apply.u.tAO.value = this.aoA.texture;
     this._pass(this.apply, this.rt);
+  }
+
+  _volumetric(camera, strength) {
+    const U = this.vol.u, w = this.volA.width, h = this.volA.height;
+    U.tDepth.value = this.rt.depthTexture;
+    U.uInvProj.value.copy(camera.projectionMatrixInverse);
+    U.uCamWorld.value.copy(camera.matrixWorld);
+    U.uCam.value.copy(camera.position);
+    U.uSteps.value = this.quality >= 2 ? 24 : 12;
+    // thicker air, stronger shafts
+    U.uDensity.value = Math.min(0.08, voxelUniforms.uFogDensity.value * 2.2 + voxelUniforms.uMistDensity.value * 0.8);
+    this._pass(this.vol, this.volA);
+    const B = this.volBlur.u;
+    B.tSrc.value = this.volA.texture; B.uDir.value.set(1 / w, 0);
+    this._pass(this.volBlur, this.volB);
+    B.tSrc.value = this.volB.texture; B.uDir.value.set(0, 1 / h);
+    this._pass(this.volBlur, this.volA);
+    this.uniforms.uVol.value = strength;
   }
 
   _bloom() {
@@ -475,6 +597,9 @@ export class PostFX {
     const useAO = q >= 1 && opts.ao !== false && passes[0] && passes[0].camera.isPerspectiveCamera;
     if (passes[0]) { this.uniforms.uNear.value = passes[0].camera.near; this.uniforms.uFar.value = passes[0].camera.far; }
     if (useAO) this._ambientOcclusion(passes[0].camera);
+    const useVol = useAO && opts.volumetric !== false && (voxelUniforms.uShadowOn.value > 0.01 || voxelUniforms.uTorchOn.value > 0.01);
+    if (useVol) this._volumetric(passes[0].camera, opts.volumetric ?? 1);
+    else this.uniforms.uVol.value = 0;
     this.uniforms.uHasMask.value = useAO ? 1 : 0;
     r.setRenderTarget(this.rt);
     for (; i < passes.length; i++) {
