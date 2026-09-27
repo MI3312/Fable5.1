@@ -22,7 +22,7 @@ npm start       # serves the folder at http://localhost:8080
 
 Then open <http://localhost:8080>.
 
-**Single-file build:** `npm run build` writes `dist/lucid-sky.html`, a single HTML file
+**Single-file build:** `npm install` (once, for esbuild and three), then `npm run build`, writes `dist/lucid-sky.html`, a single HTML file
 with the game, three.js, the terrain worker and all CSS inlined. It runs by
 double-clicking it, with no server.
 
@@ -42,6 +42,9 @@ walks, builds, flies, drives and fishes in the same world, and sees each other's
   ```bash
   cd desktop && npm install && npm start   # Steam must be running
   ```
+
+  `npm start` launches the prebuilt `dist/lucid-sky.html`. If it's missing or out of date, it
+  installs the root build tools and rebuilds it first; `npm run start:fresh` always rebuilds.
 
 - **Local test mode:** in a plain browser, the Multiplayer menu uses a `BroadcastChannel`, so two
   tabs of the same browser can share a dream. This is handy for trying it out alone.

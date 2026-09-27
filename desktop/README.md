@@ -16,8 +16,13 @@ plays together needs to run it with the same app ID.
 
    ```
    npm install
-   npm start          # builds ../dist/lucid-sky.html, then launches the game
+   npm start
    ```
+
+   `npm start` uses the game build in `../dist/lucid-sky.html`, which comes with the release zip.
+   It only rebuilds when that file is missing or older than the source. When it does rebuild, it
+   first runs `npm install` in the project root to get the build tools (esbuild, three). To force a
+   rebuild after changing the game, run `npm run start:fresh`.
 
 3. In game: **Esc → Multiplayer → Host · friends only** (or **public**). Friends can join from your
    Steam profile (*Join Game*), from an invite (**Invite friends**), or from **Multiplayer → Find

@@ -182,7 +182,7 @@ function createWindow() {
   });
   const page = gamePage();
   if (page) win.loadFile(page);
-  else win.loadURL('data:text/html,<body style="background:#111;color:#eee;font:16px sans-serif;padding:40px">Build the game first: <code>npm run build</code> in the project root.</body>');
+  else win.loadURL('data:text/html,<body style="background:#111;color:#eee;font:16px sans-serif;padding:40px">The game has not been built yet. In the <code>desktop</code> folder run <code>npm run start:fresh</code>, or in the project root run <code>npm install</code> then <code>npm run build</code>.</body>');
   win.on('closed', () => { win = null; });
 }
 

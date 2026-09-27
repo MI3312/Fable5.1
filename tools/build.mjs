@@ -1,6 +1,12 @@
 // Builds a single self-contained HTML file (dist/lucid-sky.html) that runs straight
 // from the filesystem (double-click) - three.js, the game, the terrain worker and CSS inlined.
-import { build } from 'esbuild';
+let build;
+try {
+  ({ build } = await import('esbuild'));
+} catch (e) {
+  console.error('The build needs esbuild, which is not installed yet.\nRun  npm install  in the project root (the folder with this package.json), then  npm run build  again.');
+  process.exit(1);
+}
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 
 const worker = await build({

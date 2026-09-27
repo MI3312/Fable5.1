@@ -5,9 +5,9 @@
   "private": true,
   "main": "main.cjs",
   "scripts": {
-    "build-game": "cd .. && npm run build",
-    "start": "npm run build-game && electron .",
-    "start:nobuild": "electron ."
+    "start": "node ensure-build.cjs && electron .",
+    "start:fresh": "node ensure-build.cjs --force && electron .",
+    "build-game": "node ensure-build.cjs --force"
   },
   "dependencies": {
     "steamworks.js": "^0.4.0"
