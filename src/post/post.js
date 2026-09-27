@@ -148,6 +148,57 @@ const VOLBLUR_FRAG = /* glsl */`
     gl_FragColor = vec4(c, 1.0);
   }`;
 
+// last frame, kept for reflections: colour + linear view depth
+const HIST_FRAG = /* glsl */`
+  uniform sampler2D tSrc, tDepth;
+  uniform float uNear, uFar;
+  varying vec2 vUv;
+  float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
+  void main() {
+    vec3 c = texture2D(tSrc, vUv).rgb;
+    gl_FragColor = vec4(min(c, vec3(16.0)), lin(texture2D(tDepth, vUv).x));
+  }`;
+
+// eye adaptation: the average brightness of the scene (weighted to the centre), reduced to one texel
+const LUM_FRAG = /* glsl */`
+  uniform sampler2D tSrc;
+  uniform vec2 uCell;
+  varying vec2 vUv;
+  float lum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+  void main() {
+    float s = 0.0;
+    for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) {
+      vec2 o = (vec2(float(i), float(j)) - 1.0) * uCell * 0.33;
+      s += min(lum(texture2D(tSrc, vUv + o).rgb), 4.0);
+    }
+    // the middle of the screen counts for more: that's where you are looking
+    float w = 1.0 + 1.5 * (1.0 - smoothstep(0.1, 0.5, length(vUv - 0.5)));
+    gl_FragColor = vec4(s / 9.0 * w, w, 0.0, 1.0);
+  }`;
+const REDUCE_FRAG = /* glsl */`
+  uniform sampler2D tSrc;
+  uniform vec2 uTexel;
+  varying vec2 vUv;
+  void main() {
+    vec2 acc = vec2(0.0);
+    for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) acc += texture2D(tSrc, vUv + (vec2(float(i), float(j)) - 1.5) * uTexel).rg;
+    gl_FragColor = vec4(acc / 16.0, 0.0, 1.0);
+  }`;
+const ADAPT_FRAG = /* glsl */`
+  uniform sampler2D tLum, tPrev;
+  uniform float uDt, uKey, uMin, uMax, uUp, uDown, uReset;
+  varying vec2 vUv;
+  void main() {
+    vec2 l = texture2D(tLum, vec2(0.5)).rg;
+    float avg = l.x / max(l.y, 1e-3);
+    // eyes adapt only part of the way: dark stays dark, glare is tamed
+    float target = clamp(pow(uKey / max(avg, 1e-3), 0.55), uMin, uMax);
+    float prev = texture2D(tPrev, vec2(0.5)).r;
+    if (uReset > 0.5 || prev <= 0.0) prev = target;
+    float k = 1.0 - exp(-uDt * (target > prev ? uUp : uDown));
+    gl_FragColor = vec4(prev + (target - prev) * k, avg, 0.0, 1.0);
+  }`;
+
 // multiply the AO into the lit world
 const APPLY_FRAG = /* glsl */`
   uniform sampler2D tAO;
@@ -260,6 +311,8 @@ export class PostFX {
       tVol: { value: null },
       uVol: { value: 0 },
       uFlare: { value: 0 },
+      tExposure: { value: null },
+      uAutoExp: { value: 0 },
     };
     this.quality = 2;
     this.levels = [];
@@ -273,7 +326,22 @@ export class PostFX {
         uniform float uTime, uVignette, uCA, uGrain, uSat, uFade, uDamage, uWarp, uUnderwater, uDream, uHazard, uVisor, uPixel;
         uniform float uDread, uPulse, uGlitch, uFlash, uRays, uBloom, uHasMask, uFilmic;
         uniform sampler2D tBloom, tMask, tDepth, tVol;
-        uniform float uVol, uFlare;
+        uniform float uVol, uFlare, uAutoExp;
+        uniform sampler2D tExposure;
+        // hue-preserving highlight compression (Khronos PBR Neutral)
+        vec3 neutralTone(vec3 c) {
+          float x = min(c.r, min(c.g, c.b));
+          float off = x < 0.08 ? x - 6.25 * x * x : 0.04;
+          c -= off;
+          float peak = max(c.r, max(c.g, c.b));
+          const float start = 0.76;
+          if (peak < start) return c + off * 0.0;
+          const float d = 1.0 - start;
+          float np = 1.0 - d * d / (peak + d - start);
+          c *= np / peak;
+          float g = 1.0 - 1.0 / (0.15 * (peak - np) + 1.0);
+          return mix(c, vec3(np), g);
+        }
         uniform float uNear, uFar, uDof, uFocus, uAperture, uFilter;
         float linDepth(vec2 p) { float z = texture2D(tDepth, p).x * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
         float coc(float d) { return clamp(abs(d - uFocus) / max(d, 0.01) * uAperture, 0.0, 1.0); }
@@ -384,10 +452,9 @@ export class PostFX {
           }
           // HDR bloom, then a filmic shoulder so bright things roll off instead of clipping
           if (uBloom > 0.0) col += texture2D(tBloom, uv).rgb * uBloom;
-          if (uFilmic > 0.0) {
-            vec3 x = max(col - 0.72, 0.0);
-            col = min(col, vec3(0.72)) + x / (1.0 + x * 1.15);
-          }
+          // eye adaptation
+          if (uAutoExp > 0.0) col *= mix(1.0, texture2D(tExposure, vec2(0.5)).r, uAutoExp);
+          if (uFilmic > 0.0) col = neutralTone(max(col, 0.0));
           // photo filters
           if (uFilter > 0.5) {
             float lf = dot(col, vec3(0.299, 0.587, 0.114));
@@ -480,6 +547,16 @@ export class PostFX {
       uDensity: { value: 0.02 }, uMistBase: V.uMistBase, uMistFalloff: V.uMistFalloff, uTime: V.uTime, uSteps: { value: 24 }, uMaxDist: { value: 80 },
     });
     this.volBlur = this._fs(VOLBLUR_FRAG, { tSrc: { value: null }, uDir: V2() });
+    this.lumPass = this._fs(LUM_FRAG, { tSrc: { value: null }, uCell: V2() });
+    this.reducePass = this._fs(REDUCE_FRAG, { tSrc: { value: null }, uTexel: V2() });
+    this.adaptPass = this._fs(ADAPT_FRAG, {
+      tLum: { value: null }, tPrev: { value: null }, uDt: { value: 1 / 60 }, uKey: { value: 0.72 }, uMin: { value: 0.7 }, uMax: { value: 1.3 },
+      uUp: { value: 0.7 }, uDown: { value: 2.2 }, uReset: { value: 1 },
+    });
+    this.lumChain = [this._target(32, 32), this._target(8, 8), this._target(2, 2), this._target(1, 1)];
+    this.expA = this._target(1, 1); this.expB = this._target(1, 1);
+    for (const t of [...this.lumChain, this.expA, this.expB]) t.texture.minFilter = t.texture.magFilter = THREE.NearestFilter;
+    this.histPass = this._fs(HIST_FRAG, { tSrc: { value: null }, tDepth: { value: null }, uNear: { value: 0.1 }, uFar: { value: 1000 } });
     this.up = this._fs(UP_FRAG, { tSrc: { value: null }, uTexel: V2(), uScatter: { value: 0.85 } }, {
       blending: THREE.AdditiveBlending, transparent: true,
     });
@@ -518,6 +595,11 @@ export class PostFX {
     for (const t of [this.volA, this.volB]) t?.dispose();
     this.volA = this._target(aw, ah);
     this.volB = this._target(aw, ah);
+    this.expReset = true;
+    this.hist?.dispose();
+    this.hist = this._target(aw, ah);
+    this.hist.texture.minFilter = this.hist.texture.magFilter = THREE.NearestFilter;
+    this.histValid = false;
     this.uniforms.tVol.value = this.volA.texture;
     this.uniforms.tDepth.value = this.rt.depthTexture;
   }
@@ -586,6 +668,36 @@ export class PostFX {
     }
   }
 
+  // eye adaptation: measure, reduce to one texel, then ease the exposure toward it
+  _adapt(dt) {
+    const L = this.lumChain;
+    this.lumPass.u.tSrc.value = this.rt.texture;
+    this.lumPass.u.uCell.value.set(1 / 32, 1 / 32);
+    this._pass(this.lumPass, L[0]);
+    for (let i = 1; i < L.length; i++) {
+      this.reducePass.u.tSrc.value = L[i - 1].texture;
+      this.reducePass.u.uTexel.value.set(1 / L[i - 1].width, 1 / L[i - 1].height);
+      this._pass(this.reducePass, L[i]);
+    }
+    const A = this.adaptPass.u;
+    A.tLum.value = L[L.length - 1].texture;
+    A.tPrev.value = this.expA.texture;
+    A.uDt.value = Math.min(0.25, dt);
+    A.uReset.value = this.expReset ? 1 : 0;
+    this.expReset = false;
+    this._pass(this.adaptPass, this.expB);
+    [this.expA, this.expB] = [this.expB, this.expA];
+    this.uniforms.tExposure.value = this.expA.texture;
+    this.uniforms.uAutoExp.value = 1;
+  }
+
+  // for tests and tuning: [exposure, measured average luminance]
+  readExposure() {
+    const buf = new Uint16Array(4);
+    this.renderer.readRenderTargetPixels(this.expA, 0, 0, 1, 1, buf);
+    return [THREE.DataUtils.fromHalfFloat(buf[0]), THREE.DataUtils.fromHalfFloat(buf[1])];
+  }
+
   // passes: [{scene, camera, clearDepth}]; opts.ao=false for scenes without a sane depth range
   render(passes, opts = {}) {
     const r = this.renderer;
@@ -600,6 +712,20 @@ export class PostFX {
     const useVol = useAO && opts.volumetric !== false && (voxelUniforms.uShadowOn.value > 0.01 || voxelUniforms.uTorchOn.value > 0.01);
     if (useVol) this._volumetric(passes[0].camera, opts.volumetric ?? 1);
     else this.uniforms.uVol.value = 0;
+    // keep this frame for next frame's reflections
+    const V = voxelUniforms;
+    if (useAO && opts.reflections !== false && !this.noSSR) {
+      const cam = passes[0].camera;
+      const H = this.histPass.u;
+      H.tSrc.value = this.rt.texture; H.tDepth.value = this.rt.depthTexture;
+      H.uNear.value = cam.near; H.uFar.value = cam.far;
+      this._pass(this.histPass, this.hist);
+      V.uHist.value = this.hist.texture;
+      V.uHistVP.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      V.uSSR.value = this.histValid ? 1 : 0;
+      V.uSSRSteps.value = q >= 2 ? 26 : 16;
+      this.histValid = true;
+    } else { V.uSSR.value = 0; this.histValid = false; }
     this.uniforms.uHasMask.value = useAO ? 1 : 0;
     r.setRenderTarget(this.rt);
     for (; i < passes.length; i++) {
@@ -608,6 +734,8 @@ export class PostFX {
     }
     if (q >= 1) this._bloom();
     this.uniforms.uBloom.value = q >= 1 ? (opts.bloom ?? 0.42) : 0;
+    if (opts.exposure !== false && !this.noAutoExp) this._adapt(opts.dt ?? 1 / 60);
+    else this.uniforms.uAutoExp.value = 0;
     r.setRenderTarget(null);
     r.render(this.scene, this.camera);
   }

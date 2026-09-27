@@ -294,6 +294,7 @@ export class Game {
 
   onSurfaceReady() {
     this.menus.hideLoading();
+    this.post.expReset = true;
     if (this.afterSurfaceReady) { const f = this.afterSurfaceReady; this.afterSurfaceReady = null; f(); }
     else if (this.net.role === 'guest') this.net.requestEdits();
     this.mode = 'surface';
@@ -1017,7 +1018,7 @@ export class Game {
       this.surface.preRender();
       this.post.render(this.surface.renderPasses());
     } else {
-      this.post.render([{ scene: this.space.scene, camera: this.spaceCamera }], { ao: false, bloom: 0.8 });
+      this.post.render([{ scene: this.space.scene, camera: this.spaceCamera }], { ao: false, bloom: 0.8, exposure: false });
     }
   }
 

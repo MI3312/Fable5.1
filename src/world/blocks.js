@@ -44,7 +44,7 @@ export const B = {
   PLASTIC_R: 65, PLASTIC_Y: 66, PLASTIC_B: 67, PLASTIC_W: 68, CONCRETE: 69, SHELF: 70,
   BOOKSHELF: 71, SILVER: 72, TV: 73, DARK_WOOD: 74, FLESH: 75, ONYX: 76,
   VOID: 77, EMERGENCY: 78, HULL: 79, GRATE: 80, MISSING: 81,
-  BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85, NUTRIENT: 86, WRECK_BEACON: 87,
+  BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85, NUTRIENT: 86, WRECK_BEACON: 87, LIT_DIM: 88, LIT_DARK: 89,
 };
 
 const T = TILE;
@@ -129,6 +129,8 @@ BLOCKS[B.CORAL] = def('Coral Growth', T.coral, { tint: TINT.flora, hardness: 0.5
 BLOCKS[B.POOL_DEEP] = def('Deep Tile', T.pool_deep, { hardness: 1.0, drops: [['silicate', 1, 1]], color: [0.3, 0.55, 0.8] });
 BLOCKS[B.EYE] = def('Watcher', T.eye, { hardness: 1.0, emissive: 0.4, drops: [['chroma_shard', 1, 2]], color: [0.95, 0.95, 0.9] });
 BLOCKS[B.LIT_AIR] = def('Air', T.stone, { solid: false, collect: false, hardness: 0 });
+BLOCKS[B.LIT_DIM] = def('Air', T.stone, { solid: false, collect: false, hardness: 0 });
+BLOCKS[B.LIT_DARK] = def('Air', T.stone, { solid: false, collect: false, hardness: 0 });
 BLOCKS[B.SENTINEL_PILLAR] = def('Sentinel Pillar', [T.metal_plate, T.metal_plate, T.sentinel], { hardness: 2.0, emissive: 0.5, restricted: true, drops: [['pugneum', 3, 6]], color: [0.9, 0.2, 0.2] });
 BLOCKS[B.SNOW_GRASS] = def('Snowy Turf', [T.snow, T.dirt, T.snow_side], { hardness: 0.4, drops: [['silicate', 1, 1]], color: [0.95, 0.97, 1.0] });
 BLOCKS[B.STARRY] = def('Night Fragment', T.starry, { hardness: 0.8, emissive: 0.6, drops: [['chroma_shard', 1, 1]], color: [0.2, 0.15, 0.4] });
@@ -173,6 +175,8 @@ export const IS_LIQUID = new Uint8Array(256);
 export const BLOCK_TINT = new Uint8Array(256);
 export const BLOCK_EMIT = new Float32Array(256);
 export const IS_AIRLIKE = new Uint8Array(256);
+// how brightly lit a pocket of interior air is (liminal rooms: bright under the lights, dim between)
+export const ART_LEVEL = new Float32Array(256);
 
 for (let i = 0; i < BLOCKS.length; i++) {
   const b = BLOCKS[i];
@@ -183,12 +187,14 @@ for (let i = 0; i < BLOCKS.length; i++) {
   IS_LIQUID[i] = b.liquid ? 1 : 0;
   BLOCK_TINT[i] = b.tint;
   BLOCK_EMIT[i] = b.emissive;
-  IS_OPAQUE[i] = (b.pass === PASS.opaque && b.shape === 'cube' && i !== B.AIR && i !== B.LIT_AIR) ? 1 : 0;
-  IS_AIRLIKE[i] = (i === B.AIR || i === B.LIT_AIR) ? 1 : 0;
+  const airy = i === B.AIR || i === B.LIT_AIR || i === B.LIT_DIM || i === B.LIT_DARK;
+  IS_OPAQUE[i] = (b.pass === PASS.opaque && b.shape === 'cube' && !airy) ? 1 : 0;
+  IS_AIRLIKE[i] = airy ? 1 : 0;
+  ART_LEVEL[i] = i === B.LIT_AIR ? 1 : i === B.LIT_DIM ? 0.5 : i === B.LIT_DARK ? 0.2 : 0;
 }
 
 // Blocks that can be placed from the block bag (everything collectible)
 export function isPlaceable(id) {
   const b = BLOCKS[id];
-  return !!b && b.collect && id !== B.AIR && id !== B.LIT_AIR;
+  return !!b && b.collect && !IS_AIRLIKE[id];
 }

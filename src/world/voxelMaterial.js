@@ -3,6 +3,7 @@
 // dense sky-matched exponential fog with drifting ground mist, and fake planetary curvature.
 import * as THREE from 'three';
 import { SKY_GLSL, FOG_GLSL, curvatureUniforms, cloudUniforms } from '../core/shaderlib.js';
+import { TILE } from './blocks.js';
 
 export const MAX_POINT_LIGHTS = 8;
 
@@ -41,6 +42,13 @@ export const voxelUniforms = {
   uShadowOn: { value: 0 },
   uShadowTexel: { value: 1 / 2048 },
   uShadowDepth: { value: 1 / 500 },
+  // a second, coarser cascade that reaches the horizon
+  uShadowMap2: { value: null },
+  uShadowMatrix2: { value: new THREE.Matrix4() },
+  uShadowOn2: { value: 0 },
+  uShadowTexel2: { value: 1 / 1536 },
+  uShadowDepth2: { value: 1 / 500 },
+  uSeaLevel: { value: -999 },
   uCloudNoise: cloudUniforms.uCloudNoise,
   uCloudCover: cloudUniforms.uCloudCover,
   uCloudWind: cloudUniforms.uCloudWind,
@@ -49,7 +57,34 @@ export const voxelUniforms = {
   uWindDir: { value: new THREE.Vector2(0.8, 0.6) },
   uWindK: { value: 1 },
   uWet: { value: 0 },
+  // screen-space reflections: last frame's colour (rgb) + linear view depth (a), and its camera
+  uHist: { value: null },
+  uHistVP: { value: new THREE.Matrix4() },
+  uSSR: { value: 0 },
+  uSSRSteps: { value: 20 },
+  uGloss: { value: null },
 };
+
+// how mirror-like each tile is: [reflectivity, roughness]
+const GLOSS = {
+  pool_tile: [0.55, 0.05], pool_deep: [0.6, 0.04], marble: [0.5, 0.06], dream_tile: [0.4, 0.08], checker: [0.42, 0.06],
+  metal_plate: [0.35, 0.18], metal_panel: [0.3, 0.2], silver: [0.7, 0.04], obsidian: [0.45, 0.05], ice: [0.5, 0.05],
+  onyx: [0.5, 0.05], plastic_r: [0.3, 0.1], plastic_y: [0.3, 0.1], plastic_b: [0.3, 0.1], plastic_w: [0.32, 0.1],
+  concrete: [0.12, 0.3], grate: [0.18, 0.25], hull: [0.2, 0.2], tv: [0.45, 0.03], neon: [0.25, 0.08], salt: [0.18, 0.2],
+  base_top: [0.3, 0.1], tele_top: [0.35, 0.08], ceiling_tile: [0.08, 0.3], light_panel: [0.2, 0.05],
+};
+function glossTexture() {
+  const data = new Uint8Array(256 * 4);
+  for (const [name, [r, g]] of Object.entries(GLOSS)) {
+    const i = TILE[name];
+    if (i == null) continue;
+    data[i * 4] = r * 255; data[i * 4 + 1] = g * 255;
+  }
+  const t = new THREE.DataTexture(data, 256, 1, THREE.RGBAFormat);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.needsUpdate = true;
+  return t;
+}
 
 // wind: tips of grass and flowers lean and bob, leaves shiver; gusts roll across the land
 export const WIND_GLSL = /* glsl */`
@@ -118,19 +153,39 @@ uniform sampler3D uCloudNoise;
 uniform float uCloudCover, uCloudShadow, uCloudBase;
 uniform vec3 uCloudWind;
 uniform float uWet;
+uniform sampler2D uHist;
+uniform mat4 uHistVP;
+uniform float uSSR, uSSRSteps, uCurve;
+uniform sampler2D uGloss;
 uniform sampler2D uShadowMap;
 uniform mat4 uShadowMatrix;
 uniform float uShadowOn, uShadowTexel, uShadowDepth;
+uniform sampler2D uShadowMap2;
+uniform mat4 uShadowMatrix2;
+uniform float uShadowOn2, uShadowTexel2, uShadowDepth2, uSeaLevel;
 const vec2 POISSON[12] = vec2[](
   vec2(-0.326, -0.406), vec2(-0.840, -0.074), vec2(-0.696, 0.457), vec2(-0.203, 0.621),
   vec2(0.962, -0.195), vec2(0.473, -0.480), vec2(0.519, 0.767), vec2(0.185, -0.893),
   vec2(0.507, 0.064), vec2(0.896, 0.412), vec2(-0.322, -0.933), vec2(-0.792, -0.598));
-// soft sun shadow: normal-offset lookup, slope-scaled bias, rotated Poisson PCF, faded at the edge
+// the far cascade: coarser, a few taps, fading out at its own edge
+float farShadow(vec3 wp, vec3 n, float ndl) {
+  if (uShadowOn2 <= 0.0) return 1.0;
+  vec4 sc = uShadowMatrix2 * vec4(wp + n * 0.3, 1.0);
+  vec3 c = sc.xyz / sc.w;
+  if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  float bias = (0.12 + 0.5 * (1.0 - clamp(ndl, 0.0, 1.0))) * uShadowDepth2;
+  float sum = 0.0;
+  for (int i = 0; i < 5; i++) sum += step(c.z - bias, texture(uShadowMap2, c.xy + POISSON[i] * uShadowTexel2 * 1.4).x);
+  vec2 e = abs(c.xy - 0.5) * 2.0;
+  return mix(mix(sum / 5.0, 1.0, smoothstep(0.85, 1.0, max(e.x, e.y))), 1.0, 1.0 - uShadowOn2);
+}
+// soft sun shadow: normal-offset lookup, slope-scaled bias, rotated Poisson PCF, handing over to the
+// far cascade at its edge
 float sunShadow(vec3 wp, vec3 n, float ndl) {
   if (uShadowOn <= 0.0) return 1.0;
   vec4 sc = uShadowMatrix * vec4(wp + n * 0.07, 1.0);
   vec3 c = sc.xyz / sc.w;
-  if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return mix(1.0, farShadow(wp, n, ndl), uShadowOn);
   float bias = (0.06 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0))) * uShadowDepth;
   float a = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
   mat2 R = mat2(cos(a), -sin(a), sin(a), cos(a));
@@ -140,7 +195,23 @@ float sunShadow(vec3 wp, vec3 n, float ndl) {
     sum += step(c.z - bias, texture(uShadowMap, c.xy + o).x);
   }
   vec2 e = abs(c.xy - 0.5) * 2.0;
-  return mix(mix(sum / 12.0, 1.0, smoothstep(0.82, 1.0, max(e.x, e.y))), 1.0, 1.0 - uShadowOn);
+  float edge = smoothstep(0.82, 1.0, max(e.x, e.y));
+  float far = edge > 0.0 ? farShadow(wp, n, ndl) : 1.0;
+  return mix(mix(sum / 12.0, far, edge), 1.0, 1.0 - uShadowOn);
+}
+// light focused by rippling water onto whatever lies beneath it
+float caustics(vec2 uv, float t) {
+  vec2 p = mod(uv * 6.28318, 6.28318) - 250.0;
+  vec2 i = p;
+  float c = 1.0, inten = 0.005;
+  for (int n = 0; n < 4; n++) {
+    float tt = t * (1.0 - (3.5 / float(n + 1)));
+    i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+    c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / inten), p.y / (cos(i.y + tt) / inten)));
+  }
+  c /= 4.0;
+  c = 1.17 - pow(c, 1.4);
+  return pow(abs(c), 8.0);
 }
 ${SKY_GLSL}
 ${FOG_GLSL}
@@ -158,6 +229,40 @@ varying vec4 vLight;
 varying vec3 vWorld;
 varying float vDist;
 varying float vDist3;
+// a world point as it was drawn (bent by the planet's curvature), projected into last frame
+vec4 histClip(vec3 p) {
+  vec2 cd = p.xz - cameraPosition.xz;
+  return uHistVP * vec4(p.x, p.y - dot(cd, cd) * uCurve, p.z, 1.0);
+}
+// march a reflected ray through last frame's picture; rgb = what it hit, a = confidence
+vec4 ssrTrace(vec3 wp, vec3 R) {
+  float jit = fract(sin(dot(gl_FragCoord.xy + fract(uTime) * 61.0, vec2(12.9898, 78.233))) * 43758.5453);
+  float t = 0.2 + jit * 0.3, prevT = 0.0;
+  for (int i = 0; i < 32; i++) {
+    if (float(i) >= uSSRSteps) break;
+    vec4 c = histClip(wp + R * t);
+    if (c.w <= 0.05) break;
+    vec2 uv = c.xy / c.w * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
+    float dz = c.w - texture(uHist, uv).a;
+    if (dz > 0.02 && dz < max(0.7, t * 0.2)) {
+      float a = prevT, b = t;
+      for (int j = 0; j < 5; j++) {
+        float m = (a + b) * 0.5;
+        vec4 qc = histClip(wp + R * m);
+        if (qc.w - texture(uHist, qc.xy / qc.w * 0.5 + 0.5).a > 0.0) b = m; else a = m;
+      }
+      vec4 qc = histClip(wp + R * b);
+      vec2 quv = qc.xy / qc.w * 0.5 + 0.5;
+      vec2 e = smoothstep(vec2(0.0), vec2(0.07), quv) * smoothstep(vec2(1.0), vec2(0.93), quv);
+      return vec4(texture(uHist, quv).rgb, e.x * e.y * (1.0 - float(i) / uSSRSteps * 0.6));
+    }
+    prevT = t;
+    t = t * 1.2 + 0.1;
+    if (t > 110.0) break;
+  }
+  return vec4(0.0);
+}
 void main() {
   vec3 uvl = vUvl;
   if (uLiquid > 0.0) uvl.xy += vec2(uTime * 0.04, uTime * 0.025);
@@ -167,6 +272,9 @@ void main() {
   vec3 base = tex.rgb * mix(vec3(1.0), vTint, mask);
   float ao = vLight.r;
   float sky = vLight.g;
+  // light fades as it goes down through the sea
+  float seaDepth = uLiquid <= 0.0 ? max(uSeaLevel - vWorld.y, 0.0) : 0.0;
+  sky *= mix(0.3, 1.0, exp(-seaDepth * 0.09));
   float emit = vLight.b;
   float art = vLight.a;
   vec3 viewDir = normalize(vWorld - cameraPosition);
@@ -205,8 +313,29 @@ void main() {
     if (fn.y > 0.5) puddle = smoothstep(0.5, 0.62, fogNoise(vec3(vWorld.x * 0.28, 1.7, vWorld.z * 0.28))) * wet;
   }
   vec3 col = base * lightCol * ao;
+  // caustics dancing across the sea floor and the bottoms of pools
+  bool seaFloor = seaDepth > 0.15 && sky > 0.2;
+  if (uLiquid <= 0.0 && (seaFloor || int(uvl.z + 0.5) == ${TILE.pool_deep})) {
+    float depthK = seaFloor ? exp(-seaDepth * 0.12) : 0.8;
+    float ca = caustics(vWorld.xz * 0.16 + vec2(uTime * 0.012, 0.0), uTime * 0.55);
+    col += base * ca * depthK * (0.25 * max(sky, art) + 0.75 * direct * uDaylight * sky + uArtificial.r * art * 0.8) * 2.6 * ao;
+  }
   col = mix(col, base * (0.85 + 0.25 * ao), emit);
   float alpha = uAlpha;
+  // polished tile, stone and metal mirror what's around them
+  if (uSSR > 0.0 && uLiquid <= 0.0 && vDist3 < 90.0) {
+    vec2 gl = texelFetch(uGloss, ivec2(int(uvl.z + 0.5), 0), 0).rg;
+    if (gl.r > 0.01) {
+      float jr = fract(sin(dot(gl_FragCoord.xy, vec2(39.3468, 11.1353))) * 24634.6345) - 0.5;
+      float jr2 = fract(sin(dot(gl_FragCoord.xy, vec2(73.156, 52.235))) * 13758.5453) - 0.5;
+      vec3 n = normalize(fn + vec3(jr, 0.0, jr2) * gl.g * 1.2);
+      vec3 r = reflect(viewDir, n);
+      float cosT = clamp(dot(-viewDir, fn), 0.0, 1.0);
+      float F = gl.r * (0.22 + 0.78 * pow(1.0 - cosT, 4.0));
+      vec4 s = ssrTrace(vWorld + fn * 0.02, r);
+      col = mix(col, s.rgb * (0.85 + 0.15 * ao), F * s.a * (1.0 - smoothstep(60.0, 90.0, vDist3)));
+    }
+  }
   if (uLiquid > 0.0) {
     // water: a sum of travelling waves gives the surface normal; fresnel mixes in the sky
     vec3 n = vec3(0.0, 1.0, 0.0);
@@ -224,12 +353,27 @@ void main() {
     float cosT = clamp(dot(-viewDir, n), 0.0, 1.0);
     float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
     vec3 refl = skyGradient(normalize(vec3(r.x, max(r.y, 0.03), r.z))) * (0.55 + 0.45 * uDaylight);
+    float clarity = 0.0;
+    if (uSSR > 0.0) {
+      // the shore, the pool walls, the trees: mirrored in the surface
+      vec4 sr = ssrTrace(vWorld + n * 0.05, r);
+      refl = mix(refl, sr.rgb, sr.a);
+      // how much water lies between the surface and the bottom: shallow water is glass-clear
+      vec4 hc = histClip(vWorld);
+      float behind = texture(uHist, hc.xy / hc.w * 0.5 + 0.5).a;
+      float thick = max(behind - hc.w, 0.0);
+      clarity = exp(-thick * 0.2) * (1.0 - emit);
+      col = mix(col * vec3(0.55, 0.75, 0.95), col, clarity * 0.5 + 0.5);
+      // a line of foam where the water meets the ground
+      float foam = smoothstep(0.35, 0.0, thick) * smoothstep(0.35, 0.75, fogNoise(vec3(vWorld.xz * 2.2, uTime * 0.6)));
+      col = mix(col, vec3(0.92, 0.97, 1.0) * (0.35 + 0.65 * uDaylight), foam * 0.6 * (1.0 - emit));
+    }
     vec3 h = normalize(uSunDir - viewDir);
     float nh = max(dot(n, h), 0.0);
     float spec = (pow(nh, 260.0) * 4.0 + pow(nh, 30.0) * 0.1) * uDaylight;
     col = mix(col, refl, clamp(fres * 1.15, 0.0, 0.88) * (1.0 - emit));
     col += uSunColor * spec * (1.0 - emit);
-    alpha = mix(clamp(uAlpha + fres * 0.4, 0.0, 0.97), 1.0, emit);
+    alpha = mix(clamp(uAlpha + fres * 0.4 - clarity * 0.5, 0.18, 0.97), 1.0, emit);
   }
   if (wet > 0.01 && fn.y > 0.5) {
     // raindrop rings on the wet surface, then sky and sun reflected in it
@@ -243,6 +387,7 @@ void main() {
     vec3 r = reflect(viewDir, n);
     float fres = 0.04 + 0.96 * pow(1.0 - clamp(dot(-viewDir, n), 0.0, 1.0), 5.0);
     vec3 refl = skyGradient(normalize(vec3(r.x, max(r.y, 0.03), r.z))) * (0.35 + 0.65 * uDaylight);
+    if (uSSR > 0.0 && puddle > 0.3) { vec4 sr = ssrTrace(vWorld + n * 0.02, r); refl = mix(refl, sr.rgb, sr.a); }
     float k = mix(0.35, 1.0, puddle) * wet;
     col = mix(col, refl, clamp(fres * k * 1.5, 0.0, 0.85));
     vec3 hv = normalize(uSunDir - viewDir);
@@ -255,6 +400,12 @@ void main() {
 
 export function createVoxelMaterials(atlas) {
   voxelUniforms.uAtlas.value = atlas;
+  if (!voxelUniforms.uGloss.value) voxelUniforms.uGloss.value = glossTexture();
+  if (!voxelUniforms.uHist.value) {
+    const t = new THREE.DataTexture(new Uint16Array([0, 0, 0, 0x7bff]), 1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+    t.needsUpdate = true;
+    voxelUniforms.uHist.value = t;
+  }
   const mk = (opts, extra) => new THREE.ShaderMaterial({
     uniforms: { ...voxelUniforms, uAlpha: { value: extra.alpha }, uWave: { value: extra.wave }, uLiquid: { value: extra.liquid } },
     vertexShader: vert,

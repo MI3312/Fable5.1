@@ -2,7 +2,7 @@
 // Works on a padded chunk (1-block border) so it never needs neighbour chunks.
 import { CHUNK, HEIGHT, PW } from '../config.js';
 import {
-  BLOCKS, B, IS_OPAQUE, BLOCK_PASS, IS_CROSS, IS_LIQUID, BLOCK_EMIT, IS_AIRLIKE, TINT,
+  BLOCKS, B, IS_OPAQUE, BLOCK_PASS, IS_CROSS, IS_LIQUID, BLOCK_EMIT, IS_AIRLIKE, TINT, ART_LEVEL,
 } from './blocks.js';
 import { hash32 } from '../core/rng.js';
 
@@ -10,7 +10,8 @@ import { hash32 } from '../core/rng.js';
 export const BLOCKS_SKY = new Uint8Array(256);
 for (let i = 0; i < BLOCKS.length; i++) {
   if (!BLOCKS[i]) continue;
-  BLOCKS_SKY[i] = (IS_AIRLIKE[i] || IS_CROSS[i] || i === B.GLASS) ? 0 : 1;
+  // clear water lets the sky through (the shader dims it with depth) so sea floors catch the sun
+  BLOCKS_SKY[i] = (IS_AIRLIKE[i] || IS_CROSS[i] || i === B.GLASS || i === B.WATER || i === B.DREAM_WATER) ? 0 : 1;
 }
 
 // Per-face tint channel for each block: [top, bottom, side]
@@ -105,7 +106,7 @@ export function meshChunk(data, heights, tints, ox, oz) {
   // artificial light: interiors of liminal rooms are always fluorescent-lit
   const artAt = (px, y, pz) => {
     if (y < 0 || y >= HEIGHT) return 0;
-    return data[px + PW * (pz + PW * y)] === B.LIT_AIR ? 1 : 0;
+    return ART_LEVEL[data[px + PW * (pz + PW * y)]];
   };
   const lights = [];
   const opaqueAt = (px, y, pz) => {

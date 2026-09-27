@@ -205,6 +205,8 @@ export class SurfaceMode {
     this.zAtm = null;
     this.encK = 0;
     this.world.setPlanet(this.P, g.state.edits[planet.id]);
+    // caustics dance on the sea floor of water worlds
+    voxelUniforms.uSeaLevel.value = !this.interior && (this.P.liquid === B.WATER || this.P.liquid === B.DREAM_WATER) ? this.P.seaLevel : -999;
     this.setRenderDistance(g.settings.renderDist);
     this.creatures.setPlanet(planet);
     this.giants.setPlanet(planet);
@@ -2483,7 +2485,7 @@ export class SurfaceMode {
     const W = this.world, pl = g.player.pos;
     const dir = g.camera.getWorldDirection(_v);
     const behind = Math.atan2(dir.x, dir.z) + Math.PI;
-    const free = (id) => id === B.AIR || id === B.LIT_AIR || IS_CROSS[id];
+    const free = (id) => IS_AIRLIKE[id] || IS_CROSS[id];
     for (let t = 0; t < 10; t++) {
       const a = behind + (Math.random() - 0.5) * 1.4, r = 9 + Math.random() * 5;
       const x = Math.floor(pl.x + Math.sin(a) * r), z = Math.floor(pl.z + Math.cos(a) * r);

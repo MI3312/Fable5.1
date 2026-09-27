@@ -54,7 +54,18 @@ export class SunShadows {
     });
     this.frame = 0;
     this.fade = 0;
+    // far cascade: covers the whole view distance at a coarser resolution, refreshed less often
+    this.size2 = 1536;
+    this.extent2 = 150;
+    this.rt2 = new THREE.WebGLRenderTarget(this.size2, this.size2, { depthBuffer: true });
+    this.rt2.depthTexture = new THREE.DepthTexture(this.size2, this.size2);
+    this.rt2.depthTexture.type = THREE.UnsignedIntType;
+    this.rt2.texture.generateMipmaps = false;
+    this.cam2 = new THREE.OrthographicCamera(-this.extent2, this.extent2, this.extent2, -this.extent2, 1, this.depth);
     const U = voxelUniforms;
+    U.uShadowMap2.value = this.rt2.depthTexture;
+    U.uShadowTexel2.value = 1 / this.size2;
+    U.uShadowDepth2.value = 1 / (this.depth - 1);
     U.uShadowMap.value = this.rt.depthTexture;
     U.uShadowTexel.value = 1 / this.size;
     U.uShadowDepth.value = 1 / (this.depth - 1);
@@ -66,16 +77,27 @@ export class SunShadows {
     const want = enabled && quality > 0 && sunDir.y > 0.02 ? 1 : 0;
     this.fade += (want - this.fade) * Math.min(1, dt * 3);
     U.uShadowOn.value = this.fade * Math.min(1, sunDir.y / 0.12);
-    if (U.uShadowOn.value < 0.01) { U.uShadowOn.value = 0; return; }
-    if (quality < 2 && (this.frame++ & 1)) return;
-    const cam = this.cam, E = this.extent;
+    if (U.uShadowOn.value < 0.01) { U.uShadowOn.value = 0; U.uShadowOn2.value = 0; return; }
+    this.frame++;
+    // the far cascade, every third frame (Ultra) or every sixth (High)
+    if (this.frame % (quality >= 2 ? 3 : 6) === 0) {
+      this._render(scene, this.cam2, this.rt2, center, sunDir, this.extent2, this.size2, false);
+      U.uShadowMatrix2.value.copy(BIAS).multiply(this.cam2.projectionMatrix).multiply(this.cam2.matrixWorldInverse);
+      U.uShadowOn2.value = 1;
+    }
+    if (quality < 2 && (this.frame & 1)) return;
+    this._render(scene, this.cam, this.rt, center, sunDir, this.extent, this.size, true);
+    U.uShadowMatrix.value.copy(BIAS).multiply(this.cam.projectionMatrix).multiply(this.cam.matrixWorldInverse);
+  }
+
+  _render(scene, cam, rt, center, sunDir, E, size, cutouts) {
     cam.position.copy(center).addScaledVector(sunDir, this.depth * 0.5);
     cam.up.set(0, 1, 0);
     if (Math.abs(sunDir.y) > 0.98) cam.up.set(1, 0, 0);
     cam.lookAt(center);
     cam.updateMatrixWorld();
     // snap the centre to whole shadow texels in light space
-    const texel = (2 * E) / this.size;
+    const texel = (2 * E) / size;
     _v.copy(center).applyMatrix4(cam.matrixWorldInverse);
     const sx = Math.round(_v.x / texel) * texel - _v.x, sy = Math.round(_v.y / texel) * texel - _v.y;
     _r.setFromMatrixColumn(cam.matrixWorld, 0);
@@ -84,16 +106,17 @@ export class SunShadows {
     cam.updateMatrixWorld();
     const r = this.renderer;
     const prevOverride = scene.overrideMaterial;
-    r.setRenderTarget(this.rt);
+    r.setRenderTarget(rt);
     r.clear(true, true, true);
     scene.overrideMaterial = this.solidMat;
     cam.layers.set(LAYER_SOLID);
     r.render(scene, cam);
-    scene.overrideMaterial = this.cutoutMat;
-    cam.layers.set(LAYER_CUTOUT);
-    r.render(scene, cam);
+    if (cutouts) {
+      scene.overrideMaterial = this.cutoutMat;
+      cam.layers.set(LAYER_CUTOUT);
+      r.render(scene, cam);
+    }
     scene.overrideMaterial = prevOverride;
     r.setRenderTarget(null);
-    U.uShadowMatrix.value.copy(BIAS).multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
   }
 }
