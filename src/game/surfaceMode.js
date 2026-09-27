@@ -17,6 +17,7 @@ import { SunShadows, castShadows } from '../world/shadows.js';
 import { VolumetricClouds } from '../surface/volclouds.js';
 import { Exocraft } from './exocraft.js';
 import { SkyEvents } from '../surface/skyevents.js';
+import { CROPS, BASE_RADIUS } from './bases.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
@@ -56,6 +57,8 @@ const ENC_OFFS = [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [7, 7], [-7, -7], [7
 const _v = new THREE.Vector3();
 // blocks a ship can't set down on (trees, plants, furniture of the world)
 const LAND_ALT = 70;
+const FUNCTIONAL = new Set([B.BASE_CORE, B.TELEPORTER, B.PLANTER, B.STORAGE]);
+const W_above = (W, h) => W.getBlock(h.x, h.y + 1, h.z);
 const SITE_OBSTACLE = new Set([B.LOG, B.LEAVES, B.MUSHROOM_STEM, B.MUSHROOM_CAP, B.CACTUS, B.CORAL, B.CLOUD, B.CRYSTAL, B.MONOLITH, B.SENTINEL_PILLAR, B.CHEST, B.CHEST_OPEN, B.POD, B.POD_OPEN, B.LAMP, B.TERMINAL, B.EYE, B.GLASS, B.HULL]);
 const _c = new THREE.Color();
 const _v2 = new THREE.Vector3();
@@ -266,6 +269,10 @@ export class SurfaceMode {
     } else if (opts.spawn === 'void') {
       this.target = { x: VOID_SPAWN.x, z: VOID_SPAWN.z };
       g.inShip = false;
+    } else if (opts.spawn === 'base' && opts.base) {
+      this.target = { x: opts.base.x, z: opts.base.z };
+      this.arriveBase = opts.base;
+      g.inShip = false;
     } else if (opts.spawn === 'crash') {
       const sp = this._findSpawn(0, 0);
       this.target = { x: sp.x, z: sp.z };
@@ -352,6 +359,10 @@ export class SurfaceMode {
       ship.speed = 0;
       g.inShip = true;
       player.pos.copy(ship.pos);
+    } else if (mode === 'base' && this.arriveBase) {
+      this._arriveAtBase(this.arriveBase);
+      this.arriveBase = null;
+      g.inShip = false;
     } else if (mode === 'crash') {
       this._crashSite(this.target.x, this.target.z);
       g.inShip = false;
@@ -957,9 +968,10 @@ export class SurfaceMode {
       focus = ship.pos;
       player.pos.copy(ship.pos);
     } else if (this.teleport) {
-      focus = player.pos;
+      const d = this.teleport.base ? this.teleport.dest : null;
+      focus = d ? { x: d.cx, z: d.cz } : player.pos;
       this.teleport.t += dt;
-      if (this.world.loadedAround(player.pos.x, player.pos.z, 1) >= 1 || this.teleport.t > 15) this._finishTeleport();
+      if (this.world.loadedAround(focus.x, focus.z, 1) >= 1 || this.teleport.t > 15) this._finishTeleport();
     } else if (this.riding.active) {
       this.riding.update(dt, ctl);
       focus = player.pos;
@@ -981,6 +993,8 @@ export class SurfaceMode {
     }
     if (this.rover.present && !this.rover.driving) this.rover.update(dt, false);
     this._missionGuide(dt);
+    this.baseT = (this.baseT || 0) - dt;
+    if (this.baseT <= 0 && !this.interior) { this.baseT = 1; g.bases.tick(this.world, this.planet); }
     if (!g.inShip && !this.rover.driving && ctl && input.hit('KeyG') && !this.interior) {
       if (this.rover.unlocked) this.rover.summon();
       else g.hud.notify('Install the Roamer Geobay (Tech) to summon an exocraft');
@@ -1417,6 +1431,59 @@ export class SurfaceMode {
     }
   }
 
+  // ---------------- bases ----------------
+  _baseMenu(hit) {
+    const g = this.game, bases = g.bases;
+    const b = bases.baseAt(this.planet.id, hit.x, hit.z);
+    g.input.unlock();
+    if (!b) { g.menus.dialog('Base Computer', 'This computer has not claimed any land. Break it and place it again away from other bases.'); return; }
+    const pl = bases.planters(this.planet.id).filter((q) => Math.hypot(q.x - b.x, q.z - b.z) < BASE_RADIUS).length;
+    const all = bases.list.map((q) => `• ${q.name} — ${q.planetName}, ${q.systemName}`).join('\n');
+    g.menus.dialog(b.name, `${b.planetName} · ${b.systemName}\nTeleporters: ${b.pads.length} · Planters: ${pl}\nMining within ${BASE_RADIUS}u of this computer never alerts the Sentinels.\n\nYour bases:\n${all}`);
+  }
+
+  _teleportMenu(hit) {
+    const g = this.game, bases = g.bases;
+    const here = bases.baseAt(this.planet.id, hit.x, hit.z);
+    const dests = bases.list.filter((b) => b !== here && b.pads.length);
+    g.input.unlock();
+    if (!dests.length) { g.menus.dialog('Teleporter', 'No other linked bases yet. Build a Base Computer and a Teleporter somewhere else, and this pad will reach it.'); return; }
+    g.menus.dialog('Teleporter', 'Where to? Your starship follows you.', [
+      ...dests.slice(0, 6).map((b) => ({ label: `${b.name} · ${b.planetName}`, action: () => g.teleportToBase(b) })),
+      { label: 'Stay', primary: true },
+    ]);
+  }
+
+  _storageMenu(hit) {
+    const g = this.game, bases = g.bases;
+    const key = bases.storageKey(this.planet.id, hit.x, hit.y, hit.z);
+    g.input.unlock();
+    const show = () => {
+      const box = bases.storage(key);
+      const lines = box.length ? box.map((q) => `• ${ITEMS[q.id] ? ITEMS[q.id].name : q.id} ×${q.n}`).join('\n') : 'Empty.';
+      g.menus.dialog('Storage Crate', lines, [
+        { label: 'Stash resources', keepOpen: true, action: () => { const n = bases.stash(key); g.hud.notify(n ? `Stashed ${n} resources` : 'Nothing to stash'); g.menus.closeAll(); show(); } },
+        { label: 'Take all', keepOpen: true, action: () => { for (const q of [...bases.storage(key)]) bases.take(key, q.id, q.n); g.menus.closeAll(); show(); } },
+        { label: 'Close', primary: true },
+      ]);
+    };
+    show();
+  }
+
+  // arrive at a base pad (called after a teleport loads this planet, or for a same-planet hop)
+  _arriveAtBase(b) {
+    const g = this.game, W = this.world, p = g.player;
+    const pad = b.pads[0] || b;
+    p.pos.set(pad.x + 0.5, pad.y + 1.02, pad.z + 0.5);
+    let guard = 0;
+    while (p.collides(W, p.pos.x, p.pos.y, p.pos.z) && guard++ < 30) p.pos.y += 1;
+    p.vel.set(0, 0, 0);
+    this._placeShipNear(p.pos, 12);
+    g.ship.state = 'landed';
+    this.debris.spawn(p.pos.clone().add(new THREE.Vector3(0, 1, 0)), [0.75, 0.55, 1], 30, 3, 1.2, true);
+    g.audio.tone(420, 0.8, 'sine', 0.07, 2);
+  }
+
   _boardShip() {
     const g = this.game;
     if (this.riding.active) this.riding.dismount();
@@ -1598,11 +1665,13 @@ export class SurfaceMode {
     // above cross plant falls too
     const above = W.getBlock(x, y + 1, z);
     W.setBlock(x, y, z, B.AIR);
+    if (FUNCTIONAL.has(id) && this.planet) g.bases.broken(id, x, y, z, this.planet);
     if (above > 0 && IS_CROSS[above]) { W.setBlock(x, y + 1, z, B.AIR); this._drops(above, how); }
     this.debris.spawn(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), def.color, 14, 4, 1.1);
     g.audio.breakBlock();
     this._drops(id, how);
-    if (how === 'mine') {
+    const home = this.planet && g.bases.baseAt(this.planet.id, x, z);
+    if (how === 'mine' && !home) {
       if (def.restricted) {
         if (this.sentinels.raise(1)) { g.hud.toast('Sentinels Alerted', 'Restricted structure damaged'); g.audio.alert(); }
       } else if (this.sentinels.addHeat(1.5 + def.hardness * 1.5)) {
@@ -1614,7 +1683,7 @@ export class SurfaceMode {
   _drops(id, how) {
     const g = this.game, inv = g.inventory;
     const def = BLOCKS[id];
-    if (how === 'build') {
+    if (how === 'build' || FUNCTIONAL.has(id)) {
       if (def.collect) { inv.addBlock(id, 1); g.audio.pickup(); }
       return;
     }
@@ -1648,6 +1717,7 @@ export class SurfaceMode {
     }
     if (W.setBlock(x, y, z, id)) {
       inv.removeBlock(id, 1);
+      if (FUNCTIONAL.has(id) && this.planet && !this.interior) g.bases.placed(id, x, y, z, this.planet);
       g.audio.place();
       this.debris.spawn(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), BLOCKS[id].color, 4, 1.5, 0.4);
     }
@@ -1808,6 +1878,17 @@ export class SurfaceMode {
         }
         else if (def.interact === 'pod') { prompt = '<span class="key">E</span>Open exosuit pod'; action = () => this._pod(target.hit); }
         else if (def.interact === 'door') { prompt = '<span class="key">E</span>Open the dream door'; action = () => this._dreamDoor(target.hit); }
+        else if (def.interact === 'basecore') { prompt = '<span class="key">E</span>Base Computer'; action = () => this._baseMenu(target.hit); }
+        else if (def.interact === 'teleporter') { prompt = '<span class="key">E</span>Teleport'; action = () => this._teleportMenu(target.hit); }
+        else if (def.interact === 'storage') { prompt = '<span class="key">E</span>Open storage crate'; action = () => this._storageMenu(target.hit); }
+        else if (def.interact === 'planter') {
+          const pl = g.bases.planterAt(this.planet.id, target.hit.x, target.hit.y, target.hit.z);
+          if (pl) {
+            const grown = W_above(this.world, target.hit) > 0;
+            prompt = `<span class="key">E</span>Crop: ${CROPS[pl.crop][1]} · ${grown ? 'ready to harvest' : Math.round(g.bases.growth(pl) * 100) + '% grown'} (E to change)`;
+            action = () => { g.hud.notify(`Planter will grow ${g.bases.cycleCrop(pl)}`); g.audio.ui(); };
+          }
+        }
         else if (target.hit.id === B.TV && this.pocket === 'void') { prompt = '<span class="key">E</span>Watch'; action = () => { g.input.unlock(); g.menus.dialog('', VOID_TV[(g.state.flags.voidVisits || 0) % VOID_TV.length]); }; }
       } else if (target.kind === 'creature') {
         const c = target.c;
@@ -1970,6 +2051,7 @@ export class SurfaceMode {
 
   _finishTeleport() {
     const tp = this.teleport, W = this.world, p = this.game.player;
+    if (tp.base) { this.teleport = null; this._arriveAtBase(tp.base); return; }
     const s = tp.dest;
     // find standing room inside the structure
     for (let r = 0; r < 14; r++) {
@@ -2375,6 +2457,7 @@ export class SurfaceMode {
     };
     if (!g.inShip) addM(ship.pos.clone().add(new THREE.Vector3(0, 3, 0)), '▲', 'Starship', '#ff9f5a');
     if (this.rover.present && !this.rover.driving) addM(this.rover.pos.clone().add(new THREE.Vector3(0, 3, 0)), '◆', 'Roamer', '#ffc46b');
+    if (this.planet && !this.interior) for (const b of g.bases.list) if (b.planet === this.planet.id) addM(new THREE.Vector3(b.x + 0.5, b.y + 3, b.z + 0.5), '⌂', b.name, '#8fe6ff');
     else if (ship.state === 'flying' && this.landSite) addM(new THREE.Vector3(this.landSite.x, this.landSite.y + 1.5, this.landSite.z), '▼', 'Landing zone', '#9fffd0');
     for (const m of this.markers) addM(m.pos, m.icon, m.label, m.color);
     for (const c of this.creatures.list) if (c.companion) addM(c.pos.clone().add(new THREE.Vector3(0, c.sp.size * 1.6 + 0.6, 0)), '♥', '', '#ff9bd6');

@@ -16,6 +16,7 @@ export const TILE = {
   plastic_r: 68, plastic_y: 69, plastic_b: 70, plastic_w: 71, concrete: 72, shelf: 73,
   bookshelf: 74, silver: 75, tv: 76, dark_wood: 77, flesh: 78, onyx: 79,
   void: 80, emergency: 81, hull: 82, grate: 83, missing: 84,
+  base_side: 85, base_top: 86, tele_side: 87, tele_top: 88, planter_side: 89, planter_top: 90, crate_side: 91, crate_top: 92,
 };
 
 // Tint channels. The palette of each planet supplies an RGB colour per channel.
@@ -42,6 +43,7 @@ export const B = {
   PLASTIC_R: 65, PLASTIC_Y: 66, PLASTIC_B: 67, PLASTIC_W: 68, CONCRETE: 69, SHELF: 70,
   BOOKSHELF: 71, SILVER: 72, TV: 73, DARK_WOOD: 74, FLESH: 75, ONYX: 76,
   VOID: 77, EMERGENCY: 78, HULL: 79, GRATE: 80, MISSING: 81,
+  BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85,
 };
 
 const T = TILE;
@@ -151,6 +153,11 @@ BLOCKS[B.EMERGENCY] = def('Emergency Light', T.emergency, { emissive: 1, hardnes
 BLOCKS[B.HULL] = def('Derelict Hull', T.hull, { hardness: 1.3, drops: [['ferrite', 1, 3], ['salvage', 0, 1]], color: [0.25, 0.24, 0.26] });
 BLOCKS[B.GRATE] = def('Floor Grating', T.grate, { hardness: 0.9, drops: [['ferrite', 1, 2]], color: [0.3, 0.31, 0.33] });
 BLOCKS[B.MISSING] = def('?', T.missing, { emissive: 0.4, hardness: 0.3, drops: [['memory_fragment', 0, 1]], color: [1, 0, 1] });
+// base building
+BLOCKS[B.BASE_CORE] = def('Base Computer', [T.base_top, T.metal_plate, T.base_side], { hardness: 1.2, emissive: 0.45, interact: 'basecore', drops: [['ferrite', 2, 4]], color: [0.3, 0.85, 1.0] });
+BLOCKS[B.TELEPORTER] = def('Teleporter', [T.tele_top, T.metal_plate, T.tele_side], { hardness: 1.2, emissive: 0.6, interact: 'teleporter', drops: [['ferrite', 2, 4]], color: [0.7, 0.5, 1.0] });
+BLOCKS[B.PLANTER] = def('Dream Planter', [T.planter_top, T.metal_plate, T.planter_side], { hardness: 0.9, emissive: 0.15, interact: 'planter', drops: [['ferrite', 1, 2]], color: [0.35, 0.6, 0.3] });
+BLOCKS[B.STORAGE] = def('Storage Crate', [T.crate_top, T.crate_top, T.crate_side], { hardness: 0.9, interact: 'storage', drops: [['ferrite', 1, 2]], color: [0.9, 0.6, 0.2] });
 
 export const BLOCK_COUNT = BLOCKS.length;
 

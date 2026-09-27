@@ -650,6 +650,61 @@ function paintTiles() {
     return [k, k * 1.02, k * 1.08, UNT];
   }));
   t('missing', (p) => field(p, (u, v, x, y) => (((x >> 3) + (y >> 3)) & 1 ? [0.98, 0.0, 0.98, UNT] : [0.02, 0.0, 0.02, UNT])));
+  // ---- base building ----
+  const frame = (x, y) => Math.min(x, y, 15 - x, 15 - y);
+  t('base_side', (p) => field(p, (u, v, x, y) => {
+    const f = frame(x, y);
+    if (f === 0) return [0.14, 0.15, 0.18, UNT];
+    const screen = x >= 3 && x <= 12 && y >= 3 && y <= 8;
+    if (screen) { const scan = (y % 2) * 0.12; const glyph = th(x, y, 131) > 0.62 ? 0.35 : 0; return [0.15 + glyph, 0.75 - scan + glyph, 0.95 - scan, UNT]; }
+    if (y === 11 && x > 2 && x < 13) return [0.25, 0.95, 1.1, UNT];
+    const g0 = 0.32 + fbmT(u, v, 8, 1, 133) * 0.06;
+    return [g0, g0 * 1.02, g0 * 1.08, UNT];
+  }));
+  t('base_top', (p) => field(p, (u, v, x, y) => {
+    const r = Math.hypot(u - 0.5, v - 0.5);
+    if (Math.abs(r - 0.3) < 0.045) return [0.25, 0.9, 1.1, UNT];
+    if (r < 0.12) return [0.4, 1.0, 1.1, UNT];
+    const g0 = frame(x, y) === 0 ? 0.16 : 0.3 + fbmT(u, v, 8, 1, 135) * 0.05;
+    return [g0, g0, g0 * 1.06, UNT];
+  }));
+  t('tele_top', (p) => field(p, (u, v) => {
+    const r = Math.hypot(u - 0.5, v - 0.5);
+    const ring = Math.pow(Math.max(0, Math.cos(r * 38)), 3) * smooth01(1 - r * 1.9);
+    const core = smooth01(1 - r * 5);
+    return [0.25 + ring * 0.6 + core * 0.7, 0.18 + ring * 0.35 + core * 0.6, 0.4 + ring * 0.7 + core * 0.7, UNT];
+  }));
+  t('tele_side', (p) => field(p, (u, v, x, y) => {
+    if (frame(x, y) === 0) return [0.12, 0.1, 0.16, UNT];
+    if (x === 4 || x === 11) { const k = 0.6 + 0.4 * Math.sin(y * 0.9); return [0.6 * k + 0.2, 0.35 * k + 0.1, 1.0 * k + 0.1, UNT]; }
+    const g0 = 0.26 + fbmT(u, v, 8, 1, 137) * 0.05;
+    return [g0, g0 * 0.96, g0 * 1.12, UNT];
+  }));
+  t('planter_top', (p) => field(p, (u, v, x, y) => {
+    if (frame(x, y) <= 1) return frame(x, y) === 0 ? [0.2, 0.21, 0.24, UNT] : [0.38, 0.4, 0.44, UNT];
+    const n = fbmT(u, v, 4, 3, 139);
+    const k = 0.22 + n * 0.18 + (th(x, y, 141) > 0.9 ? 0.1 : 0);
+    return [k * 0.9, k * 0.7, k * 0.5, UNT];
+  }));
+  t('planter_side', (p) => field(p, (u, v, x, y) => {
+    if (y === 2 || y === 3) return [0.3, 0.9, 0.45, UNT];
+    const g0 = (frame(x, y) === 0 ? 0.18 : 0.36) + fbmT(u, v, 8, 1, 143) * 0.05;
+    return [g0, g0 * 1.02, g0 * 1.04, UNT];
+  }));
+  t('crate_side', (p) => field(p, (u, v, x, y) => {
+    const f = frame(x, y);
+    if (f <= 1) return [0.22, 0.2, 0.18, UNT];
+    const stripe = ((x + y) >> 2) & 1;
+    if (y >= 6 && y <= 9) return stripe ? [0.95, 0.72, 0.15, UNT] : [0.12, 0.11, 0.1, UNT];
+    const g0 = 0.55 + fbmT(u, v, 8, 1, 145) * 0.08;
+    return [g0 * 0.95, g0 * 0.72, g0 * 0.36, UNT];
+  }));
+  t('crate_top', (p) => field(p, (u, v, x, y) => {
+    if (frame(x, y) <= 1) return [0.22, 0.2, 0.18, UNT];
+    if (Math.abs(x - y) <= 1 || Math.abs(x + y - 15) <= 1) return [0.3, 0.26, 0.2, UNT];
+    const g0 = 0.55 + fbmT(u, v, 8, 1, 147) * 0.08;
+    return [g0 * 0.95, g0 * 0.72, g0 * 0.36, UNT];
+  }));
   t('dream_water', (p) => {
     p.fill((x, y, r) => {
       const w = Math.sin((x - y * 0.5) * 0.7) * 0.06;

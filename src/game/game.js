@@ -20,6 +20,7 @@ import { B, BLOCKS } from '../world/blocks.js';
 import { Ship } from '../entities/ship.js';
 import { Player } from '../entities/player.js';
 import { Missions } from './missions.js';
+import { Bases } from './bases.js';
 import { Corruption } from './corruption.js';
 import { SurfaceMode } from './surfaceMode.js';
 import { SpaceMode } from './spaceMode.js';
@@ -58,6 +59,7 @@ export class Game {
     this.ship = new Ship(1);
     this.corruption = new Corruption(this);
     this.missions = new Missions(this);
+    this.bases = new Bases(this);
     this.surface = new SurfaceMode(this);
     this.space = new SpaceMode(this);
 
@@ -378,6 +380,28 @@ export class Game {
       this.enterSpace({ fromStation: true });
       this.saveGame(false);
     });
+  }
+
+  // Teleporter network: hop between bases on this planet, other planets, or other systems.
+  teleportToBase(b) {
+    if (this.transition) return;
+    const S = this.surface;
+    const sameSystem = b.system.gx === this.state.system.gx && b.system.gy === this.state.system.gy && b.system.gz === this.state.system.gz;
+    this.audio.tone(200, 1.2, 'sine', 0.08, 4);
+    this.fade(0.7, () => {
+      if (sameSystem && S.planet && S.planet.id === b.planet) {
+        S.teleportBase = b;
+        S.teleport = { dest: { cx: b.x, cz: b.z, y: b.y }, t: 0, base: b };
+        return;
+      }
+      S.exportEdits();
+      S.leave();
+      if (!sameSystem) {
+        this.system = this.universe.getSystem(b.system.gx, b.system.gy, b.system.gz);
+        this.state.system = { ...b.system };
+      }
+      this.enterSurface(b.planetIndex, { spawn: 'base', base: b });
+    }, 0xb088ff);
   }
 
   // Leave planet -> space (called by surface mode)
