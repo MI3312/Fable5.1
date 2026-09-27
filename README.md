@@ -105,7 +105,26 @@ strongly recommended.
 - A GPU post pipeline: screen-space ambient occlusion from the depth buffer (normals rebuilt per pixel, depth-aware blur), HDR bloom through a six-level mip chain with a filmic shoulder, and sun shafts that every leaf and ridge cuts, using the depth buffer's open sky.
 - Faces are shaded by the sun's real angle. Water has moving wave normals, fresnel sky reflections and sun glints. Ground mist lights up when you look toward the sun. Plasma sheaths, iridescent bubbles and bloom-lit glints finish the look.
 - The starship is a signed-distance hull, voxelised finely: swept wings, nacelles, spine, fin, canopy and painted livery.
-- **Graphics** in Settings chooses Low, High (AO and bloom) or Ultra.
+- **Real-time sun shadows**: a texel-snapped shadow map follows you. Terrain, trees, grass, creatures and your ship cast soft Poisson-filtered shadows that stretch long at dusk.
+- **Volumetric clouds**: raymarched through a curved cloud shell with light marched toward the sun (Beer–Lambert, powder, silver-lining phase). Their shadows drift across the land. Storms thicken them, and flying through one whites out the world.
+- **Graphics** in Settings chooses Low, High (AO, bloom, shadows, clouds) or Ultra (full-rate everything).
+
+**Sky events**
+- Lightning storms: branching bolts, the world lit white, thunder rolling in late. The strikes fuse sand to glass. Don't stand on the highest hill.
+- Meteor showers on clear nights. Sometimes one lands nearby and leaves a crater full of ore.
+- Aurora nights (most often on frozen worlds), and rainbows after the rain.
+
+**The Roamer**
+- Install the **Roamer Geobay** (Tech) and press **G** on any planet to deploy a rover: suspension that climbs block steps, boost slides, hops, headlights with light cones in the fog, and a roof cannon that blasts terrain straight into your cargo. It stays where you park it.
+
+**Contracts**
+- Station **Missions** boards post bounties on the hunters, visor surveys, expeditions into dream zones, cache runs and supply runs. Carry three at once; completing them raises your **Dreamwalker rank** and the rewards that come with it.
+
+**Bases**
+- Fabricate a **Base Computer** to claim land (Sentinels ignore mining there), **Teleporters** to link every base you own across planets and systems (your ship comes along), **Dream Planters** that grow crops while you play, and **Storage Crates**.
+
+**Photo mode**
+- Press **P**. The world holds still: fly a free camera, change the time of day, set focus and aperture for real depth of field, pick a film filter and save a PNG.
 
 **Your ship**
 - You wake at a proper crash site: a scorched crater and a skid gouged through the ground, with the ship in view.
@@ -156,6 +175,9 @@ strongly recommended.
 | E | Interact · board or exit ship · land · dock · ride / dismount a tamed creature |
 | C | Sink while flying a mount |
 | Enter or / | Chat |
+| G | Deploy the Roamer (once installed) |
+| L | Roamer headlights |
+| P | Photo mode |
 | R | Quick-recharge life support and hazard protection |
 | T | Headlamp (a beam; some things do not like it) |
 | Tab / I | Inventory, fabrication, alchemy, technology, discoveries, journey |
@@ -171,11 +193,11 @@ lib/three.module.min.js     vendored three.js r186 (npm run vendor regenerates i
 src/core/                   seeded RNG, simplex noise, names, input, shader helpers
 src/data/                   items, biomes, recipes and alchemy, lore
 src/universe/               galaxy, star system and planet generation
-src/world/                  blocks, texture atlas, terrain, dream zones, pocket spaces (Void, derelicts), structures, mesher, worker, chunk manager
-src/surface/                sky, clouds, weather, horizon giants, effects
+src/world/                  blocks, texture atlas, terrain, dream zones, pocket spaces (Void, derelicts), structures, mesher, worker, chunk manager, sun shadows
+src/surface/                sky, volumetric clouds, weather, sky events, horizon giants, effects
 src/entities/               player, ship, creatures and their behaviours, Lucid vermin, hunters, SDF voxel modelling, sentinels
 src/space/                  space scene, planet shaders
-src/game/                   game controller, surface and space modes, dread director, corruption, riding, inventory, quests
+src/game/                   game controller, surface and space modes, dread director, corruption, riding, Roamer, missions, bases, photo mode, inventory, quests
 src/ui/                     HUD, menus, galaxy map
 src/audio/                  procedural WebAudio music and SFX
 src/post/                   GPU post pipeline: SSAO, bloom, god rays, grading
