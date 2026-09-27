@@ -24,9 +24,12 @@ plays together needs to run it with the same app ID.
    first runs `npm install` in the project root to get the build tools (esbuild, three). To force a
    rebuild after changing the game, run `npm run start:fresh`.
 
-3. In game: **Esc → Multiplayer → Host · friends only** (or **public**). Friends can join from your
-   Steam profile (*Join Game*), from **Multiplayer → Find dreams** on the title screen, or from an
-   invite when the Steam overlay is on (see below).
+3. In game: **Esc → Multiplayer → Host this dream**. You get a short **dream code**. Friends
+   (each on their own PC and Steam account) open **Multiplayer**, type the code under **Join with
+   a code** and press **Join**, or use *Join Game* on your Steam profile.
+
+   Browsing lobbies rarely works on app 480: it is shared by thousands of games, and Steam only
+   returns about fifty lobbies. Use the code.
 
 ## Performance and graphics card
 

@@ -34,10 +34,23 @@ strongly recommended.
 Dreams can be shared. One player hosts their universe and others join it as guests. Everyone
 walks, builds, flies, drives and fishes in the same world, and sees each other's block edits.
 
+**How to play together**
+
+1. Every player runs the desktop app (below) on their own computer, signed in to their own Steam
+   account, with Steam open.
+2. The host starts or continues a game, then opens **Esc → Multiplayer → Host this dream**.
+   A short **dream code** appears (for example `HNC4R`), with a Copy button.
+3. Friends open **Multiplayer** (on the title screen or in the pause menu), type the code under
+   **Join with a code**, and press **Join**. They arrive next to the host as their own character.
+   On Steam they can also use *Join Game* on the host's profile.
+
+The code matters because Steam's test app 480 is shared by thousands of games, so a lobby list
+rarely shows your friend's dream. Nobody can pause a shared dream: the inventory, terminals and
+menus all keep the world running (only single-player pauses).
+
 - **Online through Steam:** run the game in the desktop shell in [`desktop/`](desktop/README.md).
-  It uses Steamworks (app ID **480**, Valve's Spacewar test app) for friends-only or public lobbies,
-  invites through the Steam overlay, and P2P traffic over **Steam Datagram Relay**, so nobody needs
-  to forward ports.
+  It uses Steamworks (app ID **480**, Valve's Spacewar test app) for lobbies and *Join Game*, and
+  sends P2P traffic over **Steam Datagram Relay**, so nobody needs to forward ports.
 
   ```bash
   cd desktop && npm install && npm start   # Steam must be running
@@ -49,11 +62,12 @@ walks, builds, flies, drives and fishes in the same world, and sees each other's
   `npm start` launches the prebuilt `dist/lucid-sky.html`. If it's missing or out of date, it
   installs the root build tools and rebuilds it first; `npm run start:fresh` always rebuilds.
 
-- **Local test mode:** in a plain browser, the Multiplayer menu uses a `BroadcastChannel`, so two
-  tabs of the same browser can share a dream. This is handy for trying it out alone.
+- **Browser test mode:** in a plain browser, the Multiplayer menu uses a `BroadcastChannel`. That
+  only links tabs of the **same browser on one computer**, which is useful for trying it out alone
+  but not for playing with friends.
 
-Open **Esc → Multiplayer** (or **Multiplayer** on the title screen) to host, find dreams, invite
-friends and travel to a friend.
+The Multiplayer menu also shows where everyone is, with **Travel to** for a friend on another
+world, in another system or docked at a station. In stations each player docks on their own pad.
 
 The host's world is canonical. The host keeps every block change on every planet and sends it to
 anyone who lands there. Guests keep their own character in a save slot for that host's seed, and
@@ -61,7 +75,8 @@ their own journey is untouched when they leave. Players stream positions ~12×/s
 The time of day follows the host's.
 
 Social keys: **Enter** chat, **Z** ping where you look, **B** wave. Name tags and markers show
-where everyone is. Other players' ships, Roamers and fishing lines are drawn in your world.
+where everyone is. Other players' ships (their real class and paint), Roamers and fishing lines
+are drawn in your world. Creatures are still simulated separately on each machine.
 
 ## What's in the dream
 
@@ -188,11 +203,17 @@ where everyone is. Other players' ships, Roamers and fishing lines are drawn in 
 - Press **P**. The world holds still: fly a free camera, change the time of day, set focus and aperture for real depth of field, pick a film filter and save a PNG.
 
 **Your ship**
+- **Five classes**, each with its own hull: the **Shuttle** (a friendly box with four thruster pods), the **Fighter** (swept wings, fastest turns, hits hardest), the **Hauler** (a slab with cargo pods; slow but hard to kill), the **Explorer** (a long hull around a hyperdrive ring; the longest jumps) and the rare **Exotic** (a pearl pod inside a ring; the fastest thing in the sky). Grades C, B, A and S improve speed, handling, shields, firepower and jump range.
+- Every new game starts with a different battered ship.
+- **Station showroom:** four ships for sale are parked in each station's hangar, and the stock changes every half hour of play. Walk up to a kiosk to compare stats and buy one; your old ship is taken in trade and parked in that bay. Station Services has a **paint shop**.
+- **Crashed starships** lie on planets with a distress beacon still calling. Repair one with a few materials and it's yours (your old ship is salvaged for units).
 - You wake at a proper crash site: a scorched crater and a skid gouged through the ground, with the ship in view.
 - Arriving from space is a burning atmospheric entry that levels out above the ground.
 - Below 70u, a landing zone is marked ahead of you. Press E to glide in and settle, flattening whatever is growing there.
 
 **Worlds**
+- **Every start is different:** the first planet is picked from lush, frozen, barren, exotic, toxic, scorched and radioactive worlds, each with its own wake-up line and just one or two kinds of dream zone.
+- Each planet picks its own few kinds of dream zone and its own set of buildings, so no two feel alike. Among them are **landmarks**: crashed starships, ruined watchtowers with a stair spiralling up inside, old observatories, giant ribcages and skulls, crystal groves over ore, standing stones and abandoned mining rigs over their pits.
 - Rivers wind across worlds that have a liquid (lava rivers on scorched worlds), and dry canyons cross barren ones.
 - Each planet has regions: dense forests, open clearings, rocky badlands. Bare earth and rock break through the ground cover.
 - Ruins of older buildings stand in the wild, sometimes with something left inside.
