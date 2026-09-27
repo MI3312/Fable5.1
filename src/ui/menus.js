@@ -321,16 +321,19 @@ export class Menus {
   showControls(back) {
     const C = [
       ['WASD', 'Move / ship throttle & roll'], ['Mouse', 'Look / steer ship'], ['Space', 'Jump · hold for jetpack · ship: take off / pulse drive (space)'],
-      ['Shift', 'Sprint / ship boost'], ['LMB', 'Use tool: mine · collect block · fire'], ['RMB', 'Place block (Builder)'],
-      ['Q', 'Cycle multi-tool mode (Mining / Builder / Boltcaster)'], ['1–9 · Wheel', 'Select hotbar block'],
+      ['Shift', 'Sprint / ship boost'], ['LMB', 'Use tool: mine · collect block · fire · cast / hook / reel'],
+      ['RMB', 'Grapple (Mining Beam, Dream Line) · plasma grenade (Boltcaster) · place block (Builder)'],
+      ['X · double-tap', 'Dash (dodges while it lasts; once in the air)'], ['C', 'Slide while sprinting · ground pound in the air'],
+      ['Space at a ledge', 'Vault up to two blocks'], ['H', 'Eat the most useful food you carry'],
+      ['Q', 'Cycle multi-tool mode (Mining / Builder / Boltcaster / Dream Line)'], ['1–9 · Wheel', 'Select hotbar block'],
       ['F', 'Scanner pulse (resources, points of interest)'], ['V', 'Analysis visor (hold LMB on creatures/flora to discover)'],
       ['E', 'Interact · board / exit ship · land · dock'], ['R', 'Quick recharge life support & hazard protection'],
       ['T', 'Toggle headlamp'], ['G', 'Summon the Roamer exocraft (once installed)'], ['L', 'Roamer headlights'], ['P', 'Photo mode'], ['Tab / I', 'Inventory, fabrication, alchemy, tech'], ['M', 'Galaxy map'], ['Esc', 'Pause menu'],
-      ['F2', 'Hide HUD (photo mode)'],
+      ['F2', 'Hide HUD (photo mode)'], ['Enter or /', 'Chat'], ['Z / B', 'Ping where you look / wave (multiplayer)'],
     ];
     const el = h('div', { class: 'dialog interactive', style: { width: 'min(720px, 94vw)' } },
       h('div', { class: 'dh' }, 'Controls'),
-      h('div', { class: 'db' }, h('div', { class: 'controls-table' }, C.flatMap(([k, d]) => [h('span', { class: 'k' }, k), h('span', {}, d)]))),
+      h('div', { class: 'db', style: { maxHeight: '62vh', overflowY: 'auto' } }, h('div', { class: 'controls-table' }, C.flatMap(([k, d]) => [h('span', { class: 'k' }, k), h('span', {}, d)]))),
       h('div', { class: 'dbtns' }, h('button', { class: 'btn small center primary', onclick: back }, 'Back')));
     this._overlay(el);
     this.open = this.open || 'controls';

@@ -308,7 +308,8 @@ export class Game {
       this.input.unlock();
       setTimeout(() => this.menus.dialog('You wake up',
         `The ground is warm. The sky is the wrong colour. Your starship lies a few steps away, its launch thrusters crushed.\n\n` +
-        `WASD move · Mouse look · Space jump / jetpack · Shift sprint\n` +
+        `WASD move · Mouse look · Space jump / jetpack / vault · Shift sprint\n` +
+        `X dash · C slide / ground pound · RMB grapple (Mining Beam) or grenade (Boltcaster)\n` +
         `LMB use multi-tool · Q switch Mining Beam / Builder / Boltcaster\n` +
         `F scanner · V analysis visor · E interact · R recharge · Tab inventory · M galaxy map\n\n` +
         `Follow the objective on the left. Mine, build, dream - and find your way to the Dream Core.`,

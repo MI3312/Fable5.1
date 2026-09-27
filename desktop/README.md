@@ -36,6 +36,7 @@ plays together needs to run it with the same app ID.
   of day on a shared planet. These are interpolated on the other end.
 - **Edits:** block edits are batched and sent reliably. On landing on a planet, you ask the host for
   everything that has changed there.
-- **Social:** chat (Enter), pings (Z), waves (X), and *Travel to* a friend from the Multiplayer menu.
+- **Social:** chat (Enter), pings (Z), waves (B), and *Travel to* a friend from the Multiplayer menu.
+- **Encounters:** the host's supply drops, wisp chases, rifts and ore geysers happen for everyone on that planet.
 
 Note that `steamworks.js` ships native binaries for Windows x64, Linux x64 and macOS.

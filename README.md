@@ -54,7 +54,7 @@ anyone who lands there. Guests keep their own character in a save slot for that 
 their own journey is untouched when they leave. Players stream positions ~12×/s with interpolation.
 The time of day follows the host's.
 
-Social keys: **Enter** chat, **Z** ping where you look, **X** wave. Name tags and markers show
+Social keys: **Enter** chat, **Z** ping where you look, **B** wave. Name tags and markers show
 where everyone is. Other players' ships, Roamers and fishing lines are drawn in your world.
 
 ## What's in the dream
@@ -149,6 +149,22 @@ where everyone is. Other players' ships, Roamers and fishing lines are drawn in 
 **The Roamer**
 - Install the **Roamer Geobay** (Tech) and press **G** on any planet to deploy a rover: suspension that climbs block steps, boost slides, hops, headlights with light cones in the fog, and a roof cannon that blasts terrain straight into your cargo. It stays where you park it.
 
+**Moment to moment**
+- **Dash** (X, or double-tap a direction): a burst with two charges, one of them usable in the air. You can't be hurt while it lasts, so a well-timed dash dodges a spit or a charge.
+- **Slide** (C while sprinting) keeps and boosts your speed; jump out of it to carry the momentum. In the air, C is a **ground pound**: a shockwave that hurts what's under you and breaks soft ground.
+- **Vault**: hold Space at a ledge to pull yourself up to two blocks.
+- **Grapple** (RMB with the Mining Beam or an idle Dream Line): a tether that bites into anything within 50u and hauls you there. Let go to fling yourself; press Space to hop off.
+- **Plasma grenades** (RMB with the Boltcaster, three charges): they bounce, burst on contact with anything alive, carve a crater and haul what they break into your cargo. Stand close and the blast throws you: grenade jumps.
+- Damage numbers and a hit marker for everything you hit; **H** eats the most useful thing you carry.
+
+**Encounters**
+- Every couple of minutes on a planet, something happens nearby, with a marker and a clock:
+  - **Supply Drops**: a pod falls out of the sky. Open it before it dissolves; sometimes something is waiting beside it.
+  - **Wisp Chases**: wisps faster than you can run. Dash, grapple and jet to catch them.
+  - **Rift Surges**: waves of rift-touched creatures, then something bigger. Seal the rift.
+  - **Ore Geysers**: a vein erupts from the ground. Mine it before it sinks back; your beam won't overheat near it.
+- Completing them back to back builds a streak that sweetens the rewards. In a shared dream, the host's encounters are everyone's.
+
 **Fishing and cooking**
 - Install the **Dream Line** (Tech). It adds a fourth multi-tool mode (Q) that casts a glowing tether into water, dreaming pools, magma or acid.
 - Wait for the bobber to dip, hook it (LMB within a second), then reel: hold LMB to pull and ease off when the fish surges, or the line snaps.
@@ -206,15 +222,18 @@ where everyone is. Other players' ships, Roamers and fishing lines are drawn in 
 | Space | Jump · hold for jetpack · take off · hold in space for the pulse drive |
 | Shift | Sprint / boost |
 | LMB | Use tool (mine, collect block, fire, cast / hook / reel) · ship cannons |
-| RMB | Place block (Builder) |
+| RMB | Grapple (Mining Beam, Dream Line) · plasma grenade (Boltcaster) · place block (Builder) |
+| X / double-tap WASD | Dash |
+| C | Slide while sprinting · ground pound in the air · sink while flying a mount |
+| Space at a ledge | Vault |
+| H | Eat the most useful food |
 | Q | Cycle multi-tool mode |
 | 1–9, Wheel | Select hotbar block |
 | F | Scanner pulse |
 | V | Analysis visor (hold LMB on creatures or plants) |
 | E | Interact · board or exit ship · land · dock · ride / dismount a tamed creature |
-| C | Sink while flying a mount |
 | Enter or / | Chat |
-| Z / X | Ping where you look / wave (multiplayer) |
+| Z / B | Ping where you look / wave (multiplayer) |
 | G | Deploy the Roamer (once installed) |
 | L | Roamer headlights |
 | P | Photo mode |
@@ -237,7 +256,7 @@ src/world/                  blocks, texture atlas, terrain, dream zones, pocket 
 src/surface/                sky, volumetric clouds, weather, sky events, horizon giants, effects
 src/entities/               player, ship, creatures and their behaviours, Lucid vermin, hunters, SDF voxel modelling, sentinels
 src/space/                  space scene, planet shaders
-src/game/                   game controller, surface and space modes, dread director, corruption, riding, Roamer, missions, bases, fishing, food buffs, photo mode, inventory, quests
+src/game/                   game controller, surface and space modes, movement kit, grenades, encounters, dread director, corruption, riding, Roamer, missions, bases, fishing, food buffs, photo mode, inventory, quests
 src/net/                    multiplayer: Steam and local transports, host-authoritative session, remote avatars
 desktop/                    Electron shell with Steamworks (lobbies, invites, relay P2P)
 src/ui/                     HUD, menus, galaxy map
