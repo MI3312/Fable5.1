@@ -1,6 +1,6 @@
 // Planet biome archetypes and the per-planet parameter generator.
 // The result is a plain, structured-cloneable object shared with the terrain worker.
-import { RNG, hsl, mixColor } from '../core/rng.js';
+import { RNG, hsl, mixColor, hash32 } from '../core/rng.js';
 import { B, TINT_COUNT } from '../world/blocks.js';
 
 export const BIOMES = {
@@ -37,7 +37,7 @@ export function makePlanetParams(seed, biome, opts = {}) {
     flora: { trees: [['round', 1]], treeDensity: 0.012, plants: [[B.TALLGRASS, 1]], plantDensity: 0.12, boulders: 0.002, crystals: 0 },
     ores: [[B.FERRITE_ORE, 3], [B.COPPER_ORE, 1]],
     depositDensity: 0.0012,
-    structures: { liminal: 0.25, nms: 0.45 },
+    structures: { liminal: 0.13, nms: 0.55 },
     tints: new Array(TINT_COUNT * 3).fill(1),
     sky: { zenith: [0.25, 0.5, 0.95], horizon: [0.7, 0.85, 1.0], sun: [1.0, 0.95, 0.85], cloud: [1, 1, 1], nightZenith: [0.01, 0.015, 0.05], nightHorizon: [0.05, 0.06, 0.12], cloudCover: 0.45, fogDensity: 1.0, stars: 0.0, dream: 0 },
     gravity: rng.range(0.8, 1.15),
@@ -243,17 +243,23 @@ export function makePlanetParams(seed, biome, opts = {}) {
     skyFog: Math.min(0.95, FOG[4] * foggy),
     mistColor: mixColor(P.sky.horizon, biome === 'toxic' ? [0.85, 0.95, 0.55] : biome === 'scorched' ? [0.75, 0.6, 0.55] : [0.92, 0.9, 0.96], 0.55),
   };
-  // Dream zones: regions of the world that have slipped into liminal space
+  // Dream zones: regions of the world that have slipped into liminal space. Each world gets its
+  // own few kinds (not all of them), so no two feel the same. A separate stream keeps the
+  // terrain of existing seeds unchanged.
+  const zr = new RNG(hash32(seed, 919));
+  const pickZones = (pool, n, lo, hi) => zr.shuffle(pool.slice()).slice(0, n).map((z) => [z, zr.range(lo, hi)]);
+  const DREAM = ['meadow', 'poolscape', 'tilevoid', 'memory', 'library', 'plasticity', 'lines'];
+  const scorchedHell = rng.chance(0.4);
   const ZONES = {
-    liminal: [['natural', 1.2], ['meadow', 3.2], ['poolscape', 2.2], ['tilevoid', 1.2], ['memory', 0.9], ['library', 1.3], ['plasticity', 1.1], ['lines', 0.7], ['naraka', 0.5]],
-    exotic: [['natural', 5], ['memory', 1.2], ['tilevoid', 1.2], ['lines', 1.2], ['meadow', 1], ['naraka', 1]],
-    dead: [['natural', 7], ['memory', 1], ['library', 0.7], ['tilevoid', 0.6], ['naraka', 1.2]],
-    scorched: rng.chance(0.4) ? [['natural', 9], ['naraka', 1.5]] : null,
+    liminal: [['natural', 1.5], ...pickZones([...DREAM, 'naraka'], zr.int(4, 5), 0.8, 3)],
+    exotic: [['natural', 6], ...pickZones(['memory', 'tilevoid', 'lines', 'meadow', 'naraka'], zr.int(2, 3), 0.7, 1.3)],
+    dead: [['natural', 8], ...pickZones(['memory', 'library', 'tilevoid', 'naraka'], zr.int(1, 2), 0.6, 1.2)],
+    scorched: scorchedHell ? [['natural', 9], ['naraka', 1.5]] : null,
   }[biome];
   if (ZONES) P.zones = ZONES;
-  else if (rng.chance(0.55)) {
-    // ordinary worlds sometimes hold a few intrusions of the dream
-    P.zones = [['natural', 12], ['meadow', 1.4], ['poolscape', 0.8], ['library', 0.5], ['plasticity', 0.5], ['memory', 0.3]];
+  else if (rng.chance(0.55) && zr.chance(0.7)) {
+    // ordinary worlds sometimes hold an intrusion or two of the dream
+    P.zones = [['natural', 16], ...pickZones(DREAM, zr.int(1, 2), 0.5, 1.2)];
   }
   P.underlayer = biome === 'liminal' || (biome === 'exotic' && rng.chance(0.5));
   // rivers wind across most worlds with a liquid; drier worlds keep their empty canyons
@@ -267,5 +273,21 @@ export function makePlanetParams(seed, biome, opts = {}) {
   if (opts.sunColor) P.sky.sun = mixColor(P.sky.sun, opts.sunColor, 0.4);
   // A base hue used for UI accents
   P.accent = hsl(baseHue, 0.7, 0.6);
+  // What gets built on this world: a few liminal kinds and a biome-flavoured set of ruins and
+  // landmarks, picked per planet so each one has its own character
+  const sr = new RNG(hash32(seed, 929));
+  const LIM = ['poolrooms', 'backrooms', 'hallway', 'arches', 'stairs', 'watcher', 'plastic_city', 'warehouse'];
+  P.structPalette = {
+    liminal: sr.shuffle(LIM.slice()).slice(0, biome === 'liminal' ? 5 : sr.int(2, 3)).map((t) => [t, sr.range(0.6, 2)]),
+    nms: [],
+  };
+  const boost = {
+    crystal_grove: ['frozen', 'exotic', 'radioactive'], bones: ['barren', 'scorched', 'dead', 'toxic'], mining_rig: ['barren', 'radioactive', 'scorched'],
+    watchtower: ['lush', 'frozen', 'toxic'], henge: ['lush', 'frozen', 'exotic'], observatory: ['barren', 'frozen', 'dead'], wreck: ['barren', 'dead', 'scorched', 'frozen'],
+  };
+  const extras = ['wreck', 'watchtower', 'observatory', 'bones', 'crystal_grove', 'henge', 'mining_rig', 'monolith']
+    .map((t) => [t, (boost[t] && boost[t].includes(biome) ? 2.4 : 1) * sr.range(0.5, 1.5)])
+    .sort((a, b) => b[1] - a[1]).slice(0, sr.int(3, 5));
+  P.structPalette.nms = [['outpost', 2.5], ['pod', 1.6], ...extras.map(([t, w]) => [t, w * 1.4])];
   return P;
 }

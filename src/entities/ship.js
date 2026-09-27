@@ -1,6 +1,7 @@
 // Starship controller: landing, take-off, atmospheric + space flight, pulse drive, chase camera.
 import * as THREE from 'three';
 import { buildShip } from './shipModel.js';
+import { normSpec, shipStats } from '../data/ships.js';
 import { ATMOSPHERE_EXIT } from '../config.js';
 
 const _q = new THREE.Quaternion();
@@ -9,9 +10,13 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
+const _c1 = new THREE.Vector3(), _c2 = new THREE.Vector3();
+
 export class Ship {
-  constructor(seed = 7) {
-    this.model = buildShip(seed);
+  constructor(spec = 7) {
+    this.spec = normSpec(spec);
+    this.stats = shipStats(this.spec);
+    this.model = buildShip(this.spec);
     this.pos = new THREE.Vector3();
     this.quat = new THREE.Quaternion();
     this.speed = 0;
@@ -33,6 +38,18 @@ export class Ship {
     this.fireCooldown = 0;
     this.shake = 0;
     this.upgrades = { hyperdrive: 1, shield: 1, pulse: 1 };
+  }
+
+  // a different ship (bought, claimed or repainted): same place, new hull
+  rebuild(spec) {
+    const parent = this.model.parent;
+    this.model.removeFromParent();
+    this.spec = normSpec(spec);
+    this.stats = shipStats(this.spec);
+    this.model = buildShip(this.spec);
+    if (parent) parent.add(this.model);
+    this.syncModel();
+    return this.model;
   }
 
   forward(out = new THREE.Vector3()) { return out.set(0, 0, -1).applyQuaternion(this.quat); }
@@ -228,8 +245,9 @@ export class Ship {
     if (sl > 1) this.stick.multiplyScalar(1 / sl);
     this.stick.multiplyScalar(Math.exp(-dt * 1.6));
     const dead = (v) => (Math.abs(v) < 0.03 ? 0 : v);
-    const pitchRate = (space ? 1.3 : 1.5) * (this.pulsing ? 0.25 : 1);
-    const yawRate = (space ? 1.0 : 1.2) * (this.pulsing ? 0.25 : 1);
+    const ag = this.stats.agility;
+    const pitchRate = (space ? 1.3 : 1.5) * (this.pulsing ? 0.25 : 1) * ag;
+    const yawRate = (space ? 1.0 : 1.2) * (this.pulsing ? 0.25 : 1) * ag;
     let rollIn = 0;
     if (env.ctl) {
       if (input.down('KeyA')) rollIn += 1;
@@ -249,7 +267,7 @@ export class Ship {
     }
 
     // throttle
-    const minS = space ? 20 : 10, maxS = space ? 190 : 62;
+    const minS = space ? 20 : 10, maxS = (space ? 190 : 62) * this.stats.speed;
     if (env.ctl) {
       if (input.down('KeyW')) this.targetSpeed = Math.min(maxS, this.targetSpeed + dt * (space ? 90 : 40));
       if (input.down('KeyS')) this.targetSpeed = Math.max(minS * 0.5, this.targetSpeed - dt * (space ? 110 : 50));
@@ -318,6 +336,17 @@ export class Ship {
       if (this.camPos.y < g) this.camPos.y = g;
     }
     camera.position.copy(this.camPos);
+    // never behind a wall or inside a ceiling: pull in toward the ship when something is in the way
+    if (env && env.raycast) {
+      const from = _c1.copy(this.pos).addScaledVector(up, 1.8);
+      const to = _c2.subVectors(camera.position, from);
+      const len = to.length();
+      if (len > 0.5) {
+        to.divideScalar(len);
+        const hit = env.raycast(from, to, len + 0.6);
+        if (hit) camera.position.copy(from).addScaledVector(to, Math.max(1.5, hit.dist - 0.6));
+      }
+    }
     if (this.shake > 0) {
       camera.position.x += (Math.random() - 0.5) * this.shake * 0.6;
       camera.position.y += (Math.random() - 0.5) * this.shake * 0.6;

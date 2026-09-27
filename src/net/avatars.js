@@ -29,7 +29,7 @@ export class RemotePlayers {
     let e = this.ents.get(id);
     if (e) return e;
     const seed = peerSeed(id);
-    e = { id, snaps: [], body: buildTraveller(seed), ship: buildShip(seed), rover: null, walk: 0, wave: 0 };
+    e = { id, snaps: [], body: buildTraveller(seed), ship: buildShip(seed, { detail: 0.12 }), rover: null, walk: 0, wave: 0 };
     castShadows(e.body); castShadows(e.ship);
     for (const f of e.ship.userData.flames || []) f.layers.disable(1);
     if (e.ship.userData.plasma) e.ship.userData.plasma.group.visible = false;
@@ -50,6 +50,22 @@ export class RemotePlayers {
 
   push(id, snap, now) {
     const e = this._ent(id);
+    // their actual ship: rebuild when the class / seed / paint changes
+    if (snap.shp) {
+      const key = snap.shp.join(':');
+      if (key !== e.shipKey) {
+        e.shipKey = key;
+        const [cls, grade, seed, hue] = snap.shp;
+        const wasVisible = e.ship.visible;
+        e.ship.removeFromParent();
+        e.ship = buildShip({ cls, grade, seed, hue: hue < 0 ? null : hue }, { detail: 0.12 });
+        castShadows(e.ship);
+        for (const f of e.ship.userData.flames || []) f.layers.disable(1);
+        if (e.ship.userData.plasma) e.ship.userData.plasma.group.visible = false;
+        e.ship.visible = wasVisible;
+        if (this.scene) this.scene.add(e.ship);
+      }
+    }
     snap.at = now;
     e.snaps.push(snap);
     if (e.snaps.length > 6) e.snaps.shift();
@@ -106,12 +122,12 @@ export class RemotePlayers {
   update(ctx) {
     for (const e of this.ents.values()) {
       const L = e.last;
-      const show = L && L.s === ctx.here.sys && (ctx.here.mode === 'space' ? L.m === 'x' : L.m === 's' && L.p === ctx.here.planet);
+      const show = L && L.s === ctx.here.sys && (ctx.here.mode === 'space' ? L.m === 'x' : L.m === (ctx.here.mode === 'interior' ? 'i' : 's') && L.p === ctx.here.planet);
       if (!show || e.snaps.length === 0) { e.body.visible = e.ship.visible = false; if (e.rover) e.rover.visible = false; if (e.line) e.line.visible = false; continue; }
       const { a, b, k } = this._sample(e, ctx.now);
       // body
       _a.set(a.x, a.y, a.z).lerp(_b.set(b.x, b.y, b.z), k);
-      const onFoot = !b.sh && !b.rv && ctx.here.mode === 'surface';
+      const onFoot = !b.sh && !b.rv && ctx.here.mode !== 'space';
       e.body.visible = onFoot;
       if (onFoot) {
         e.body.position.copy(_a);
@@ -128,7 +144,7 @@ export class RemotePlayers {
         ud.head.rotation.x = -(b.pt || 0) * 0.5;
       }
       // ship: wherever they left it (or flying it)
-      const hasShip = b.sx !== undefined && (b.sh || ctx.here.mode === 'surface');
+      const hasShip = b.sx !== undefined && (b.sh || ctx.here.mode !== 'space');
       e.ship.visible = !!hasShip;
       if (hasShip) {
         const sa = a.sx !== undefined ? a : b;
@@ -142,7 +158,7 @@ export class RemotePlayers {
         for (const f of e.ship.userData.flames || []) { f.visible = flying; f.scale.z = (0.8 + (b.spd || 0) / 120) * 2.2 * (0.85 + Math.sin(ctx.now * 0.04 + f.position.x * 7) * 0.15); }
       }
       // Roamer
-      if (b.rv && ctx.here.mode === 'surface') {
+      if (b.rv && ctx.here.mode !== 'space') {
         if (!e.rover) { e.rover = buildRover(); castShadows(e.rover); for (const bm of e.rover.userData.beams) bm.layers.disable(1); if (this.scene) this.scene.add(e.rover); }
         e.rover.visible = true;
         e.rover.position.set(a.rx ?? b.rx, a.ry ?? b.ry, a.rz ?? b.rz).lerp(_b.set(b.rx, b.ry, b.rz), k);

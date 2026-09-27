@@ -138,7 +138,7 @@ export class TerrainGen {
   }
 
   generate(cx, cz, edits) {
-    if (this.p.interior === 'station') return this._generateInterior(cx, cz, edits, stationBlockAt, 30, 44, 30, 64);
+    if (this.p.interior === 'station') return this._generateInterior(cx, cz, edits, stationBlockAt, 46, 50, 30, 64);
     if (this.p.interior === 'void') return this._generateInterior(cx, cz, edits, voidBlockAt, 72, 72, 8, 92);
     if (this.p.interior === 'derelict') {
       const seed = this.p.derelictSeed;

@@ -352,3 +352,22 @@ button { font-family: var(--font); }
 .encounter .enc-bar { height: 3px; background: rgba(255, 255, 255, 0.14); margin-top: 5px; }
 .encounter .enc-bar i { display: block; height: 100%; width: 100%; background: currentColor; color: #fff; background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.5)); }
 .settings-grid + .gpu-line { margin-top: 12px; font-size: 12px; font-family: var(--font-ui, sans-serif); }
+.mp .mp-msg { color: #ffd2a0; font-size: 13px; min-height: 0; }
+.mp .mp-msg:empty { display: none; }
+.mp .mp-code { display: flex; gap: 8px; align-items: center; }
+.mp .mp-code-l { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+.mp .mp-code-in { flex: 1; min-width: 0; font-family: 'Courier New', monospace; font-size: 22px; letter-spacing: 0.25em; text-transform: uppercase; padding: 6px 10px; background: rgba(0, 0, 0, 0.35); color: #fff; border: 1px solid var(--line); }
+.mp details summary { cursor: pointer; color: #cfe9ff; font-size: 13px; letter-spacing: 0.08em; margin: 4px 0; }
+.mp details ul { margin: 6px 0 0 18px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #d8d2e6; }
+
+/* ship market */
+.ship-stats { display: grid; grid-template-columns: 90px 1fr 70px; gap: 5px 10px; align-items: center; font-size: 13px; margin: 6px 0 10px; font-family: var(--font-ui, sans-serif); }
+.ship-stats .ship-bar { height: 6px; background: rgba(255, 255, 255, 0.12); }
+.ship-stats .ship-bar i { display: block; height: 100%; background: linear-gradient(90deg, #8fd8ff, #d6f4ff); }
+.ship-stats .good { color: var(--good, #8fffb0); }
+.ship-stats .bad { color: var(--bad, #ff8f8f); }
+.ship-price { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font-family: var(--font-ui, sans-serif); }
+.swatches { gap: 6px; margin: 6px 0; }
+.swatch { width: 30px; height: 30px; border: 2px solid rgba(255, 255, 255, 0.25); cursor: pointer; padding: 0; }
+.swatch.on { border-color: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, 0.6); }
+.swatch:disabled { opacity: 0.4; cursor: default; }

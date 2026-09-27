@@ -2,6 +2,7 @@
 import { RNG, hash32, hsl } from '../core/rng.js';
 import { systemName, planetName } from '../core/names.js';
 import { makePlanetParams, BIOMES } from '../data/biomes.js';
+import { B } from '../world/blocks.js';
 import { hash32 as _h } from '../core/rng.js';
 
 export const STAR_CLASSES = [
@@ -95,20 +96,28 @@ export class Universe {
       const pseed = hash32(seed, i + 1, 777);
       const prng = new RNG(pseed);
       let biome;
-      if (isStart && i === 0) biome = 'lush';
-      else if (isStart && i === 1) biome = 'liminal';
+      // the first world is different for every seed (but always survivable); its neighbour is often
+      // the first properly dreaming world you'll see
+      const srng = new RNG(hash32(this.seed, 31337, i));
+      if (isStart && i === 0) biome = srng.weighted([['lush', 3], ['frozen', 2], ['barren', 1.6], ['exotic', 1.3], ['toxic', 1.2], ['scorched', 1], ['radioactive', 0.9]]);
+      else if (isStart && i === 1) biome = srng.chance(0.6) ? 'liminal' : srng.pick(['exotic', 'lush', 'frozen', 'dead']);
       else if (isCore) biome = i === 0 ? 'liminal' : prng.pick(['liminal', 'exotic']);
       else biome = prng.weighted([['lush', 3], ['frozen', 2], ['scorched', 2], ['toxic', 2], ['radioactive', 2], ['barren', 2], ['exotic', 1], ['liminal', 1.6], ['dead', 1.4]]);
       const params = makePlanetParams(pseed, biome, { sunColor: starType.color });
       if (isStart && i === 0) {
-        params.sentinels = 1; params.hazard.level = 0; params.fauna = 0.9; params.temperature = 24;
-        // the first world has already begun to slip into the dream
-        params.zones = [['natural', 5], ['meadow', 2.2], ['poolscape', 1.6], ['library', 1.0], ['plasticity', 0.9], ['memory', 0.6], ['tilevoid', 0.5]];
-        params.underlayer = true;
-        params.fog.density = 1 / 60;
-        params.fog.mistDensity = 0.04;
-        params.fog.mistFalloff = 12;
-        params.fog.skyFog = 0.8;
+        params.sentinels = 1;
+        params.hazard.level = ['lush', 'exotic'].includes(biome) ? 0 : 1; // harsh worlds start gentle
+        params.fauna = srng.range(0.55, 0.95);
+        // the first world has begun to slip into the dream, but only here and there, and each
+        // seed in its own way
+        const dream = srng.shuffle(['meadow', 'poolscape', 'library', 'plasticity', 'memory', 'tilevoid', 'lines']).slice(0, srng.int(1, 2));
+        params.zones = [['natural', 10], ...dream.map((z) => [z, srng.range(0.8, 1.6)])];
+        params.underlayer = srng.chance(0.5);
+        // blue crystals and ferrite are needed to fix the ship, wherever you wake
+        if (!params.flora.plants.some(([id]) => id === B.DIHYDRO)) params.flora.plants.push([B.DIHYDRO, 0.8]);
+        params.flora.plantDensity = Math.max(params.flora.plantDensity, 0.05);
+        if (!params.ores.some(([id]) => id === B.FERRITE_ORE)) params.ores.push([B.FERRITE_ORE, 3]);
+        params.startWorld = true;
       }
       const angle = prng.range(0, Math.PI * 2);
       const radius = biome === 'dead' ? prng.range(700, 1000) : prng.range(1100, 1700);

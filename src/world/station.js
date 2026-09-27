@@ -1,14 +1,20 @@
-// Voxel interior of a space station: a hangar with a landing pad and a liminal
-// lobby (pool, marble, neon, windows onto space) with trade / tech / service terminals.
+// Voxel interior of a space station: a wide hangar with four landing pads (one per dreamer in a
+// shared dream) and four showroom bays where ships are for sale, and a liminal lobby (pool,
+// marble, neon, windows onto space) with trade / tech / service terminals.
 import { B } from './blocks.js';
 
 export const STATION_FLOOR = 40;
 const F = STATION_FLOOR;
-const X0 = -26, X1 = 26, Z0 = -40, Z1 = 40;
+const X0 = -44, X1 = 44, Z0 = -48, Z1 = 40;
+const LOBBY_X = 26;
 const Y0 = F - 2, Y1 = F + 18;
 const CEIL = F + 7;
 
-export const STATION_PAD = { x: 0, z: -18 };
+// landing pads, one per player (host first); ships park facing the lobby
+export const STATION_PADS = [{ x: -10, z: -34 }, { x: 10, z: -34 }, { x: -30, z: -34 }, { x: 30, z: -34 }];
+export const STATION_PAD = STATION_PADS[0];
+// showroom bays for ships on sale, each with a kiosk in front
+export const SHIP_BAYS = [{ x: -30, z: -17 }, { x: -14, z: -17 }, { x: 14, z: -17 }, { x: 30, z: -17 }];
 
 export const STATION_TERMINALS = [
   { x: -9, z: 2, kind: 'sell', label: 'Trade Terminal' },
@@ -16,6 +22,7 @@ export const STATION_TERMINALS = [
   { x: -20, z: 32, kind: 'tech', label: 'Tech Merchant' },
   { x: 20, z: 32, kind: 'services', label: 'Station Services' },
   { x: 0, z: 38, kind: 'archive', label: 'Dream Archive' },
+  ...SHIP_BAYS.map((b, i) => ({ x: b.x, z: -9, kind: 'ship', bay: i, label: 'Ship for sale' })),
 ];
 
 export const STATION_NPCS = [
@@ -38,13 +45,24 @@ export function stationBlockAt(x, y, z) {
   if (z < -6) {
     if (y === Y0) return B.METAL_PANEL;
     if (y === F - 1) {
-      if (ax <= 7 && z >= -26 && z <= -10) return ((x + z) & 1) ? B.DREAM_TILE : B.POOL_TILE;
-      if ((ax === 8 && z >= -27 && z <= -9) || ((z === -27 || z === -9) && ax <= 8)) return B.NEON;
+      for (const p of STATION_PADS) {
+        const dx = Math.abs(x - p.x), dz = Math.abs(z - p.z);
+        if (dx <= 7 && dz <= 7) return ((x + z) & 1) ? B.DREAM_TILE : B.POOL_TILE;
+        if (dx <= 8 && dz <= 8) return B.NEON;
+      }
+      for (const b of SHIP_BAYS) {
+        const dx = Math.abs(x - b.x), dz = Math.abs(z - b.z);
+        if (dx <= 5 && dz <= 5) return B.MARBLE;
+        if (dx <= 6 && dz <= 6) return B.SILVER;
+      }
+      // a lit walkway from the lobby door to the pads
+      if (ax <= 2 && z > -27) return ax === 2 ? B.LIGHT_PANEL : B.CHECKER;
       return B.METAL_PLATE;
     }
-    if (y === Y1) return (x % 5 === 0 && z % 5 === 0) ? B.LIGHT_PANEL : B.METAL_PANEL;
+    if (y === Y1) return (x % 6 === 0 && z % 6 === 0) ? B.LIGHT_PANEL : B.METAL_PANEL;
+    // the open front of the hangar: a field you can see space through
     if (z === Z0) {
-      if (ax <= 16 && y <= F + 13) return B.GLASS;
+      if (ax <= 40 && y <= F + 14) return B.GLASS;
       return B.METAL_PANEL;
     }
     if (x === X0 || x === X1) {
@@ -52,10 +70,12 @@ export function stationBlockAt(x, y, z) {
       if (y >= F + 3 && y <= F + 6 && z % 6 !== 0) return B.GLASS;
       return B.METAL_PANEL;
     }
-    if (ax === 18 && z % 10 === 0) return B.METAL_PANEL;
-    if ((ax === 17 || ax === 19) && z % 10 === 0 && y === F + 8) return B.LAMP;
-    // cargo crates along the walls
-    if (ax >= 22 && ax <= 24 && z >= -36 && z <= -30 && y <= F + ((x + z) & 1)) return (z & 1) ? B.METAL_PLATE : B.PLANKS;
+    // columns between the pads and the showroom, with lamps
+    if ((ax === 20 || ax === 40) && z === -25) return y === F + 8 ? B.LAMP : B.METAL_PANEL;
+    // kiosks in front of the showroom bays
+    if (y <= F + 1 && z === -9) for (const b of SHIP_BAYS) if (x === b.x) return B.TERMINAL;
+    // cargo stacked in the corners
+    if (ax >= 38 && ax <= 42 && z >= -13 && z <= -8 && y <= F + ((x + z) & 1)) return (z & 1) ? B.METAL_PLATE : B.PLANKS;
     return B.LIT_AIR;
   }
   // ---------- divider wall ----------
@@ -67,13 +87,14 @@ export function stationBlockAt(x, y, z) {
     return B.METAL_PANEL;
   }
   // ---------- lobby ----------
+  if (ax > LOBBY_X) return B.AIR;
   if (y > CEIL) return B.AIR;
   const pool = ax <= 7 && z >= 12 && z <= 26;
   const poolEdge = !pool && ax <= 8 && z >= 11 && z <= 27;
   if (y === Y0) return pool ? B.POOL_DEEP : B.METAL_PANEL;
   if (y === CEIL) return (x % 4 === 0 && z % 4 === 2) ? B.LIGHT_PANEL : B.CEILING_TILE;
-  if (x === X0 || x === X1 || z === Z1) {
-    const along = (x === X0 || x === X1) ? z : x;
+  if (ax === LOBBY_X || z === Z1) {
+    const along = ax === LOBBY_X ? z : x;
     if (y >= F + 1 && y <= F + 4 && Math.abs(along) % 7 !== 0) return B.GLASS;
     if (y === F + 5) return B.NEON;
     return B.MARBLE;

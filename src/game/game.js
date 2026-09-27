@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { Input } from '../core/input.js';
 import { hashString, RNG, hash32 } from '../core/rng.js';
+import { randomSpec, SHIP_CLASSES } from '../data/ships.js';
 import { curvatureUniforms } from '../core/shaderlib.js';
 import { CURVATURE } from '../config.js';
 import { AudioSystem } from '../audio/audio.js';
@@ -24,6 +25,7 @@ import { Bases } from './bases.js';
 import { PhotoMode } from './photomode.js';
 import { NetSession } from '../net/session.js';
 import { Buffs } from './buffs.js';
+import { Shipyard } from './shipyard.js';
 import { Corruption } from './corruption.js';
 import { SurfaceMode } from './surfaceMode.js';
 import { SpaceMode } from './spaceMode.js';
@@ -66,6 +68,7 @@ export class Game {
     this.photo = new PhotoMode(this);
     this.net = new NetSession(this);
     this.buffs = new Buffs(this);
+    this.shipyard = new Shipyard(this);
     this.surface = new SurfaceMode(this);
     this.space = new SpaceMode(this);
 
@@ -185,7 +188,9 @@ export class Game {
     this.inventory.addBlock(B.DREAM_BLOCK, 8);
     this.player = new Player();
     if (this.ship) this.ship.model.removeFromParent();
-    this.ship = new Ship(seed);
+    // everyone wakes up next to a different ship
+    this.state.shipSpec = randomSpec(new RNG(hash32(seed, 4040)), { start: true });
+    this.ship = new Ship(this.state.shipSpec);
     this.ship.fuel.launch = 40;
     this.ship.fuel.pulse = 70;
     this.ship.thrustersRepaired = false;
@@ -219,7 +224,8 @@ export class Game {
     if (st && st.stats) Object.assign(this.player.stats, st.stats);
     if (st && st.playerUpgrades) Object.assign(this.player.upgrades, st.playerUpgrades);
     if (this.ship) this.ship.model.removeFromParent();
-    this.ship = new Ship((seed ^ 0x9e3779b9) >>> 0);
+    if (!this.state.shipSpec) this.state.shipSpec = randomSpec(new RNG(hash32(seed, 4041, Math.floor(Math.random() * 1e6))), { start: true });
+    this.ship = new Ship(this.state.shipSpec);
     this.ship.thrustersRepaired = true;
     this.ship.fuel.launch = 100; this.ship.fuel.pulse = 100;
     if (st && st.shipData) { Object.assign(this.ship.fuel, st.shipData.fuel); Object.assign(this.ship.upgrades, st.shipData.upgrades || {}); }
@@ -228,8 +234,9 @@ export class Game {
     this.menus.closeAll(true);
     this.afterSurfaceReady = onReady;
     if (w.w && w.w.m === 's' && w.w.pi !== undefined && w.w.pi >= 0) this.enterSurface(w.w.pi, { spawn: 'near', near: { x: w.x, y: w.y, z: w.z } });
+    else if (w.w && w.w.m === 'i' && w.w.st) this.enterStation();
     else this.enterSpace({ arrival: true });
-    if (w.w && w.w.m !== 's' && onReady) { this.afterSurfaceReady = null; onReady(); }
+    if (w.w && w.w.m !== 's' && !(w.w.m === 'i' && w.w.st) && onReady) { this.afterSurfaceReady = null; onReady(); }
   }
 
   // back to your own dream after leaving someone else's
@@ -256,7 +263,7 @@ export class Game {
     if (st.stats) Object.assign(this.player.stats, st.stats);
     if (st.playerUpgrades) Object.assign(this.player.upgrades, st.playerUpgrades);
     if (this.ship) this.ship.model.removeFromParent();
-    this.ship = new Ship(st.seed);
+    this.ship = new Ship(st.shipSpec || st.seed);
     if (st.shipData) {
       Object.assign(this.ship.fuel, st.shipData.fuel);
       this.ship.shield = st.shipData.shield;
@@ -306,8 +313,18 @@ export class Game {
     if (!this.state.flags.intro && !p.isStation) {
       this.state.flags.intro = true;
       this.input.unlock();
+      const WAKE = {
+        lush: 'The ground is warm. The sky is the wrong colour.',
+        frozen: 'Snow is settling on your visor. Your breath fogs the glass from the inside.',
+        barren: 'Dust, stone, and a sky far too wide. Nothing here has ever been green.',
+        toxic: 'The air is thick and yellow. Something in the spores is humming.',
+        scorched: 'The rocks tick as they cool. The horizon wavers in the heat.',
+        exotic: 'Nothing here grows the way it should. The trees are looking back.',
+        radioactive: 'Your suit clicks softly, counting something you cannot see.',
+      };
+      const shipKind = SHIP_CLASSES[this.ship.spec.cls].name.toLowerCase();
       setTimeout(() => this.menus.dialog('You wake up',
-        `The ground is warm. The sky is the wrong colour. Your starship lies a few steps away, its launch thrusters crushed.\n\n` +
+        `${WAKE[p.biome] || WAKE.lush} Your starship - a battered ${shipKind} - lies a few steps away, its launch thrusters crushed.\n\n` +
         `WASD move · Mouse look · Space jump / jetpack / vault · Shift sprint\n` +
         `X dash · C slide / ground pound · RMB grapple (Mining Beam) or grenade (Boltcaster)\n` +
         `LMB use multi-tool · Q switch Mining Beam / Builder / Boltcaster\n` +
@@ -503,7 +520,14 @@ export class Game {
   }
 
   // ---------------- warp ----------------
-  hyperdriveRange() { return 5 + (this.upgradeCount('hyperdrive') * 3); }
+  hyperdriveRange() { return 5 + (this.upgradeCount('hyperdrive') * 3) + (this.ship ? this.ship.stats.jump : 0); }
+
+  // swap to another starship (bought, claimed, repainted)
+  setShip(spec) {
+    this.state.shipSpec = { ...spec };
+    this.ship.rebuild(spec);
+    if (this.mode === 'surface' || this.surface.active) this.surface._prepShip();
+  }
 
   startWarp(gx, gy, gz) {
     if (this.mode !== 'space') return;
@@ -921,9 +945,15 @@ export class Game {
         this.resume();
       }
     }
-    const paused = this.menus.anyOpen() || this.galaxy.isOpen() || this.crashing;
-    // Input is only live while pointer-locked and nothing is open
-    input.enabled = !paused && !this.chatOpen;
+    // Input is only live while pointer-locked and nothing is open...
+    const uiOpen = this.menus.anyOpen() || this.galaxy.isOpen() || this.crashing;
+    input.enabled = !uiOpen && !this.chatOpen;
+    // ...but the world keeps going behind the inventory, dialogs and station terminals. Only the
+    // pause menu (and what it opens) and the galaxy map stop time, and only when you play alone:
+    // in a shared dream nobody can pause everyone else.
+    const open = this.menus.open;
+    const paused = this.crashing || open === 'death' || open === 'ending' || open === 'title'
+      || (!this.net.active && (open === 'pause' || open === 'settings' || open === 'controls' || open === 'multiplayer' || this.galaxy.isOpen()));
 
     if (this.mode === 'title') {
       this.space.updateTitle(dt);

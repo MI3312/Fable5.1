@@ -189,7 +189,7 @@ export class SpaceMode {
 
   hurtShip(dmg) {
     const g = this.game, ship = g.ship;
-    const d = dmg / ship.upgrades.shield;
+    const d = dmg / (ship.upgrades.shield * ship.stats.shield);
     if (ship.shield > 0) ship.shield = Math.max(0, ship.shield - d);
     else ship.hull = Math.max(0, ship.hull - d * 1.4);
     ship.shake = Math.max(ship.shake, 0.5);
@@ -342,7 +342,7 @@ export class SpaceMode {
       const right = ship.right(new THREE.Vector3());
       for (const s of [-1, 1]) {
         const from = ship.pos.clone().addScaledVector(right, s * 3).addScaledVector(fwd, 3);
-        this.bolts.fire(from, fwd, 700 + ship.speed, 'ship', 25, 0x9ff6ff, 1.6, 4);
+        this.bolts.fire(from, fwd, 700 + ship.speed, 'ship', 25 * ship.stats.damage, 0x9ff6ff, 1.6, 4);
       }
       g.audio.shipShoot();
     }

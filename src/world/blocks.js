@@ -44,7 +44,7 @@ export const B = {
   PLASTIC_R: 65, PLASTIC_Y: 66, PLASTIC_B: 67, PLASTIC_W: 68, CONCRETE: 69, SHELF: 70,
   BOOKSHELF: 71, SILVER: 72, TV: 73, DARK_WOOD: 74, FLESH: 75, ONYX: 76,
   VOID: 77, EMERGENCY: 78, HULL: 79, GRATE: 80, MISSING: 81,
-  BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85, NUTRIENT: 86,
+  BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85, NUTRIENT: 86, WRECK_BEACON: 87,
 };
 
 const T = TILE;
@@ -160,6 +160,7 @@ BLOCKS[B.TELEPORTER] = def('Teleporter', [T.tele_top, T.metal_plate, T.tele_side
 BLOCKS[B.PLANTER] = def('Dream Planter', [T.planter_top, T.metal_plate, T.planter_side], { hardness: 0.9, emissive: 0.15, interact: 'planter', drops: [['ferrite', 1, 2]], color: [0.35, 0.6, 0.3] });
 BLOCKS[B.STORAGE] = def('Storage Crate', [T.crate_top, T.crate_top, T.crate_side], { hardness: 0.9, interact: 'storage', drops: [['ferrite', 1, 2]], color: [0.9, 0.6, 0.2] });
 BLOCKS[B.NUTRIENT] = def('Nutrient Processor', [T.cook_top, T.metal_plate, T.cook_side], { hardness: 0.9, emissive: 0.35, interact: 'cook', drops: [['ferrite', 1, 2]], color: [1.0, 0.55, 0.3] });
+BLOCKS[B.WRECK_BEACON] = def('Distress Beacon', [T.metal_plate, T.metal_plate, T.terminal], { hardness: 999, unbreakable: true, collect: false, interact: 'wreck', emissive: 0.7, color: [1.0, 0.35, 0.25] });
 
 export const BLOCK_COUNT = BLOCKS.length;
 

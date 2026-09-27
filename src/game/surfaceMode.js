@@ -18,6 +18,7 @@ import { VolumetricClouds } from '../surface/volclouds.js';
 import { Exocraft } from './exocraft.js';
 import { SkyEvents } from '../surface/skyevents.js';
 import { Fishing } from './fishing.js';
+import { shipName, specLabel, tradeIn } from '../data/ships.js';
 import { Moves } from './moves.js';
 import { Grenades } from './grenades.js';
 import { Encounters } from './encounters.js';
@@ -28,7 +29,7 @@ import { CreatureManager } from '../entities/creatures.js';
 import { SentinelManager } from '../entities/sentinels.js';
 import { buildTraveller } from '../entities/shipModel.js';
 import { buildMultitool, animateMultitool } from '../entities/multitool.js';
-import { STATION_FLOOR, STATION_PAD, STATION_TERMINALS, STATION_NPCS } from '../world/station.js';
+import { STATION_FLOOR, STATION_PADS, STATION_TERMINALS, STATION_NPCS } from '../world/station.js';
 import { STATION_CHATTER, DERELICT_LOGS, VOID_TV } from '../data/lore.js';
 import { VOID_SPAWN, VOID_FLOOR, DERELICT_PAD, DERELICT_FLOOR, derelictTerminals } from '../world/pockets.js';
 import { Universe } from '../universe/universe.js';
@@ -245,12 +246,7 @@ export class SurfaceMode {
     // ship model belongs to this scene now
     g.ship.model.removeFromParent();
     this.scene.add(g.ship.model);
-    if (!g.ship.model.userData.shadowed) {
-      g.ship.model.userData.shadowed = true;
-      castShadows(g.ship.model);
-      for (const f of g.ship.model.userData.flames || []) f.layers.disable(1);
-      if (g.ship.model.userData.plasma) castShadows(g.ship.model.userData.plasma.group, false);
-    }
+    this._prepShip();
     g.ship.camInit = false;
 
     const st = g.state;
@@ -268,9 +264,11 @@ export class SurfaceMode {
         this.scene.add(m);
         this.npcs.push(m);
       });
+      g.shipyard.spawn(this);
     }
     if (opts.spawn === 'dock') {
-      this.target = { x: STATION_PAD.x, z: STATION_PAD.z };
+      this.pad = STATION_PADS[g.net.padIndex()] || STATION_PADS[0];
+      this.target = { x: this.pad.x, z: this.pad.z };
       g.inShip = true;
     } else if (opts.spawn === 'derelict') {
       this.target = { x: DERELICT_PAD.x, z: DERELICT_PAD.z };
@@ -314,6 +312,7 @@ export class SurfaceMode {
   _clearNPCs() {
     for (const n of this.npcs) this.scene.remove(n);
     this.npcs = [];
+    this.game.shipyard.clear();
   }
 
   _findSpawn(x0, z0) {
@@ -366,8 +365,9 @@ export class SurfaceMode {
       g.inShip = true;
       player.pos.copy(ship.pos);
     } else if (mode === 'dock') {
-      ship.pos.set(STATION_PAD.x + 0.5, STATION_FLOOR + 1.7, STATION_PAD.z + 0.5);
-      ship.setLevel(0);
+      const pad = this.pad || STATION_PADS[0];
+      ship.pos.set(pad.x + 0.5, STATION_FLOOR + 1.7, pad.z + 0.5);
+      ship.setLevel(Math.PI); // nose to the lobby, so the camera has the hangar behind it
       ship.state = 'landed';
       ship.speed = 0;
       g.inShip = true;
@@ -652,6 +652,16 @@ export class SurfaceMode {
     let guard = 0;
     while (player.collides(W, player.pos.x, player.pos.y, player.pos.z) && guard++ < 20) player.pos.y += 1;
     this.smokeTimer = 0;
+  }
+
+  // shadows for the ship model (once per model: a new ship gets a new model)
+  _prepShip() {
+    const m = this.game.ship.model;
+    if (m.userData.shadowed) return;
+    m.userData.shadowed = true;
+    castShadows(m);
+    for (const f of m.userData.flames || []) f.layers.disable(1);
+    if (m.userData.plasma) castShadows(m.userData.plasma.group, false);
   }
 
   leave() {
@@ -1060,6 +1070,7 @@ export class SurfaceMode {
     this.world.update(focus.x, focus.z, 5);
     this.grenades.update(dt);
     this.encounters.update(dt);
+    if (this.pocket === 'station') g.shipyard.update(g.time);
     this._updateCamera(dt);
     this._updatePointLights(dt);
     // crashed ship smoke
@@ -1276,7 +1287,7 @@ export class SurfaceMode {
   _updateCamera(dt) {
     const g = this.game;
     if (g.inShip) {
-      g.ship.updateCamera(g.camera, dt || 0.016, { groundAt: (x, z) => this.world.groundAt(x, z) });
+      g.ship.updateCamera(g.camera, dt || 0.016, { groundAt: (x, z) => this.world.groundAt(x, z), raycast: (o, d, n) => this.world.raycast(o, d, n) });
       this.tool.visible = false;
     } else if (this.rover.driving) {
       this.rover.updateCamera(g.camera, dt || 0.016);
@@ -1396,7 +1407,7 @@ export class SurfaceMode {
         const right = ship.right(new THREE.Vector3());
         for (const s of [-1, 1]) {
           const from = ship.pos.clone().addScaledVector(right, s * 3).addScaledVector(fwd, 2);
-          this.bolts.fire(from, fwd, 260 + ship.speed, 'ship', 30, 0x9ff6ff, 1.2, 1.6);
+          this.bolts.fire(from, fwd, 260 + ship.speed, 'ship', 30 * ship.stats.damage, 0x9ff6ff, 1.2, 1.6);
         }
         g.audio.shipShoot();
       }
@@ -1553,6 +1564,31 @@ export class SurfaceMode {
       ]);
     };
     show();
+  }
+
+  // a crashed ship on a planet: repair it and it's yours
+  _wreckMenu(hit) {
+    const g = this.game, Y = g.shipyard;
+    const key = `${this.planet.id}:wreck:${hit.x},${hit.z}`;
+    g.input.unlock();
+    if (g.state.used[key]) { g.menus.dialog('Distress Beacon', 'The beacon is quiet now. This ship already flew away with you.'); return; }
+    const spec = Y.wreckSpec(this.planet.seed, hit.x, hit.z);
+    const cost = Y.wreckCost(spec);
+    const scrap = Math.round(tradeIn(g.ship.spec) * 0.5 / 100) * 100;
+    g.menus.showWreckOffer(spec, cost, scrap, () => {
+      if (!g.inventory.consume(cost)) { g.hud.notify('Missing repair materials'); return false; }
+      g.inventory.add('units', scrap);
+      g.state.used[key] = 1;
+      g.setShip(spec);
+      g.ship.shield = 60; g.ship.hull = 70; g.ship.thrustersRepaired = true;
+      g.ship.fuel.launch = Math.max(g.ship.fuel.launch, 40);
+      this._placeShipNear(g.player.pos, 12);
+      g.ship.state = 'landed';
+      this.debris.spawn(g.ship.pos.clone(), [0.8, 0.9, 1], 30, 4, 1.2, true);
+      g.hud.toast('Starship claimed', `${shipName(spec.seed)} · ${specLabel(spec)} · +${scrap.toLocaleString()} units for the old one`);
+      g.audio.discover();
+      return true;
+    });
   }
 
   // arrive at a base pad (called after a teleport loads this planet, or for a same-planet hop)
@@ -1920,7 +1956,7 @@ export class SurfaceMode {
 
   _hurtPlayer(dmg, why) {
     const g = this.game;
-    if (g.inShip) { g.ship.shield = Math.max(0, g.ship.shield - dmg * 0.5 / g.ship.upgrades.shield); return; }
+    if (g.inShip) { g.ship.shield = Math.max(0, g.ship.shield - dmg * 0.5 / (g.ship.upgrades.shield * g.ship.stats.shield)); return; }
     if (this.moves.invulnerable && why !== 'fall') {
       // a perfect dodge
       if ((this.dodgeCd || 0) < g.time) {
@@ -1997,7 +2033,8 @@ export class SurfaceMode {
         else if (def.interact === 'monolith') { prompt = '<span class="key">E</span>Touch the monolith'; action = () => this._monolith(target.hit); }
         else if (def.interact === 'terminal') {
           const t = this.pocket === 'station' ? STATION_TERMINALS.find((q) => q.x === target.hit.x && q.z === target.hit.z) : null;
-          prompt = `<span class="key">E</span>${t ? t.label : this.pocket === 'derelict' ? 'Read the crew log' : 'Access terminal'}`;
+          const o = t && t.kind === 'ship' ? g.shipyard.offer(t.bay) : null;
+          prompt = `<span class="key">E</span>${o ? `${o.name} · ${o.label} · ${o.price.toLocaleString()}u` : t ? t.label : this.pocket === 'derelict' ? 'Read the crew log' : 'Access terminal'}`;
           action = () => this._terminal(target.hit);
         }
         else if (def.interact === 'pod') { prompt = '<span class="key">E</span>Open exosuit pod'; action = () => this._pod(target.hit); }
@@ -2005,6 +2042,7 @@ export class SurfaceMode {
         else if (def.interact === 'basecore') { prompt = '<span class="key">E</span>Base Computer'; action = () => this._baseMenu(target.hit); }
         else if (def.interact === 'teleporter') { prompt = '<span class="key">E</span>Teleport'; action = () => this._teleportMenu(target.hit); }
         else if (def.interact === 'storage') { prompt = '<span class="key">E</span>Open storage crate'; action = () => this._storageMenu(target.hit); }
+        else if (def.interact === 'wreck') { prompt = '<span class="key">E</span>Inspect the crashed starship'; action = () => this._wreckMenu(target.hit); }
         else if (def.interact === 'cook') { prompt = '<span class="key">E</span>Nutrient Processor'; action = () => { g.input.unlock(); g.menus.showCooking(); g.audio.ui(); }; }
         else if (def.interact === 'planter') {
           const pl = g.bases.planterAt(this.planet.id, target.hit.x, target.hit.y, target.hit.z);
@@ -2125,6 +2163,7 @@ export class SurfaceMode {
     if (this.interior) {
       const t = STATION_TERMINALS.find((q) => q.x === hit.x && q.z === hit.z);
       g.input.unlock();
+      if (t && t.kind === 'ship') { g.menus.showShipOffer(t.bay); g.audio.ui(); return; }
       if (!t || t.kind === 'archive') {
         g.saveGame(true);
         g.menus.dialog('Dream Archive', 'Your journey has been recorded in the station archive.\nThe archive hums, pleased.');

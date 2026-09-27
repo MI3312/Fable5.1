@@ -15,6 +15,14 @@
 
 const VERSION = 'lucid-sky-mp-1';
 
+// Steam matchmaking lobby IDs all share their top 32 bits (public universe, chat account type,
+// lobby instance flags); only the low 32 bits differ. So a lobby fits in a 7-character code.
+const LOBBY_HI = 0x01860000n;
+const B36 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function toB36(n) { let s = ''; n = BigInt(n); do { s = B36[Number(n % 36n)] + s; n /= 36n; } while (n > 0n); return s; }
+function fromB36(s) { let n = 0n; for (const ch of s) { const d = B36.indexOf(ch); if (d < 0) return null; n = n * 36n + BigInt(d); } return n; }
+export function cleanCode(s) { return String(s || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); }
+
 class Base {
   constructor() {
     this.id = null; this.name = 'Dreamer';
@@ -37,6 +45,7 @@ export class SteamTransport extends Base {
     this.id = info.steamId;
     this.name = info.name || 'Dreamer';
     this.overlay = !!info.overlay;
+    this.pendingInvite = info.pendingInvite || null; // a Steam "Join Game" that launched us
     N.onPacket((from, text) => {
       let m;
       try { m = JSON.parse(text); } catch (e) { return; }
@@ -86,6 +95,22 @@ export class SteamTransport extends Base {
   }
 
   invite() { window.lucidNet.openInvite(); }
+
+  // a short code for a lobby, and back
+  code(lobbyId = this.lobby) {
+    if (!lobbyId) return '';
+    const id = BigInt(lobbyId);
+    return (id >> 32n) === LOBBY_HI ? toB36(id & 0xffffffffn) : 'X' + toB36(id);
+  }
+
+  lobbyFromCode(code) {
+    const c = cleanCode(code);
+    if (/^\d{15,20}$/.test(c)) return c; // a raw lobby ID pasted from somewhere
+    if (c.startsWith('X') && c.length > 8) { const n = fromB36(c.slice(1)); return n === null ? null : String(n); }
+    if (c.length < 1 || c.length > 7) return null;
+    const n = fromB36(c);
+    return n === null ? null : String((LOBBY_HI << 32n) | n);
+  }
 }
 
 // ------------------------------------------------------------------------------------------
@@ -186,6 +211,13 @@ export class LocalTransport extends Base {
   }
 
   invite() {}
+
+  code(lobbyId = this.lobby) { return lobbyId ? lobbyId.slice(2).toUpperCase() : ''; }
+
+  lobbyFromCode(code) {
+    const c = cleanCode(code);
+    return /^[0-9A-F]{8}$/.test(c) ? 'LB' + c.toLowerCase() : null;
+  }
 }
 
 export { VERSION };

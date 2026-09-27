@@ -6,6 +6,7 @@ import { BLOCKS, isPlaceable } from '../world/blocks.js';
 import { getBlockIcon } from '../world/atlas.js';
 import { RECIPES, ALCHEMY, UPGRADES, outLabel } from '../data/recipes.js';
 import { DISHES, BUFFS, FISH } from '../data/food.js';
+import { SHIP_CLASSES, shipStats, shipName, specLabel, PAINTS } from '../data/ships.js';
 
 const TABS = [
   ['exosuit', 'Exosuit'], ['blocks', 'Blocks'], ['fabricate', 'Fabricate'], ['alchemy', 'Apotheosis'],
@@ -237,49 +238,81 @@ export class Menus {
     this.closeAll(true);
     const body = h('div', { class: 'mp' });
     const steam = N.transportKind === 'steam';
-    const nameIn = h('input', { type: 'text', value: g.settings.playerName || 'Dreamer', maxlength: '20', spellcheck: 'false', onchange: (e) => { g.settings.playerName = e.target.value.trim().slice(0, 20) || 'Dreamer'; g.saveSettings(); } });
-    body.appendChild(h('div', { class: 'mp-status' }, steam ? '● Steam connected · lobbies and P2P over Steam\'s relay network (app 480)' : '○ Local test mode · Steam desktop build not detected. Dreams are shared between tabs of this browser.'));
-    if (!steam) body.appendChild(h('div', { class: 'seed-row' }, 'NAME', nameIn));
-    const list = h('div', { class: 'mp-list' });
-    const run = async (fn, label) => {
-      try { await fn(); } catch (e) { g.hud.notify(e.message || String(e)); list.textContent = e.message || String(e); }
+    const again = () => this.showMultiplayer(back, fromTitle);
+    const msg = h('div', { class: 'mp-msg' }, N.status || '');
+    const run = async (fn) => {
+      try { msg.textContent = ''; await fn(); } catch (e) { msg.textContent = e.message || String(e); g.hud.notify(e.message || String(e)); }
     };
+    // where we are, in one line
+    const who = N.t ? N.t.name : (g.settings.playerName || 'Dreamer');
+    body.appendChild(h('div', { class: 'mp-status' }, steam
+      ? (N.t ? `● Online through Steam as ${who} · traffic goes over Steam's relay network` : N.status ? `○ Steam: ${N.status}` : '○ Connecting to Steam…')
+      : '○ Browser test mode: shares a dream between tabs of this browser on this computer only. For online play with friends, use the desktop app (desktop/ folder) with Steam.'));
+    if (!steam) {
+      const nameIn = h('input', { type: 'text', value: g.settings.playerName || 'Dreamer', maxlength: '20', spellcheck: 'false', onchange: (e) => { g.settings.playerName = e.target.value.trim().slice(0, 20) || 'Dreamer'; g.saveSettings(); } });
+      body.appendChild(h('div', { class: 'seed-row' }, 'NAME', nameIn));
+    }
+    body.appendChild(msg);
     if (N.active) {
-      body.appendChild(h('div', { class: 'section-title' }, N.isHost ? 'You are sharing this dream' : 'You are a guest in this dream'));
+      // the code, front and centre
+      const code = N.code;
+      const codeIn = h('input', { type: 'text', value: code, readonly: true, class: 'mp-code-in' });
+      const copy = h('button', { class: 'btn small', onclick: async () => {
+        try { await navigator.clipboard.writeText(code); copy.textContent = 'Copied'; } catch (e) { codeIn.select(); copy.textContent = 'Press Ctrl+C'; }
+      } }, 'Copy');
+      body.appendChild(h('div', { class: 'mp-code' }, h('div', { class: 'mp-code-l' }, N.isHost ? 'Your dream code' : 'This dream\'s code'), codeIn, copy));
+      body.appendChild(h('div', { class: 'muted' }, 'Friends open Multiplayer (title screen or pause menu), type this code under "Join with a code" and press Join.' + (steam ? ' On Steam they can also use Join Game on your profile.' : '')));
+      body.appendChild(h('div', { class: 'section-title' }, `In this dream · ${N.players().length}`));
       for (const p of N.players()) {
-        const where = p.where ? (p.where.m === 'x' ? 'in space' : p.where.m === 's' ? (p.where.p === (g.surface.planet && g.surface.planet.id) ? 'on this world' : 'on another world') : 'somewhere') : p.you ? 'here' : '…';
+        const w = p.where;
+        const where = p.you ? 'you' : !w ? 'arriving…' : w.m === 'x' ? 'flying in space' : w.m === 'i' ? (w.st ? 'docked at the station' : 'indoors') : w.p === (g.surface.planet && g.surface.planet.id) ? 'on this world' : 'on another world';
         body.appendChild(h('div', { class: 'recipe' },
           h('div', {}, h('div', { class: 'rn' }, `${p.name}${p.you ? ' (you)' : ''}${p.host ? ' · host' : ''}`), h('div', { class: 'ri muted' }, where)),
           !p.you && !fromTitle ? h('button', { class: 'btn small', onclick: () => N.travelTo(p.id) }, 'Travel to') : null));
       }
       body.appendChild(h('div', { class: 'row-flex' },
         steam && N.t && N.t.overlay ? h('button', { class: 'btn small', onclick: () => N.invite() }, 'Invite friends') : null,
-        h('button', { class: 'btn small', onclick: () => { N.leave(); this.showMultiplayer(back, fromTitle); } }, 'Leave shared dream')));
-      if (steam && !(N.t && N.t.overlay)) body.appendChild(h('div', { class: 'muted' }, 'Friends join from your Steam friends list (Join Game) or Multiplayer > Find dreams.'));
+        h('button', { class: 'btn small', onclick: () => { N.leave(); again(); } }, N.isHost ? 'Stop sharing' : 'Leave and go home')));
       body.appendChild(h('div', { class: 'muted' }, 'Z ping a spot · B wave · Enter chat'));
     } else {
+      // host
+      body.appendChild(h('div', { class: 'section-title' }, 'Share your dream'));
       if (!fromTitle) {
-        body.appendChild(h('div', { class: 'section-title' }, 'Share this dream'));
         body.appendChild(h('div', { class: 'row-flex' },
-          h('button', { class: 'btn small primary', onclick: () => run(async () => { await N.host({ visibility: 'friends' }); this.showMultiplayer(back, fromTitle); }) }, steam ? 'Host · friends only' : 'Host'),
-          steam ? h('button', { class: 'btn small', onclick: () => run(async () => { await N.host({ visibility: 'public' }); this.showMultiplayer(back, fromTitle); }) }, 'Host · public') : null));
-      } else body.appendChild(h('div', { class: 'muted' }, 'To host, continue or start a dream, then open Multiplayer from the pause menu.'));
-      body.appendChild(h('div', { class: 'section-title' }, 'Join a dream'));
-      body.appendChild(list);
+          h('button', { class: 'btn small primary', onclick: () => run(async () => { await N.host({ visibility: 'friends' }); again(); }) }, 'Host this dream'),
+          steam ? h('button', { class: 'btn small', onclick: () => run(async () => { await N.host({ visibility: 'public' }); again(); }) }, 'Host · public') : null));
+        body.appendChild(h('div', { class: 'muted' }, 'You get a short code to give your friends. Your world becomes the shared one; up to 4 dreamers.'));
+      } else body.appendChild(h('div', { class: 'muted' }, 'To host: start or continue a dream, then press Esc → Multiplayer → Host this dream.'));
+      // join
+      body.appendChild(h('div', { class: 'section-title' }, 'Join with a code'));
+      const codeIn = h('input', { type: 'text', placeholder: steam ? 'e.g. HNC4R' : 'e.g. 3F9A01C2', maxlength: '24', spellcheck: 'false', class: 'mp-code-in' });
+      const joinBtn = h('button', { class: 'btn small primary', onclick: () => run(async () => { msg.textContent = 'Joining… (this can take a few seconds)'; joinBtn.disabled = true; try { await N.joinCode(codeIn.value); } finally { joinBtn.disabled = false; } }) }, 'Join');
+      codeIn.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') joinBtn.click(); });
+      body.appendChild(h('div', { class: 'mp-code' }, codeIn, joinBtn));
+      body.appendChild(h('div', { class: 'muted' }, 'You join as your own character in your friend\'s universe; your own journey is saved and waits for you.'));
+      // browse
+      const list = h('div', { class: 'mp-list' });
       const refresh = () => run(async () => {
-        list.textContent = 'Listening for dreams…';
+        list.textContent = 'Looking…';
         const lobbies = await N.list();
         list.textContent = '';
-        if (!lobbies.length) list.textContent = steam ? 'No dreams found. Ask a friend to invite you through Steam.' : 'No dreams found. Host from another tab first.';
+        if (!lobbies.length) list.textContent = steam ? 'Nothing found. Steam\'s test app 480 is shared by thousands of games, so friends\' dreams rarely show up here - use a code.' : 'Nothing found. Host from another tab of this browser first.';
         for (const l of lobbies) {
           list.appendChild(h('div', { class: 'recipe' },
             h('div', {}, h('div', { class: 'rn' }, l.name || 'A dream'), h('div', { class: 'ri muted' }, `${l.members}${l.max ? '/' + l.max : ''} dreaming · seed ${l.data && l.data.seed}`)),
-            h('button', { class: 'btn small primary', onclick: () => run(async () => { list.textContent = 'Joining…'; await N.join(l.id); }) }, 'Join')));
+            h('button', { class: 'btn small', onclick: () => run(async () => { msg.textContent = 'Joining…'; await N.join(l.id); }) }, 'Join')));
         }
       });
-      body.appendChild(h('div', { class: 'row-flex' }, h('button', { class: 'btn small', onclick: refresh }, 'Find dreams')));
-      refresh();
+      body.appendChild(h('details', { class: 'mp-browse' }, h('summary', {}, 'Browse open dreams'), list, h('div', { class: 'row-flex' }, h('button', { class: 'btn small', onclick: refresh }, 'Refresh'))));
+      if (!steam) refresh();
     }
+    body.appendChild(h('details', { class: 'mp-how', open: N.active ? null : true }, h('summary', {}, 'How multiplayer works'),
+      h('ul', {},
+        h('li', {}, 'One player hosts: their universe becomes the shared one. Everyone else joins it with a code.'),
+        h('li', {}, 'Online: every player runs the desktop app (desktop/ folder, npm install then npm start) on their own computer, signed in to their own Steam account, with Steam open. No port forwarding is needed.'),
+        h('li', {}, 'In a browser, sharing only works between tabs of the same browser on one computer - it is for trying things out.'),
+        h('li', {}, 'Shared: the world and every block you break or place, where everyone is, ships, Roamers, fishing lines, chat, pings, the time of day and the host\'s encounters. Creatures are still separate on each machine.'),
+        h('li', {}, 'Nobody can pause a shared dream: menus and the inventory keep the world running.'))));
     const el = h('div', { class: 'dialog interactive', style: { width: 'min(720px, 94vw)' } },
       h('div', { class: 'dh' }, 'Multiplayer'),
       h('div', { class: 'db' }, body),
@@ -691,8 +724,82 @@ export class Menus {
         srv('Restore exosuit', 'Health, shield, hazard protection and life support to full.', 800, () => g.stationService('suit', 800)),
         srv('Record journey', 'Save your progress in the station archive.', 0, () => g.saveGame(true)),
       );
+      // your ship, and the paint shop
+      const sp = g.ship.spec;
+      col.appendChild(h('div', { class: 'section-title' }, `Your ship · ${shipName(sp.seed)} · ${specLabel(sp)}`));
+      col.appendChild(this._shipCompare(sp, null));
+      col.appendChild(h('div', { class: 'muted' }, `Ships for sale are parked in the hangar: walk up to a kiosk. A paint job costs ${fmt(g.shipyard.paintCost())}u.`));
+      const sw = h('div', { class: 'row-flex swatches' });
+      for (const hue of PAINTS) {
+        const bg = hue == null ? 'linear-gradient(135deg, #888, #ddd)' : `hsl(${Math.round(hue * 360)}, 45%, 62%)`;
+        sw.appendChild(h('button', { class: 'swatch' + ((sp.hue ?? null) === hue ? ' on' : ''), title: hue == null ? 'Original livery' : 'Repaint', style: { background: bg }, disabled: inv.units >= g.shipyard.paintCost() ? null : true, onclick: () => { g.shipyard.paint(hue); this.renderStation(); } }));
+      }
+      col.appendChild(sw);
       col.appendChild(h('div', { class: 'lore' }, g.stationChatter()));
     }
+  }
+
+  // ---------------- ship market ----------------
+  _shipCompare(cur, next) {
+    const a = shipStats(cur), b = next ? shipStats(next) : null;
+    const rows = [['Speed', 'speed', 1.7], ['Handling', 'agility', 1.8], ['Shields', 'shield', 2.3], ['Firepower', 'damage', 1.9], ['Hyperdrive', 'jump', 5.5]];
+    const t = h('div', { class: 'ship-stats' });
+    for (const [label, k, max] of rows) {
+      const v = b ? b[k] : a[k];
+      const w = Math.min(100, ((k === 'jump' ? v + 0.5 : v) / max) * 100);
+      let delta = '';
+      if (b) {
+        const d = k === 'jump' ? b[k] - a[k] : Math.round((b[k] / a[k] - 1) * 100);
+        if (d) delta = k === 'jump' ? `${d > 0 ? '+' : ''}${d * 100} ly` : `${d > 0 ? '+' : ''}${d}%`;
+      }
+      t.append(h('span', {}, label), h('div', { class: 'ship-bar' }, h('i', { style: { width: w + '%' } })),
+        h('span', { class: delta.startsWith('+') ? 'good' : delta ? 'bad' : 'muted' }, delta || (k === 'jump' ? `+${v * 100} ly` : `×${v.toFixed(2)}`)));
+    }
+    return t;
+  }
+
+  showShipOffer(i) {
+    const g = this.game, Y = g.shipyard, o = Y.offer(i);
+    if (!o) return;
+    const cur = g.ship.spec;
+    const canBuy = g.inventory.units >= o.cost;
+    const el = h('div', { class: 'dialog interactive', style: { width: 'min(640px, 94vw)' } },
+      h('div', { class: 'dh' }, o.name),
+      h('div', { class: 'db', style: { whiteSpace: 'normal' } },
+        h('div', { class: 'muted' }, o.label),
+        h('div', {}, SHIP_CLASSES[o.spec.cls].desc),
+        h('div', { class: 'section-title' }, `Compared with ${shipName(cur.seed)} (${specLabel(cur)})`),
+        this._shipCompare(cur, o.spec),
+        h('div', { class: 'ship-price' },
+          h('div', {}, `Price ${o.price.toLocaleString()}u`),
+          h('div', { class: 'muted' }, `Trade-in for your ship −${o.credit.toLocaleString()}u`),
+          h('div', { class: 'rn' }, `You pay ${o.cost.toLocaleString()}u`),
+          h('div', { class: 'muted' }, `You have ${fmt(g.inventory.units)}u. Your technology upgrades move to the new ship.`))),
+      h('div', { class: 'dbtns' },
+        h('button', { class: 'btn small center', onclick: () => { g.audio.ui(); this.closeAll(); g.resume(); } }, 'Not now'),
+        h('button', { class: 'btn small center primary', disabled: canBuy ? null : true, onclick: () => { if (Y.buy(i)) { this.closeAll(); g.resume(); } } }, canBuy ? 'Buy this ship' : 'Not enough units')));
+    this._overlay(el);
+    this.open = 'dialog';
+  }
+
+  showWreckOffer(spec, cost, scrap, onClaim) {
+    const g = this.game, inv = g.inventory;
+    const has = inv.has(cost);
+    const el = h('div', { class: 'dialog interactive', style: { width: 'min(640px, 94vw)' } },
+      h('div', { class: 'dh' }, 'Crashed starship'),
+      h('div', { class: 'db', style: { whiteSpace: 'normal' } },
+        h('div', { class: 'rn' }, `${shipName(spec.seed)} · ${specLabel(spec)}`),
+        h('div', {}, `${SHIP_CLASSES[spec.cls].desc} It came down hard, but the frame is sound. With some repairs it would fly again.`),
+        h('div', { class: 'section-title' }, `Compared with ${shipName(g.ship.spec.seed)} (${specLabel(g.ship.spec)})`),
+        this._shipCompare(g.ship.spec, spec),
+        h('div', { class: 'section-title' }, 'Repairs'),
+        this._ingredients(cost),
+        h('div', { class: 'muted' }, `Your current ship is left here and salvaged for ${scrap.toLocaleString()} units. Your technology upgrades move over.`)),
+      h('div', { class: 'dbtns' },
+        h('button', { class: 'btn small center', onclick: () => { g.audio.ui(); this.closeAll(); g.resume(); } }, 'Leave it'),
+        h('button', { class: 'btn small center primary', disabled: has ? null : true, onclick: () => { if (onClaim()) { this.closeAll(); g.resume(); } } }, has ? 'Repair and claim' : 'Missing materials')));
+    this._overlay(el);
+    this.open = 'dialog';
   }
 
   // ---------------- death / ending ----------------

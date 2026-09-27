@@ -6,7 +6,7 @@
 // when you arrive on a planet you ask the host for everything that's been changed there. Chat,
 // pings, waves and the time of day ride along. The host keeps the canonical record of edits for
 // every planet so late arrivals see the same world.
-import { SteamTransport, LocalTransport } from './transport.js';
+import { SteamTransport, LocalTransport, cleanCode } from './transport.js';
 import { RemotePlayers, peerColor } from './avatars.js';
 import { CHUNK } from '../config.js';
 import { BUFFS } from '../data/food.js';
@@ -26,6 +26,8 @@ export class NetSession {
     this.applying = false;
     this.pings = [];
     this.status = '';
+    // In the desktop app, connect to Steam straight away so a friend's "Join Game" is never missed
+    if (SteamTransport.available()) setTimeout(() => this._transport().catch((e) => { this.status = e.message; }), 1200);
   }
 
   get active() { return !!this.role; }
@@ -41,9 +43,40 @@ export class NetSession {
     T.onMessage = (from, m) => this._onMessage(from, m);
     T.onPeerJoined = (id) => { if (this.isHost) this.status = `${this._name(id)} is joining…`; };
     T.onPeerLeft = (id) => this._peerLeft(id);
-    T.onInvite = (lobbyId) => this.join(lobbyId).catch((e) => this.game.hud.notify(e.message));
+    T.onInvite = (lobbyId) => this._invited(lobbyId);
     this.t = T;
+    if (T.pendingInvite) { const id = T.pendingInvite; T.pendingInvite = null; setTimeout(() => this._invited(id), 400); }
     return T;
+  }
+
+  // a Steam "Join Game" (from the friends list, an invite, or the launch that started us)
+  _invited(lobbyId) {
+    const g = this.game;
+    if (this.t && this.t.lobby === String(lobbyId)) return;
+    const go = () => this.join(lobbyId).catch((e) => { g.hud.notify(e.message); g.menus.dialog('Could not join', e.message); });
+    if (!g.state || !g.isPlaying()) { go(); return; }
+    g.input.unlock();
+    g.menus.dialog('Join a friend\'s dream?', 'Your own journey is saved first, and you come back to it when you leave.', [
+      { label: 'Stay here' },
+      { label: 'Join', primary: true, action: go },
+    ]);
+  }
+
+  // the short code friends type to join this dream
+  get code() { return this.t && this.t.lobby ? this.t.code(this.t.lobby) : ''; }
+
+  async joinCode(code) {
+    const T = await this._transport();
+    const id = T.lobbyFromCode(cleanCode(code));
+    if (!id) throw new Error(`"${code}" is not a dream code`);
+    return this.join(id);
+  }
+
+  // Which hangar pad is mine at a station: the host takes the first, the others in join order
+  padIndex() {
+    if (!this.active || !this.t) return 0;
+    const ids = [this.t.owner, ...[this.t.id, ...this.peers.keys()].filter((q) => q !== this.t.owner).sort()];
+    return Math.max(0, ids.indexOf(this.t.id)) % 4;
   }
 
   _name(id) { return (this.peers.get(id) || {}).name || 'A dreamer'; }
@@ -70,14 +103,21 @@ export class NetSession {
   async join(lobbyId) {
     const T = await this._transport();
     if (this.active) this.leave(true);
+    this.status = 'Joining…';
     await T.join(lobbyId);
     this.role = 'guest';
     this.welcomed = false;
-    T.send(T.owner, { k: 'hello', n: T.name }, true);
-    // wait for the host's welcome
+    // say hello until the host answers: over Steam the first packets can take a moment while the
+    // relay connection is set up
+    const hello = () => { if (!this.welcomed && this.role === 'guest') T.send(T.owner, { k: 'hello', n: T.name }, true); };
+    hello();
+    const retry = setInterval(hello, 2500);
     return new Promise((resolve, reject) => {
-      this.onWelcome = resolve;
-      setTimeout(() => { if (!this.welcomed) { this.leave(true); reject(new Error('The host did not answer')); } }, 8000);
+      this.onWelcome = (m) => { clearInterval(retry); this.status = ''; resolve(m); };
+      setTimeout(() => {
+        clearInterval(retry);
+        if (!this.welcomed) { this.leave(true); this.status = ''; reject(new Error('The host did not answer. Check the code, and that the host is still in the game.')); }
+      }, 25000);
     });
   }
 
@@ -110,6 +150,8 @@ export class NetSession {
     const g = this.game, S = g.surface;
     const sys = g.system ? g.system.key : '';
     if (g.mode === 'surface' && S.planet && !S.interior) return { m: 's', s: sys, p: S.planet.id, pi: S.planet.index };
+    // inside a station (or another walkable interior): visible to whoever is in the same one
+    if (g.mode === 'surface' && S.planet && S.interior) return { m: 'i', s: sys, p: S.planet.id, st: S.pocket === 'station' ? 1 : 0 };
     if (g.mode === 'space') return { m: 'x', s: sys, p: null };
     return { m: 'o', s: sys, p: S.planet ? S.planet.id : null };
   }
@@ -136,7 +178,7 @@ export class NetSession {
     const now = performance.now();
     this.markers = [];
     this.remote.update({
-      here: { mode: here.m === 'x' ? 'space' : 'surface', sys: here.s, planet: here.p },
+      here: { mode: here.m === 'x' ? 'space' : here.m === 'i' ? 'interior' : 'surface', sys: here.s, planet: here.p },
       now, dt,
       markers: (pos, name, color) => this.markers.push({ pos, name, color }),
     });
@@ -153,6 +195,8 @@ export class NetSession {
     o.sq = [sh.quat.x, sh.quat.y, sh.quat.z, sh.quat.w].map((v) => +v.toFixed(4));
     o.ss = sh.state === 'landed' ? 0 : 1;
     o.spd = Math.round(sh.speed);
+    const spec = sh.spec;
+    o.shp = [spec.cls, spec.grade, spec.seed, spec.hue == null ? -1 : +spec.hue.toFixed(3)];
     const R = S.rover;
     if (R && R.driving) { o.rv = 1; o.rx = +R.pos.x.toFixed(2); o.ry = +R.pos.y.toFixed(2); o.rz = +R.pos.z.toFixed(2); o.ryw = +R.yaw.toFixed(3); o.rp = +R.pitch.toFixed(3); o.rr = +R.roll.toFixed(3); o.rsp = +R.speed.toFixed(1); o.rl = R.lights ? 1 : 0; }
     const fb = S.fishing && w.m === 's' ? S.fishing.bobberOut : null;
@@ -332,12 +376,13 @@ export class NetSession {
     const g = this.game, peer = this.peers.get(id);
     const L = peer && peer.last;
     if (!L) { g.hud.notify('Not sure where they are yet'); return; }
-    if (L.m !== 's' || L.pi === undefined) { g.hud.notify(`${peer.name} is in space or indoors - try again when they land`); return; }
+    const docked = L.m === 'i' && L.st;
+    if (!docked && (L.m !== 's' || L.pi === undefined)) { g.hud.notify(`${peer.name} is ${L.m === 'x' ? 'flying in space' : 'somewhere you can\'t follow'} - try again when they land or dock`); return; }
     const S = g.surface;
     g.menus.closeAll(true);
     g.fade(0.6, () => {
       const here = this._where();
-      if (here.m === 's' && here.p === L.p) {
+      if ((here.m === 's' || here.m === 'i') && here.p === L.p) {
         const p = g.player.pos;
         const gy = S.world.groundBelow(L.x + 2, L.y + 4, L.z + 2);
         p.set(L.x + 2, gy + 1.02, L.z + 2);
@@ -348,11 +393,12 @@ export class NetSession {
       if (g.mode === 'surface') { S.exportEdits(); S.leave(); } else if (g.mode === 'space') g.space.leave();
       const key = L.s;
       if (g.system.key !== key) {
-        const [gx, gy, gz] = key.split(',').map(Number);
+        const [gx, gy, gz] = key.split(/[:,]/).map(Number);
         g.system = g.universe.getSystem(gx, gy, gz);
         g.state.system = { gx, gy, gz };
       }
-      g.enterSurface(L.pi, { spawn: 'near', near: { x: L.x, y: L.y, z: L.z } });
+      if (docked) g.enterStation();
+      else g.enterSurface(L.pi, { spawn: 'near', near: { x: L.x, y: L.y, z: L.z } });
     }, 0x9fd8ff);
   }
 

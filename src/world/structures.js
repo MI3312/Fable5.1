@@ -19,11 +19,23 @@ export const STRUCTURE_INFO = {
   outpost: { name: 'Abandoned Outpost', icon: '⌂', liminal: false },
   pod: { name: 'Drop Pod', icon: '◈', liminal: false },
   sentinel: { name: 'Sentinel Pillar', icon: '▲', liminal: false },
+  wreck: { name: 'Crashed Starship', icon: '✈', liminal: false },
+  watchtower: { name: 'Ruined Watchtower', icon: '♜', liminal: false },
+  observatory: { name: 'Old Observatory', icon: '◓', liminal: false },
+  bones: { name: 'Giant Bones', icon: '☠', liminal: false },
+  crystal_grove: { name: 'Crystal Grove', icon: '✦', liminal: false },
+  henge: { name: 'Standing Stones', icon: '◯', liminal: false },
+  mining_rig: { name: 'Abandoned Mining Rig', icon: '⛏', liminal: false },
 };
+
+// default palettes; each planet normally brings its own (params.structPalette)
+const DEFAULT_LIMINAL = [['poolrooms', 3], ['backrooms', 3], ['hallway', 2], ['arches', 2], ['stairs', 2], ['watcher', 1], ['plastic_city', 2], ['warehouse', 2]];
+const DEFAULT_NMS = [['monolith', 2], ['outpost', 3], ['pod', 2], ['wreck', 1.2], ['watchtower', 1], ['henge', 0.8], ['observatory', 0.6]];
 
 const SIZES = {
   poolrooms: () => [0, 0], backrooms: () => [25, 25], hallway: () => [0, 0], arches: () => [17, 17],
   stairs: () => [16, 6], watcher: () => [11, 11], plastic_city: () => [34, 34], warehouse: () => [30, 22], monolith: () => [13, 13], outpost: () => [9, 9], pod: () => [5, 5], sentinel: () => [5, 5],
+  wreck: () => [24, 14], watchtower: () => [9, 9], observatory: () => [15, 15], bones: () => [26, 15], crystal_grove: () => [15, 15], henge: () => [17, 17], mining_rig: () => [13, 13],
 };
 
 // Decide which structure (if any) lives in region (rx, rz)
@@ -34,10 +46,11 @@ export function planStructure(seed, params, terrain, rx, rz) {
   const p = Math.min(0.85, st.liminal + st.nms);
   if (rng.next() > p) return null;
   let type;
+  const pal = params.structPalette;
   if (rng.next() < st.liminal / (st.liminal + st.nms)) {
-    type = rng.weighted([['poolrooms', 3], ['backrooms', 3], ['hallway', 2], ['arches', 2], ['stairs', 2], ['watcher', 1], ['plastic_city', 2], ['warehouse', 2]]);
+    type = rng.weighted(pal && pal.liminal.length ? pal.liminal : DEFAULT_LIMINAL);
   } else {
-    const opts = [['monolith', 2], ['outpost', 3], ['pod', 2]];
+    const opts = (pal && pal.nms.length ? pal.nms : DEFAULT_NMS).slice();
     if (params.sentinels > 0) opts.push(['sentinel', 1.2]);
     type = rng.weighted(opts);
   }
@@ -63,7 +76,7 @@ export function planStructure(seed, params, terrain, rx, rz) {
   ground = avg;
   const sea = params.liquid ? params.seaLevel : -99;
   if (ground <= sea + 1) {
-    if (type === 'pod' || type === 'monolith' || type === 'sentinel' || type === 'watcher') return null;
+    if (['pod', 'monolith', 'sentinel', 'watcher', 'wreck', 'bones', 'crystal_grove', 'henge'].includes(type)) return null;
     ground = sea + 2;
   }
   if (ground > 112) return null;
@@ -556,5 +569,247 @@ const STAMPERS = {
       if (dx || dz) ctx.set(cx + dx, F + (H >> 1), cz + dz, B.METAL_PLATE);
     }
     ctx.set(cx, F + H, cz, B.LAMP);
+  },
+
+  // a starship that came down hard: a scorched furrow, the broken hull at the end of it, a wing
+  // torn off and lying on its own, a beacon still calling, and salvage inside
+  wreck(ctx, s, rng) {
+    const { x: X, z: Z, w: W, d: D } = s;
+    const F = s.y;
+    const flip = rng.chance(0.5);
+    const put = (lx, y, lz, id) => ctx.set(X + (flip ? W - 1 - lx : lx), y, Z + lz, id);
+    const L = W, M = D;
+    const cz = M >> 1;
+    // the furrow
+    for (let lx = 0; lx < L - 8; lx++) {
+      const half = 1 + Math.floor(lx / (L - 8) * 2.5);
+      for (let dz = -half; dz <= half; dz++) {
+        put(lx, F - 1, cz + dz, rng.chance(0.55) ? B.ASH : B.GRAVEL);
+        for (let y = F; y < F + 6; y++) put(lx, y, cz + dz, B.AIR);
+      }
+      if (rng.chance(0.18)) put(lx, F, cz + rng.int(-half, half), rng.chance(0.5) ? B.METAL_PLATE : B.GRATE);
+    }
+    // the hull: a hollow, holed shell, nose down in the dirt
+    const hx = L - 6, hy = F + 1;
+    for (let lx = L - 12; lx < L; lx++) for (let lz = cz - 3; lz <= cz + 3; lz++) for (let y = F - 1; y <= F + 4; y++) {
+      const tilt = (lx - hx) * 0.22;
+      const e = ((lx - hx) / 5.5) ** 2 + ((y - hy + tilt) / 2.1) ** 2 + ((lz - cz) / 2.3) ** 2;
+      if (e > 1) continue;
+      if (e > 0.5) { if (rng.chance(0.14)) continue; put(lx, y, lz, rng.chance(0.2) ? B.METAL_PANEL : B.HULL); }
+      else put(lx, y, lz, B.LIT_AIR);
+    }
+    // a gash in the side to climb in through, and the salvage
+    for (let y = F; y <= F + 1; y++) for (let lx = hx - 1; lx <= hx; lx++) put(lx, y, cz + 2, B.LIT_AIR), put(lx, y, cz + 3, B.AIR);
+    put(hx, F, cz, B.CHEST);
+    put(hx + 2, F, cz - 1, B.EMERGENCY);
+    // one wing still on, one lying further back
+    for (let lx = hx - 3; lx <= hx; lx++) for (let lz = cz - 7; lz <= cz - 3; lz++) if (!rng.chance(0.15)) put(lx, F + Math.floor((cz - 3 - lz) * 0.3), lz, B.METAL_PANEL);
+    for (let lx = 4; lx <= 7; lx++) for (let lz = cz + 3; lz <= cz + 6; lz++) if (!rng.chance(0.2)) put(lx, F, lz, B.GRATE);
+    // engines, burnt out
+    for (const dz of [-1, 1]) { put(L - 12, F, cz + dz, B.OBSIDIAN); put(L - 12, F + 1, cz + dz, B.OBSIDIAN); }
+    // the distress beacon, beside the hull, and a lamp on a pole
+    put(hx - 3, F, cz + 3, B.WRECK_BEACON);
+    put(hx - 3, F + 1, cz + 3, B.LAMP);
+  },
+
+  // a stone tower, falling apart from the top down, with a spiral of planks inside
+  watchtower(ctx, s, rng) {
+    const { x: X, z: Z } = s;
+    const F = s.y;
+    const x0 = X + 2, z0 = Z + 2, N = 5;
+    const H = rng.int(12, 16);
+    for (let z = Z; z < Z + 9; z++) for (let x = X; x < X + 9; x++) {
+      foundation(ctx, x, F - 1, z, B.STONE, 8);
+      ctx.set(x, F - 1, z, rng.chance(0.3) ? B.GRAVEL : B.STONE);
+      clearAbove(ctx, x, F, z, H + 2);
+    }
+    const ring = [];
+    for (let i = 1; i < N - 1; i++) ring.push([i, 1]);
+    for (let i = 1; i < N - 1; i++) ring.push([N - 2, i]);
+    for (let i = N - 2; i > 0; i--) ring.push([i, N - 2]);
+    for (let i = N - 2; i > 0; i--) ring.push([1, i]);
+    for (let y = F; y < F + H; y++) {
+      const decay = (y - F) / H;
+      for (let dz = 0; dz < N; dz++) for (let dx = 0; dx < N; dx++) {
+        const wall = dx === 0 || dz === 0 || dx === N - 1 || dz === N - 1;
+        if (!wall) continue;
+        if (rng.chance(decay * decay * 0.8)) continue; // crumbling towards the top
+        const window = (y - F) % 4 === 2 && (dx === 2 || dz === 2);
+        const door = y < F + 2 && dz === 0 && dx === 2;
+        if (window || door) continue;
+        ctx.set(x0 + dx, y, z0 + dz, rng.chance(0.12) ? B.STONE : B.BRICK);
+      }
+      // the stair winds up the inside walls
+      const k = (y - F) % ring.length;
+      const [sx, sz] = ring[k];
+      ctx.set(x0 + sx, y, z0 + sz, B.PLANKS);
+    }
+    // a lookout floor with something left on it
+    for (let dz = 1; dz < N - 1; dz++) for (let dx = 1; dx < N - 1; dx++) if (!(dx === 1 && dz === 1)) ctx.set(x0 + dx, F + H - 3, z0 + dz, B.PLANKS);
+    ctx.set(x0 + 2, F + H - 2, z0 + 2, B.CHEST);
+    ctx.set(x0 + 3, F + H - 2, z0 + 3, B.LAMP);
+    // rubble at the foot
+    for (let i = 0; i < 10; i++) ctx.set(X + rng.int(0, 8), F, Z + rng.int(0, 8), B.BRICK);
+    ctx.set(x0 + 2, F, z0 + 2, B.AIR);
+  },
+
+  // a marble drum under a glass dome, split open where the telescope looks out
+  observatory(ctx, s, rng) {
+    const { x: X, z: Z } = s;
+    const F = s.y;
+    const cx = X + 7, cz = Z + 7, R = 6;
+    const face = rng.int(0, 3);
+    for (let z = Z; z < Z + 15; z++) for (let x = X; x < X + 15; x++) {
+      const d = Math.hypot(x - cx, z - cz);
+      if (d > R + 1.2) continue;
+      foundation(ctx, x, F - 1, z, B.MARBLE, 10);
+      ctx.set(x, F - 1, z, d > R + 0.3 ? B.CONCRETE : ((x + z) & 1) ? B.MARBLE : B.CHECKER);
+      clearAbove(ctx, x, F, z, R + 4);
+      if (d > R - 0.5 && d <= R + 0.5) {
+        const door = Math.abs(x - cx) <= 1 && z > cz;
+        for (let y = F; y < F + 2; y++) if (!door) ctx.set(x, y, z, B.CONCRETE);
+      }
+    }
+    // dome
+    for (let z = Z; z < Z + 15; z++) for (let x = X; x < X + 15; x++) for (let y = F + 2; y <= F + 2 + R; y++) {
+      const d = Math.hypot(x - cx, (y - F - 2) * 1.05, z - cz);
+      if (d > R + 0.5 || d < R - 0.5) continue;
+      const slit = face % 2 === 0 ? Math.abs(x - cx) <= 1 && (face === 0 ? z < cz : z > cz) : Math.abs(z - cz) <= 1 && (face === 1 ? x < cx : x > cx);
+      if (slit && y > F + 3) continue;
+      ctx.set(x, y, z, (y - F) % 3 === 0 ? B.METAL_PANEL : B.GLASS);
+    }
+    // the telescope: a pier and a tube angled out through the slit
+    for (let y = F; y < F + 3; y++) ctx.set(cx, y, cz, B.METAL_PANEL);
+    const dir = [[0, -1], [-1, 0], [0, 1], [1, 0]][face];
+    for (let k = 0; k < 6; k++) ctx.set(cx + dir[0] * k, F + 3 + k, cz + dir[1] * k, B.METAL_PLATE);
+    ctx.set(cx + dir[0] * 6, F + 9, cz + dir[1] * 6, B.GLASS);
+    ctx.set(cx + 2, F, cz + 2, B.TERMINAL);
+    ctx.set(cx - 2, F, cz + 2, B.LAMP);
+    ctx.set(cx - 2, F, cz - 2, B.BOOKSHELF);
+  },
+
+  // a ribcage the size of a house, half sunk in the ground, and the skull at the end of it
+  bones(ctx, s, rng) {
+    const { x: X, z: Z, w: W, d: D } = s;
+    const F = s.y - 1; // half buried
+    const cz = Z + (D >> 1);
+    const tail = X + 1, head = X + W - 6;
+    for (let x = tail; x < head; x++) {
+      const y = F + Math.round(Math.sin((x - tail) / (head - tail) * Math.PI) * 1.5);
+      ctx.set(x, y, cz, B.MARBLE);
+      if ((x - tail) % 3 === 1) ctx.set(x, y + 1, cz, B.MARBLE);
+      // ribs arch over the spine
+      if ((x - tail) % 3 === 0 && x > tail + 2 && x < head - 1) {
+        const R = 3 + Math.round(Math.sin((x - tail) / (head - tail) * Math.PI) * 3);
+        const broken = rng.chance(0.3) ? rng.next() : 2;
+        for (let a = 0; a <= Math.PI; a += 0.12) {
+          if (a / Math.PI > broken) break;
+          const zz = cz + Math.round(Math.cos(a) * R), yy = y + Math.round(Math.sin(a) * R * 0.95);
+          ctx.set(x, yy, zz, B.MARBLE);
+        }
+      }
+    }
+    // the skull: a hollow block with two dark sockets and a long jaw
+    const sx = head, sy = F, sz = cz - 2;
+    for (let dx = 0; dx < 5; dx++) for (let dy = 0; dy < 4; dy++) for (let dz = 0; dz < 5; dz++) {
+      const shell = dx === 0 || dx === 4 || dy === 0 || dy === 3 || dz === 0 || dz === 4;
+      ctx.set(sx + dx, sy + dy, sz + dz, shell ? B.MARBLE : B.AIR);
+    }
+    ctx.set(sx + 4, sy + 2, sz + 1, B.ONYX); ctx.set(sx + 4, sy + 2, sz + 3, B.ONYX);
+    for (let dx = 5; dx < 8; dx++) for (let dz = 1; dz < 4; dz++) ctx.set(sx + dx, sy, sz + dz, B.MARBLE);
+    ctx.set(sx + 2, sy + 1, sz + 2, B.CHEST);
+    ctx.set(sx + 4, sy + 1, sz + 2, B.AIR);
+  },
+
+  // spires of crystal, some leaning, over a floor of ore
+  crystal_grove(ctx, s, rng) {
+    const { x: X, z: Z } = s;
+    const F = s.y;
+    const cx = X + 7, cz = Z + 7;
+    const ores = [B.COBALT_ORE, B.COPPER_ORE, B.GOLD_ORE, B.FERRITE_ORE].filter((q) => q != null);
+    for (let z = Z; z < Z + 15; z++) for (let x = X; x < X + 15; x++) {
+      const d = Math.hypot(x - cx, z - cz);
+      if (d > 7) continue;
+      if (rng.chance(0.35 * (1 - d / 8))) ctx.set(x, F - 1, z, rng.pick(ores));
+    }
+    const n = rng.int(7, 12);
+    for (let i = 0; i < n; i++) {
+      const a = rng.next() * Math.PI * 2, r = rng.next() * 5.5;
+      let x = cx + Math.round(Math.cos(a) * r), z = cz + Math.round(Math.sin(a) * r);
+      const h = rng.int(3, i === 0 ? 11 : 8);
+      const lx = rng.range(-0.3, 0.3), lz = rng.range(-0.3, 0.3);
+      const thick = i < 2;
+      for (let k = 0; k < h; k++) {
+        const px = x + Math.round(lx * k), pz = z + Math.round(lz * k);
+        ctx.set(px, F + k, pz, B.CRYSTAL);
+        if (thick && k < h - 2) { ctx.set(px + 1, F + k, pz, B.CRYSTAL); ctx.set(px, F + k, pz + 1, B.CRYSTAL); }
+      }
+    }
+  },
+
+  // a ring of standing stones, some still capped, around an altar
+  henge(ctx, s, rng) {
+    const { x: X, z: Z } = s;
+    const F = s.y;
+    const cx = X + 8, cz = Z + 8, R = 6.5;
+    for (let z = Z; z < Z + 17; z++) for (let x = X; x < X + 17; x++) {
+      const d = Math.hypot(x - cx, z - cz);
+      if (d > R + 1.5) continue;
+      if (d < R - 1) { ctx.set(x, F - 1, z, B.GRAVEL); clearAbove(ctx, x, F, z, 7); }
+    }
+    const n = rng.int(8, 11);
+    const stone = rng.chance(0.5) ? B.STONE : B.OBSIDIAN;
+    const tops = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const x = cx + Math.round(Math.cos(a) * R), z = cz + Math.round(Math.sin(a) * R);
+      if (rng.chance(0.12)) { ctx.set(x, F, z, stone); continue; } // fallen
+      const h = rng.int(3, 5);
+      foundation(ctx, x, F - 1, z, stone, 6);
+      for (let y = F; y < F + h; y++) ctx.set(x, y, z, stone);
+      tops.push([x, z, F + h]);
+    }
+    for (let i = 0; i + 1 < tops.length; i += 2) {
+      const [x1, z1, y1] = tops[i], [x2, z2, y2] = tops[i + 1];
+      if (Math.hypot(x2 - x1, z2 - z1) > 5 || !rng.chance(0.6)) continue;
+      const y = Math.min(y1, y2);
+      const steps = Math.max(Math.abs(x2 - x1), Math.abs(z2 - z1));
+      for (let k = 0; k <= steps; k++) ctx.set(Math.round(x1 + (x2 - x1) * k / steps), y, Math.round(z1 + (z2 - z1) * k / steps), stone);
+    }
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) ctx.set(cx + dx, F, cz + dz, B.MARBLE);
+    ctx.set(cx, F + 1, cz, B.CHEST);
+    ctx.set(cx + 1, F + 1, cz + 1, B.LAMP);
+  },
+
+  // a lattice tower over a pit, the drill still hanging in it
+  mining_rig(ctx, s, rng) {
+    const { x: X, z: Z } = s;
+    const F = s.y;
+    const x0 = X + 4, z0 = Z + 4, N = 5, H = rng.int(10, 14);
+    const cx = x0 + 2, cz = z0 + 2;
+    for (let z = Z; z < Z + 13; z++) for (let x = X; x < X + 13; x++) {
+      foundation(ctx, x, F - 1, z, B.STONE, 8);
+      ctx.set(x, F - 1, z, rng.chance(0.5) ? B.GRAVEL : B.CONCRETE);
+      clearAbove(ctx, x, F, z, H + 3);
+    }
+    // the pit, ore in its walls
+    const ores = [B.COPPER_ORE, B.FERRITE_ORE, B.GOLD_ORE, B.URANIUM_ORE].filter((q) => q != null);
+    for (let y = F - 7; y < F; y++) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) ctx.set(cx + dx, y, cz + dz, B.AIR);
+    for (let y = F - 7; y < F; y++) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== 2) continue;
+      if (rng.chance(0.3)) ctx.set(cx + dx, y, cz + dz, rng.pick(ores));
+    }
+    // the frame
+    for (let y = F; y < F + H; y++) for (const [dx, dz] of [[0, 0], [N - 1, 0], [0, N - 1], [N - 1, N - 1]]) ctx.set(x0 + dx, y, z0 + dz, B.METAL_PANEL);
+    for (const py of [F + 4, F + 8, F + H - 1]) for (let dz = 0; dz < N; dz++) for (let dx = 0; dx < N; dx++) {
+      if (py < F + H - 1 && dx > 0 && dx < N - 1 && dz > 0 && dz < N - 1) continue; // walkways round the edge
+      ctx.set(x0 + dx, py, z0 + dz, B.GRATE);
+    }
+    for (let y = F - 5; y < F + H - 1; y++) ctx.set(cx, y, cz, B.METAL_PLATE); // the drill string
+    // a crane arm and lights
+    for (let k = 1; k < 5; k++) ctx.set(x0 + N - 1 + k, F + H - 1, z0 + 2, B.METAL_PANEL);
+    for (const [dx, dz] of [[0, 0], [N - 1, N - 1]]) ctx.set(x0 + dx, F + H, z0 + dz, B.EMERGENCY);
+    ctx.set(x0 + 1, F + 5, z0 + 1, B.CHEST);
+    ctx.set(X + 1, F, Z + 11, B.PLANKS); ctx.set(X + 2, F, Z + 11, B.PLANKS); ctx.set(X + 1, F + 1, Z + 11, B.PLANKS);
   },
 };

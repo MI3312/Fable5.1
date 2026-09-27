@@ -20,6 +20,14 @@ let steamError = null;
 let lobby = null;       // current matchmaking.Lobby
 let win = null;
 const members = new Set();
+// A friend's "Join Game" can arrive before the page has asked for Steam (or be how Steam launched
+// us: +connect_lobby <id>). Hold it until the page initialises the bridge.
+let pageReady = false;
+let pendingInvite = null;
+{
+  const i = process.argv.indexOf('+connect_lobby');
+  if (i >= 0 && process.argv[i + 1]) pendingInvite = String(process.argv[i + 1]);
+}
 
 // ---------------------------------------------------------------- GPU
 // Laptops with two GPUs give an unknown program like electron.exe the power-saving integrated one,
@@ -87,7 +95,11 @@ function initSteam() {
       send('net:lobby', { type: 'member', id, joined, owner });
     });
     // "Join game" from a friend's invite or the friends list
-    steam.callback.register(SC.GameLobbyJoinRequested, (v) => send('net:lobby', { type: 'invite', lobbyId: String(v.lobby_steam_id) }));
+    steam.callback.register(SC.GameLobbyJoinRequested, (v) => {
+      const id = String(v.lobby_steam_id);
+      if (pageReady) send('net:lobby', { type: 'invite', lobbyId: id });
+      else pendingInvite = id;
+    });
     return true;
   } catch (e) {
     steamError = String(e && e.message ? e.message : e);
@@ -143,7 +155,10 @@ function adoptLobby(l) {
 ipcMain.handle('net:init', () => {
   if (!steam && !initSteam()) return { ok: false, error: steamError || 'Steam is not running' };
   const id = steam.localplayer.getSteamId();
-  return { ok: true, steamId: String(id.steamId64), name: steam.localplayer.getName(), appId: STEAM_APP_ID, overlay: OVERLAY };
+  pageReady = true;
+  const invite = pendingInvite;
+  pendingInvite = null;
+  return { ok: true, steamId: String(id.steamId64), name: steam.localplayer.getName(), appId: STEAM_APP_ID, overlay: OVERLAY, pendingInvite: invite };
 });
 
 ipcMain.handle('net:createLobby', async (_e, type, max) => {
@@ -221,6 +236,7 @@ function createWindow() {
   const page = gamePage();
   if (page) win.loadFile(page);
   else win.loadURL('data:text/html,<body style="background:#111;color:#eee;font:16px sans-serif;padding:40px">The game has not been built yet. In the <code>desktop</code> folder run <code>npm run start:fresh</code>, or in the project root run <code>npm install</code> then <code>npm run build</code>.</body>');
+  win.webContents.on('did-start-loading', () => { pageReady = false; });
   win.on('closed', () => { win = null; });
 }
 
