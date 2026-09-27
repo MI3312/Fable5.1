@@ -187,6 +187,13 @@ export class PostFX {
       tMask: { value: null },
       uHasMask: { value: 0 },
       uFilmic: { value: 1 },
+      tDepth: { value: null },
+      uNear: { value: 0.1 },
+      uFar: { value: 1000 },
+      uDof: { value: 0 },
+      uFocus: { value: 12 },
+      uAperture: { value: 0 },
+      uFilter: { value: 0 },
     };
     this.quality = 2;
     this.levels = [];
@@ -199,7 +206,10 @@ export class PostFX {
         uniform sampler2D tDiffuse;
         uniform float uTime, uVignette, uCA, uGrain, uSat, uFade, uDamage, uWarp, uUnderwater, uDream, uHazard, uVisor, uPixel;
         uniform float uDread, uPulse, uGlitch, uFlash, uRays, uBloom, uHasMask, uFilmic;
-        uniform sampler2D tBloom, tMask;
+        uniform sampler2D tBloom, tMask, tDepth;
+        uniform float uNear, uFar, uDof, uFocus, uAperture, uFilter;
+        float linDepth(vec2 p) { float z = texture2D(tDepth, p).x * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
+        float coc(float d) { return clamp(abs(d - uFocus) / max(d, 0.01) * uAperture, 0.0, 1.0); }
         uniform vec2 uSunPos;
         uniform vec3 uRayCol;
         uniform vec2 uRes;
@@ -232,6 +242,27 @@ export class PostFX {
           float r = length(c);
           float ca = uCA * (1.0 + r * 2.0) + uWarp * 0.02 + uDamage * 0.01 + uDread * 0.0025 * r + uGlitch * 0.012;
           vec3 col = sampleCA(uv, ca);
+          // depth of field: golden-angle disc gather sized by the circle of confusion
+          if (uDof > 0.5) {
+            float d0 = linDepth(uv);
+            float c0 = coc(d0);
+            vec3 acc = col; float wsum = 1.0;
+            vec2 aspect = vec2(uRes.y / uRes.x, 1.0);
+            for (int i = 0; i < 32; i++) {
+              float fi = float(i) + 0.5;
+              float rr = sqrt(fi / 32.0);
+              float an = fi * 2.39996323;
+              vec2 o = vec2(cos(an), sin(an)) * rr * 0.022 * aspect;
+              float ds = linDepth(uv + o * max(c0, 0.001));
+              float cs = coc(ds);
+              // nearer out-of-focus samples bleed over sharp backgrounds; far ones don't smear forward
+              float w = ds < d0 ? cs : min(cs, c0);
+              w = smoothstep(rr - 0.1, rr + 0.1, w) + 0.001;
+              acc += texture2D(tDiffuse, uv + o * max(max(c0, cs), 0.001)).rgb * w;
+              wsum += w;
+            }
+            col = acc / wsum;
+          }
           if (uWarp > 0.0) {
             vec3 acc = col;
             for (int i = 1; i < 10; i++) {
@@ -264,6 +295,17 @@ export class PostFX {
           if (uFilmic > 0.0) {
             vec3 x = max(col - 0.72, 0.0);
             col = min(col, vec3(0.72)) + x / (1.0 + x * 1.15);
+          }
+          // photo filters
+          if (uFilter > 0.5) {
+            float lf = dot(col, vec3(0.299, 0.587, 0.114));
+            int F = int(uFilter + 0.5);
+            if (F == 1) col = vec3(smoothstep(0.05, 0.95, lf));
+            else if (F == 2) { col = mix(vec3(lf), col, 1.55); col = (col - 0.5) * 1.12 + 0.5; }
+            else if (F == 3) { col = mix(vec3(lf), col, 0.7) * vec3(1.04, 0.96, 1.08) + vec3(0.06, 0.03, 0.08); }
+            else if (F == 4) { col = mix(col * vec3(0.85, 1.0, 1.08), col * vec3(1.12, 1.0, 0.82), smoothstep(0.2, 0.8, lf)); col = (col - 0.5) * 1.08 + 0.5; }
+            else if (F == 5) { col = vec3(col.g * 0.9 + 0.1, col.b * 0.8 + col.r * 0.3, col.r); col = mix(vec3(lf), col, 1.3); }
+            else if (F == 6) col = vec3(lf) * vec3(1.1, 0.92, 0.72) + vec3(0.04, 0.02, 0.0);
           }
           // grading: dread drains the colour out of the world
           float l = dot(col, vec3(0.299, 0.587, 0.114));
@@ -373,6 +415,7 @@ export class PostFX {
     for (let i = 0; i < 6 && bw > 2 && bh > 2; i++) { this.levels.push(this._target(bw, bh)); bw = Math.ceil(bw / 2); bh = Math.ceil(bh / 2); }
     this.uniforms.tBloom.value = this.levels[0]?.texture || null;
     this.uniforms.tMask.value = this.aoA.texture;
+    this.uniforms.tDepth.value = this.rt.depthTexture;
   }
 
   _pass(fs, target) {
@@ -430,6 +473,7 @@ export class PostFX {
     let i = 0;
     for (; i < passes.length && !passes[i].clearDepth; i++) r.render(passes[i].scene, passes[i].camera);
     const useAO = q >= 1 && opts.ao !== false && passes[0] && passes[0].camera.isPerspectiveCamera;
+    if (passes[0]) { this.uniforms.uNear.value = passes[0].camera.near; this.uniforms.uFar.value = passes[0].camera.far; }
     if (useAO) this._ambientOcclusion(passes[0].camera);
     this.uniforms.uHasMask.value = useAO ? 1 : 0;
     r.setRenderTarget(this.rt);

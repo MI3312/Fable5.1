@@ -284,3 +284,9 @@ button { font-family: var(--font); }
 @keyframes hudShake { 0% { transform: translate(0, 0) skewX(0); } 33% { transform: translate(-3px, 1px) skewX(8deg); } 66% { transform: translate(2px, -2px) skewX(-5deg); } }
 .fake-crash { position: absolute; inset: 0; background: #000; z-index: 50; padding: 36px 44px; pointer-events: auto; cursor: none; }
 .fake-crash pre { font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.45; color: #cfcfcf; white-space: pre-wrap; margin: 0; }
+
+/* photo mode */
+.photo-ui { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 60; text-align: center; pointer-events: none; color: #f4eefc; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); font-family: var(--font-ui, sans-serif); }
+.photo-ui .pt { font-size: 13px; letter-spacing: 0.4em; color: var(--dream, #ffb6ec); }
+.photo-ui .pv { font-size: 15px; margin: 4px 0; }
+.photo-ui .ph { font-size: 12px; opacity: 0.75; line-height: 1.5; }

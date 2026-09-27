@@ -222,7 +222,7 @@ export class Menus {
       ['Q', 'Cycle multi-tool mode (Mining / Builder / Boltcaster)'], ['1–9 · Wheel', 'Select hotbar block'],
       ['F', 'Scanner pulse (resources, points of interest)'], ['V', 'Analysis visor (hold LMB on creatures/flora to discover)'],
       ['E', 'Interact · board / exit ship · land · dock'], ['R', 'Quick recharge life support & hazard protection'],
-      ['T', 'Toggle headlamp'], ['G', 'Summon the Roamer exocraft (once installed)'], ['L', 'Roamer headlights'], ['Tab / I', 'Inventory, fabrication, alchemy, tech'], ['M', 'Galaxy map'], ['Esc', 'Pause menu'],
+      ['T', 'Toggle headlamp'], ['G', 'Summon the Roamer exocraft (once installed)'], ['L', 'Roamer headlights'], ['P', 'Photo mode'], ['Tab / I', 'Inventory, fabrication, alchemy, tech'], ['M', 'Galaxy map'], ['Esc', 'Pause menu'],
       ['F2', 'Hide HUD (photo mode)'],
     ];
     const el = h('div', { class: 'dialog interactive', style: { width: 'min(720px, 94vw)' } },

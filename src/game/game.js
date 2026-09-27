@@ -21,6 +21,7 @@ import { Ship } from '../entities/ship.js';
 import { Player } from '../entities/player.js';
 import { Missions } from './missions.js';
 import { Bases } from './bases.js';
+import { PhotoMode } from './photomode.js';
 import { Corruption } from './corruption.js';
 import { SurfaceMode } from './surfaceMode.js';
 import { SpaceMode } from './spaceMode.js';
@@ -60,6 +61,7 @@ export class Game {
     this.corruption = new Corruption(this);
     this.missions = new Missions(this);
     this.bases = new Bases(this);
+    this.photo = new PhotoMode(this);
     this.surface = new SurfaceMode(this);
     this.space = new SpaceMode(this);
 
@@ -827,6 +829,10 @@ export class Game {
         else if (!this.menus.anyOpen()) { this.input.unlock(); this.galaxy.open(); this.audio.ui(); }
       }
       if (input.rawHit('F2')) { this.hudHidden = !this.hudHidden; this.hud.show(!this.hudHidden); }
+      if (input.rawHit('KeyP') && !this.photo.active && this.mode === 'surface' && !this.menus.anyOpen() && !this.galaxy.isOpen() && !this.chatOpen && !this.crashing) {
+        this.photo.enter();
+        input.pressed.delete('KeyP');
+      }
       // chat: somebody might answer
       if ((input.rawHit('Enter') || input.rawHit('Slash')) && this.mode === 'surface' && !this.menus.anyOpen() && !this.galaxy.isOpen() && !this.chatOpen && !this.crashing) {
         this.chatOpen = true;
@@ -853,6 +859,9 @@ export class Game {
       this.space.updateTitle(dt);
     } else if (this.mode === 'loading') {
       this.surface.updateLoading(dt);
+    } else if (this.mode === 'surface' && this.photo.active) {
+      this.photo.update(dt);
+      this.surface.photoFrame(dt);
     } else if (this.mode === 'surface') {
       this.state.playTime += paused ? 0 : dt;
       this.surface.update(paused ? 0 : dt, paused);

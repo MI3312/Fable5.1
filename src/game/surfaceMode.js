@@ -921,6 +921,19 @@ export class SurfaceMode {
     this.game.audio.setLoop('wind', this.stormK > 0.05, this.stormK);
   }
 
+  // photo mode: the world holds still, but the sky, light and streaming keep up with the camera
+  photoFrame(dt) {
+    const g = this.game, cam = g.camera;
+    this._applySky(0.0001);
+    this.world.update(cam.position.x, cam.position.z, 5);
+    this.sky.update(cam);
+    this.clouds.update(cam);
+    voxelUniforms.uTime.value = g.time;
+    voxelUniforms.uTorchOn.value = 0;
+    this._updatePointLights(0);
+    this.beam.hide();
+  }
+
   // ---------------- main update ----------------
   // sun shadow map, rendered just before the frame
   preRender() {
