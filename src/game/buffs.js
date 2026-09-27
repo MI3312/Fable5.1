@@ -60,6 +60,19 @@ export class Buffs {
     return true;
   }
 
+  // H: eat the most useful thing you're carrying. Hurt: the best heal. Healthy: a buff you don't have.
+  quickEat() {
+    const g = this.game, inv = g.inventory, st = g.player.stats;
+    const have = Object.keys(ITEMS).filter((id) => this.verb(id) && inv.count(id) > 0);
+    if (!have.length) { g.hud.notify('Nothing to eat - fish, or cook something'); return false; }
+    const heal = (id) => (FOOD[id] ? FOOD[id].heal || 0 : 8);
+    let pick = null;
+    if (st.health < 90) pick = have.slice().sort((a, b) => heal(b) - heal(a))[0];
+    else pick = have.find((id) => FOOD[id] && FOOD[id].buff && !this.has(FOOD[id].buff[0]));
+    if (!pick) { g.hud.notify('Not hungry'); return false; }
+    return this.eat(pick);
+  }
+
   hide() { if (this.el) this.el.style.display = 'none'; }
 
   update(dt) {

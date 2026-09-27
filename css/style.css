@@ -159,7 +159,7 @@ button { font-family: var(--font); }
 .visor-frame::before { content: 'ANALYSIS VISOR'; position: absolute; top: -9px; left: 20px; background: rgba(0, 0, 0, 0.5); padding: 0 8px; font-size: 11px; letter-spacing: 0.3em; color: var(--accent2); }
 
 .center-msg { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); font-size: 16px; letter-spacing: 0.1em; color: var(--warn); text-shadow: 0 0 6px #000; text-align: center; }
-.help-hint { position: absolute; right: 22px; bottom: 18px; font-size: 12px; color: var(--muted); letter-spacing: 0.08em; text-align: right; line-height: 1.5; text-shadow: 0 0 4px #000; }
+.help-hint { position: absolute; right: 22px; bottom: 18px; font-size: 12px; color: var(--muted); letter-spacing: 0.08em; text-align: right; line-height: 1.5; text-shadow: 0 0 4px #000; white-space: pre-line; max-width: 380px; }
 
 /* ---------------- Panels / Menus ---------------- */
 .overlay { position: absolute; inset: 0; background: rgba(4, 3, 10, 0.72); backdrop-filter: blur(6px); pointer-events: auto; display: flex; align-items: center; justify-content: center; }
@@ -325,3 +325,29 @@ button { font-family: var(--font); }
 .dialog.cooking .recipes { display: flex; flex-direction: column; gap: 6px; }
 .dialog.cooking .recipe > .row-flex:first-child { align-items: center; }
 .dialog.cooking .recipe .slot { flex: none; }
+
+/* movement kit and combat feedback */
+.moves-ui { position: absolute; left: 50%; top: calc(50% + 26px); transform: translateX(-50%); display: flex; gap: 10px; align-items: center; pointer-events: none; opacity: 0.85; }
+.moves-ui .mv-dash { display: flex; gap: 3px; }
+.moves-ui .mv-dash i { width: 16px; height: 3px; background: linear-gradient(90deg, #aef6ff calc(var(--f) * 100%), rgba(255, 255, 255, 0.18) calc(var(--f) * 100%)); display: block; }
+.moves-ui .mv-gren { display: flex; gap: 3px; }
+.moves-ui .mv-gren b { width: 6px; height: 6px; border-radius: 50%; border: 1px solid #ffb070; display: block; }
+.moves-ui .mv-gren b.on { background: #ffb070; box-shadow: 0 0 6px #ff9040; }
+.dmg-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.dmg { position: absolute; left: 0; top: 0; font-weight: 800; font-size: 17px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.5); white-space: nowrap; will-change: transform; }
+.dmg.big { font-size: 22px; }
+.dmg.kill { font-size: 22px; }
+.dmg.glance { font-size: 14px; font-weight: 600; }
+.dmg.word { font-size: 14px; letter-spacing: 0.25em; }
+.hitmark { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%) rotate(45deg); pointer-events: none; opacity: 0; transition: opacity 0.05s; }
+.hitmark::before, .hitmark::after { content: ''; position: absolute; background: #fff; box-shadow: 0 0 3px rgba(0, 0, 0, 0.8); }
+.hitmark::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); clip-path: polygon(0 0, 100% 0, 100% 30%, 0 30%, 0 70%, 100% 70%, 100% 100%, 0 100%); }
+.hitmark::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); clip-path: polygon(0 0, 30% 0, 30% 100%, 0 100%, 0 0, 70% 0, 100% 0, 100% 100%, 70% 100%); }
+.hitmark.kill::before, .hitmark.kill::after { background: #ff6a5a; }
+
+/* encounters */
+.encounter { position: absolute; left: 50%; top: 58px; transform: translateX(-50%); min-width: 250px; padding: 6px 14px 8px; background: rgba(10, 8, 18, 0.58); border: 1px solid #ffb35a; border-width: 0 0 0 3px; color: #f2eefa; text-align: left; pointer-events: none; }
+.encounter .enc-title { font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; font-size: 13px; }
+.encounter .enc-detail { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+.encounter .enc-bar { height: 3px; background: rgba(255, 255, 255, 0.14); margin-top: 5px; }
+.encounter .enc-bar i { display: block; height: 100%; width: 100%; background: currentColor; color: #fff; background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.5)); }

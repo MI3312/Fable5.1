@@ -18,6 +18,10 @@ import { VolumetricClouds } from '../surface/volclouds.js';
 import { Exocraft } from './exocraft.js';
 import { SkyEvents } from '../surface/skyevents.js';
 import { Fishing } from './fishing.js';
+import { Moves } from './moves.js';
+import { Grenades } from './grenades.js';
+import { Encounters } from './encounters.js';
+import { DamageNumbers } from '../ui/damageNumbers.js';
 import { CROPS, BASE_RADIUS } from './bases.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
@@ -98,6 +102,9 @@ export class SurfaceMode {
     this.rover = new Exocraft(this);
     this.skyEvents = new SkyEvents(this);
     this.fishing = new Fishing(this);
+    this.moves = new Moves(this);
+    this.grenades = new Grenades(this);
+    this.encounters = new Encounters(this);
     this.cloudIn = 0;
     // what creatures can do to the world and to you
     this.cfx = {
@@ -656,6 +663,10 @@ export class SurfaceMode {
     this.rover.clear();
     this.skyEvents.clear();
     this.fishing.cancel();
+    this.moves.reset();
+    this.grenades.clear();
+    this.encounters.clear();
+    if (this.dmg) this.dmg.clear();
     this._clearNPCs();
     this.world.clear();
     this.creatures.clear();
@@ -1006,6 +1017,7 @@ export class SurfaceMode {
     // ------- ship or foot -------
     let focus;
     if (g.inShip) {
+      this.moves.off(dt);
       this._updateShip(dt, ctl);
       focus = ship.pos;
       player.pos.copy(ship.pos);
@@ -1015,10 +1027,12 @@ export class SurfaceMode {
       this.teleport.t += dt;
       if (this.world.loadedAround(focus.x, focus.z, 1) >= 1 || this.teleport.t > 15) this._finishTeleport();
     } else if (this.riding.active) {
+      this.moves.off(dt);
       this.riding.update(dt, ctl);
       focus = player.pos;
       this._updateTool(dt, ctl);
     } else if (this.rover.driving) {
+      this.moves.off(dt);
       this.rover.update(dt, ctl);
       focus = this.rover.pos;
       this.tool.visible = false;
@@ -1027,7 +1041,9 @@ export class SurfaceMode {
       if (input.hit('KeyE')) this.rover.exit();
     } else {
       const grav = this.P.gravity;
+      this.moves.pre(dt, ctl);
       const ev = player.update(dt, input, this.world, grav, ctl);
+      if (this.moves.post(dt, ev)) ev.landed = 0;
       this._footEvents(ev);
       focus = player.pos;
       this._updateTool(dt, ctl);
@@ -1042,6 +1058,8 @@ export class SurfaceMode {
       else g.hud.notify('Install the Roamer Geobay (Tech) to summon an exocraft');
     }
     this.world.update(focus.x, focus.z, 5);
+    this.grenades.update(dt);
+    this.encounters.update(dt);
     this._updateCamera(dt);
     this._updatePointLights(dt);
     // crashed ship smoke
@@ -1189,6 +1207,17 @@ export class SurfaceMode {
       const p = this.game.player.pos;
       voxelUniforms.uPL.value[this.glowSlot].set(p.x, p.y + 1.3, p.z);
     }
+    // an explosion's flare borrows the next free light for a moment
+    if (this.flash) {
+      const F = this.flash, i = this.glowSlot === 0 ? 1 : 0;
+      F.t -= dt;
+      const k = Math.max(0, F.t / F.dur) * 2.2;
+      voxelUniforms.uPL.value[i].copy(F.pos);
+      voxelUniforms.uPLCol.value[i].setRGB(F.color[0] * k, F.color[1] * k, F.color[2] * k);
+      voxelUniforms.uPLStrength.value = Math.max(voxelUniforms.uPLStrength.value, 1);
+      if (F.t <= 0) { this.flash = null; this.plTimer = 0; }
+      else return;
+    }
     this.plTimer = (this.plTimer || 0) - dt;
     if (this.plTimer > 0) return;
     this.plTimer = 0.2;
@@ -1233,7 +1262,7 @@ export class SurfaceMode {
     }
     if (ev.landed) {
       g.audio.land();
-      if (ev.landed > 20) this._hurtPlayer((ev.landed - 20) * 2.5);
+      if (ev.landed > 20) this._hurtPlayer((ev.landed - 20) * 2.5, 'fall');
     }
     if (ev.splash) g.audio.splash();
     g.audio.setLoop('jetpack', ev.jetting);
@@ -1256,6 +1285,8 @@ export class SurfaceMode {
       g.player.applyCamera(g.camera);
       this.tool.visible = !this.visor;
     }
+    const fov = g.settings.fov + (g.inShip || this.rover.driving ? 0 : this.moves.fov);
+    if (Math.abs(g.camera.fov - fov) > 0.01) { g.camera.fov = fov; g.camera.updateProjectionMatrix(); }
     g.camera.updateMatrixWorld();
     const lf = this.pocket === 'station' ? 1 : this.interior ? 0.35 : 0.3 + 0.7 * (this.daylight ?? 1);
     this.viewScene.children[1].intensity = 0.6 * Math.PI * lf;
@@ -1586,6 +1617,7 @@ export class SurfaceMode {
     if (input.hit('KeyT')) { this.torch = !this.torch; g.audio.ui(); }
     if (input.hit('KeyF')) this._scan();
     if (input.hit('KeyR')) this._quickRecharge();
+    if (input.hit('KeyH')) g.buffs.quickEat();
     g.post.uniforms.uVisor.value += ((this.visor ? 1 : 0) - g.post.uniforms.uVisor.value) * Math.min(1, dt * 8);
     hud.setVisor(this.visor);
 
@@ -1627,7 +1659,7 @@ export class SurfaceMode {
       // heat
       if (lmb && !this.overheated) {
         beamOn = true;
-        this.heat += dt / 7;
+        if (!this.encounters.overcharge) this.heat += dt / 7;
         if (this.heat >= 1) { this.overheated = true; g.hud.notify('Mining beam overheated'); g.audio.tone(300, 0.4, 'square', 0.06, 0.5); }
         const end = target ? origin.clone().addScaledVector(dir, target.dist) : origin.clone().addScaledVector(dir, range);
         this.beam.show(muzzle, end, TOOL_COLORS[0], g.time, 0.03);
@@ -1665,6 +1697,7 @@ export class SurfaceMode {
       hud.setCrosshair('');
       hud.showScan(null);
       hud.setProgress(null);
+      if (ctl && input.mouseHit(2)) this.grenades.throw(muzzle, dir, player.vel);
       if (lmb && this.fireCd <= 0) {
         this.fireCd = 0.16;
         const spread = new THREE.Vector3((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02);
@@ -1785,9 +1818,24 @@ export class SurfaceMode {
     }
   }
 
+  _dmgNums() {
+    if (!this.dmg) this.dmg = new DamageNumbers(this.game.hud.root);
+    return this.dmg;
+  }
+
+  // a light that flares for a moment (explosions, impacts)
+  flashAt(pos, color, dur) {
+    this.flash = { pos: pos.clone(), color, t: dur, dur };
+  }
+
   _damageCreature(c, dmg) {
     const g = this.game;
+    const wasDead = c.dead;
     const died = this.creatures.damage(c, dmg, g.player.pos);
+    if (!wasDead && !c.hidden && !c.vanished) {
+      _v.copy(c.pos); _v.y += (c.sp.hitY ? c.sp.hitY : 1) * c.sp.size + 0.6;
+      this._dmgNums().add(c, _v, c.lastHit ?? dmg, died ? 'kill' : c.glance ? 'glance' : 'hit');
+    }
     if (c.glance) {
       // armour: sparks and a ring instead of a wound
       this.glanceCd = (this.glanceCd || 0) - 1;
@@ -1847,7 +1895,10 @@ export class SurfaceMode {
 
   _damageDrone(d, dmg) {
     const g = this.game;
-    if (this.sentinels.damage(d, dmg)) {
+    const killed = this.sentinels.damage(d, dmg);
+    _v.copy(d.pos); _v.y += 0.8;
+    this._dmgNums().add(d, _v, dmg, killed ? 'kill' : 'hit');
+    if (killed) {
       this.debris.spawn(d.pos, [0.8, 0.8, 0.85], 30, 7, 1.5);
       this.debris.spawn(d.pos, [1, 0.3, 0.2], 12, 5, 1, true);
       g.audio.explosion(1);
@@ -1870,6 +1921,15 @@ export class SurfaceMode {
   _hurtPlayer(dmg, why) {
     const g = this.game;
     if (g.inShip) { g.ship.shield = Math.max(0, g.ship.shield - dmg * 0.5 / g.ship.upgrades.shield); return; }
+    if (this.moves.invulnerable && why !== 'fall') {
+      // a perfect dodge
+      if ((this.dodgeCd || 0) < g.time) {
+        this.dodgeCd = g.time + 0.3;
+        this._dmgNums().text(g.player.eye.add(g.camera.getWorldDirection(_v).multiplyScalar(2.5)), 'DODGE');
+        g.audio.tone(1300, 0.1, 'sine', 0.05, 1.6);
+      }
+      return;
+    }
     g.player.damage(dmg);
     this.lastHurtBy = why || null;
     this.lastDamage = 0;
@@ -1925,6 +1985,8 @@ export class SurfaceMode {
     } else if (this.rover.canBoard(p.pos)) {
       prompt = '<span class="key">E</span>Drive the Roamer';
       action = () => this.rover.board();
+    } else if (!g.inShip && this.encounters.interaction(p.pos)) {
+      ({ prompt, action } = this.encounters.interaction(p.pos));
     } else if (dShip < 6.5 && Math.abs(ship.pos.y - p.pos.y) < 5 && ship.state === 'landed') {
       prompt = '<span class="key">E</span>Board starship';
       action = () => this._boardShip();
@@ -2527,18 +2589,22 @@ export class SurfaceMode {
     if (this.planet && !this.interior) for (const b of g.bases.list) if (b.planet === this.planet.id) addM(new THREE.Vector3(b.x + 0.5, b.y + 3, b.z + 0.5), '⌂', b.name, '#8fe6ff');
     else if (ship.state === 'flying' && this.landSite) addM(new THREE.Vector3(this.landSite.x, this.landSite.y + 1.5, this.landSite.z), '▼', 'Landing zone', '#9fffd0');
     for (const m of this.markers) addM(m.pos, m.icon, m.label, m.color);
+    const em = this.encounters.marker();
+    if (em) addM(em.pos, em.icon, em.label, em.color);
     for (const c of this.creatures.list) if (c.companion) addM(c.pos.clone().add(new THREE.Vector3(0, c.sp.size * 1.6 + 0.6, 0)), '♥', '', '#ff9bd6');
     hud.updateMarkers(cam, list, g.width, g.height);
     const f = cam.getWorldDirection(_v);
     const heading = (Math.atan2(f.x, -f.z) * 180 / Math.PI + 360) % 360;
     hud.updateCompass(heading, compass);
+    this.moves.drawHud(this.grenades);
+    if (this.dmg) this.dmg.update(dt, cam, g.width, g.height);
     // tool & hotbar
     if (!g.inShip) {
       const hints = [
-        this.overheated ? 'Overheated - cooling' : 'LMB mine · harvest resources',
+        this.overheated ? 'Overheated - cooling' : 'LMB mine · RMB grapple',
         'LMB collect block · RMB place · 1-9 / wheel select',
-        'LMB fire bolts',
-        { idle: 'LMB cast into water, magma or acid', cast: 'Casting…', wait: 'Wait for a bite · LMB reel in', bite: 'NOW - LMB to hook it!', reel: 'Hold LMB to reel · ease off when it pulls', retract: '' }[this.fishing.state],
+        'LMB fire bolts · RMB plasma grenade',
+        { idle: 'LMB cast into water, magma or acid · RMB grapple', cast: 'Casting…', wait: 'Wait for a bite · LMB reel in', bite: 'NOW - LMB to hook it!', reel: 'Hold LMB to reel · ease off when it pulls', retract: '' }[this.fishing.state],
       ];
       if (this.rover.driving) hud.setTool('Roamer', ['Roamer'], `${Math.round(Math.abs(this.rover.speed) * 3.6)} km/h · LMB cannon · Space hop · L lights · E exit`);
       else hud.setTool(this.visor ? 'Analysis Visor' : TOOL_MODES[this.toolMode], this.visor ? ['Analysis Visor'] : TOOL_MODES.slice(0, g.upgradeCount('dream_line') ? 4 : 3), this.visor ? 'Hold LMB on fauna & flora to discover · V to close' : hints[this.toolMode]);
@@ -2558,7 +2624,7 @@ export class SurfaceMode {
       hud.setProgress(null);
       hud.showScan(null);
     } else {
-      hud.setHelp('Q tool · F scan · V visor · T lamp · R recharge\nTab inventory · M galaxy map · Esc menu');
+      hud.setHelp('Q tool · F scan · V visor · T lamp\nX dash · C slide/pound · H eat · R recharge\nTab inventory · M map · Esc menu');
     }
   }
 }

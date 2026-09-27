@@ -261,6 +261,12 @@ export class NetSession {
         g.audio.tone(1200, 0.12, 'triangle', 0.06, 0.7);
         break;
       }
+      case 'enc': {
+        const w = this._where(), S = g.surface;
+        if (from !== T.owner || m.p !== w.p || w.m !== 's' || S.encounters.active) break;
+        S.encounters.start(m.type, { x: m.x, y: m.y, z: m.z, seed: m.seed });
+        break;
+      }
       case 'meal': {
         const w = this._where(), p = g.player.pos;
         if (m.p !== w.p || w.m !== 's' || Math.hypot(p.x - m.x, p.y - m.y, p.z - m.z) > 12) break;
@@ -363,6 +369,13 @@ export class NetSession {
     this.t.send('*', { k: 'ping', p: w.p, x: pt.x, y: pt.y + 0.5, z: pt.z }, true);
     this.pings.push({ x: pt.x, y: pt.y + 0.5, z: pt.z, name: 'You', color: '#ffffff', t: 20 });
     g.audio.tone(1200, 0.12, 'triangle', 0.06, 0.7);
+  }
+
+  // the host's encounters happen for everyone on that planet
+  sendEncounter(e) {
+    const w = this._where();
+    if (!this.active || !this.isHost || w.m !== 's') return;
+    this.t.send('*', { k: 'enc', p: w.p, ...e }, true);
   }
 
   shareMeal(dish, buff, sec) {

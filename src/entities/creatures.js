@@ -842,6 +842,7 @@ export class CreatureManager {
     if (Bh && Bh.armor && from) { const k = Bh.armor(c, from); amount *= k; c.glance = k < 0.5; }
     if (c.sp.behave === 'snail' && c.shell > 0) { amount *= 0.1; c.glance = true; }
     if (c.sp.behave === 'spitter') { amount *= c.closed > 0 ? 0.3 : 1; c.closed = 1.6; }
+    c.lastHit = amount;
     c.hurt = 0.5;
     if (Bh && Bh.damage) { const died = Bh.damage(c, amount); if (died) c.dead = true; return died; }
     c.health -= amount;

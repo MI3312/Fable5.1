@@ -27,9 +27,14 @@ export class Player {
     this.upgrades = { jet: 1, hazard: 1, life: 1, mining: 1, scanner: 1 };
     this.frozen = false;
     this.noclip = false;
+    // hooks for the movement kit (dash, slide, grapple, ground pound)
+    this.control = 1;     // how much WASD steers velocity (0 = momentum only)
+    this.gravMul = 1;
+    this.crouch = 0;      // lowers the eye while sliding
+    this.noJet = false;   // a move is using Space
   }
 
-  get eye() { return new THREE.Vector3(this.pos.x, this.pos.y + EYE - this.stepSmooth, this.pos.z); }
+  get eye() { return new THREE.Vector3(this.pos.x, this.pos.y + EYE - this.stepSmooth - this.crouch * 0.7, this.pos.z); }
 
   forward() {
     return new THREE.Vector3(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
@@ -82,12 +87,12 @@ export class Player {
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wishX = (mx * cos + mz * sin) * speed;
     const wishZ = (-mx * sin + mz * cos) * speed;
-    const accel = this.onGround ? 14 : (this.jetting ? 5 : 2.5);
+    const accel = (this.onGround ? 14 : (this.jetting ? 5 : 2.5)) * this.control;
     this.vel.x += (wishX - this.vel.x) * Math.min(1, accel * dt);
     this.vel.z += (wishZ - this.vel.z) * Math.min(1, accel * dt);
 
     // gravity / jump / jetpack
-    const g = 26 * gravityScale;
+    const g = 26 * gravityScale * this.gravMul;
     const space = controlsEnabled && input.down('Space');
     this.jetting = false;
     if (this.inWater) {
@@ -101,7 +106,7 @@ export class Player {
         this.vel.y = 8.2;
         this.onGround = false;
         this.jetCooldown = 0.18;
-      } else if (space && !this.onGround && this.jetCooldown <= 0 && this.stats.jet > 0) {
+      } else if (space && !this.onGround && !this.noJet && this.jetCooldown <= 0 && this.stats.jet > 0) {
         this.jetting = true;
         ev.jetting = true;
         const thrust = 42 * (0.8 + 0.2 * this.upgrades.jet);

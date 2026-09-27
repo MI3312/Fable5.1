@@ -896,7 +896,7 @@ export class Game {
       if (input.rawHit('F2')) { this.hudHidden = !this.hudHidden; this.hud.show(!this.hudHidden); }
       if (this.net.active && this.mode === 'surface' && !this.menus.anyOpen() && !this.chatOpen) {
         if (input.rawHit('KeyZ')) this.net.ping();
-        if (input.rawHit('KeyX')) this.net.wave();
+        if (input.rawHit('KeyB')) this.net.wave();
       }
       if (input.rawHit('KeyP') && !this.photo.active && this.mode === 'surface' && !this.menus.anyOpen() && !this.galaxy.isOpen() && !this.chatOpen && !this.crashing) {
         this.photo.enter();
