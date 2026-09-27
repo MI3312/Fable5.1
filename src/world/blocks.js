@@ -17,6 +17,7 @@ export const TILE = {
   bookshelf: 74, silver: 75, tv: 76, dark_wood: 77, flesh: 78, onyx: 79,
   void: 80, emergency: 81, hull: 82, grate: 83, missing: 84,
   base_side: 85, base_top: 86, tele_side: 87, tele_top: 88, planter_side: 89, planter_top: 90, crate_side: 91, crate_top: 92,
+  cook_side: 93, cook_top: 94,
 };
 
 // Tint channels. The palette of each planet supplies an RGB colour per channel.
@@ -43,7 +44,7 @@ export const B = {
   PLASTIC_R: 65, PLASTIC_Y: 66, PLASTIC_B: 67, PLASTIC_W: 68, CONCRETE: 69, SHELF: 70,
   BOOKSHELF: 71, SILVER: 72, TV: 73, DARK_WOOD: 74, FLESH: 75, ONYX: 76,
   VOID: 77, EMERGENCY: 78, HULL: 79, GRATE: 80, MISSING: 81,
-  BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85,
+  BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85, NUTRIENT: 86,
 };
 
 const T = TILE;
@@ -158,6 +159,7 @@ BLOCKS[B.BASE_CORE] = def('Base Computer', [T.base_top, T.metal_plate, T.base_si
 BLOCKS[B.TELEPORTER] = def('Teleporter', [T.tele_top, T.metal_plate, T.tele_side], { hardness: 1.2, emissive: 0.6, interact: 'teleporter', drops: [['ferrite', 2, 4]], color: [0.7, 0.5, 1.0] });
 BLOCKS[B.PLANTER] = def('Dream Planter', [T.planter_top, T.metal_plate, T.planter_side], { hardness: 0.9, emissive: 0.15, interact: 'planter', drops: [['ferrite', 1, 2]], color: [0.35, 0.6, 0.3] });
 BLOCKS[B.STORAGE] = def('Storage Crate', [T.crate_top, T.crate_top, T.crate_side], { hardness: 0.9, interact: 'storage', drops: [['ferrite', 1, 2]], color: [0.9, 0.6, 0.2] });
+BLOCKS[B.NUTRIENT] = def('Nutrient Processor', [T.cook_top, T.metal_plate, T.cook_side], { hardness: 0.9, emissive: 0.35, interact: 'cook', drops: [['ferrite', 1, 2]], color: [1.0, 0.55, 0.3] });
 
 export const BLOCK_COUNT = BLOCKS.length;
 

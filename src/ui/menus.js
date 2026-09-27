@@ -5,6 +5,7 @@ import { ITEMS } from '../data/items.js';
 import { BLOCKS, isPlaceable } from '../world/blocks.js';
 import { getBlockIcon } from '../world/atlas.js';
 import { RECIPES, ALCHEMY, UPGRADES, outLabel } from '../data/recipes.js';
+import { DISHES, BUFFS, FISH } from '../data/food.js';
 
 const TABS = [
   ['exosuit', 'Exosuit'], ['blocks', 'Blocks'], ['fabricate', 'Fabricate'], ['alchemy', 'Apotheosis'],
@@ -76,6 +77,7 @@ export class Menus {
         else go();
       } }, '✦ New Dream'),
       h('div', { class: 'seed-row' }, 'SEED', seedInput, h('button', { class: 'btn small', onclick: () => { seedInput.value = String(Math.floor(Math.random() * 1e9)); } }, '⟳')),
+      h('button', { class: 'btn', onclick: () => this.showMultiplayer(() => this.showTitle(hasSave, seedInput.value), true) }, '⚯ Multiplayer'),
       h('button', { class: 'btn', onclick: () => this.showSettings(() => this.showTitle(hasSave, seedInput.value)) }, '⚙ Settings'),
       h('button', { class: 'btn', onclick: () => this.showControls(() => this.showTitle(hasSave, seedInput.value)) }, '⌨ Controls'),
     );
@@ -156,6 +158,50 @@ export class Menus {
     }
   }
 
+  // ---------------- Nutrient Processor ----------------
+  showCooking() {
+    const g = this.game, inv = g.inventory;
+    const list = h('div', { class: 'recipes' });
+    for (const d of DISHES) {
+      const it = ITEMS[d.id];
+      const max = inv.maxCraftable(d.in);
+      const buff = d.buff ? BUFFS[d.buff[0]] : null;
+      const cook = (eat) => {
+        if (!g.cook(d)) return;
+        if (eat) g.buffs.eat(d.id);
+        this.showCooking();
+      };
+      list.appendChild(h('div', { class: 'recipe' + (max < 1 ? ' locked' : '') },
+        h('div', { class: 'row-flex' }, itemTile(d.id, inv.count(d.id) || null),
+          h('div', {}, h('div', { class: 'rn' }, it.name),
+            h('div', { class: 'muted' }, `${d.heal ? `+${d.heal} health` : ''}${buff ? ` · ${buff.name}: ${buff.desc} for ${Math.round(d.buff[1] / 60)} min` : ''}`),
+            this._ingredients(d.in))),
+        h('div', { class: 'row-flex' },
+          h('button', { class: 'btn small', disabled: max < 1 ? true : null, onclick: () => cook(false) }, 'Cook'),
+          h('button', { class: 'btn small primary', disabled: max < 1 ? true : null, onclick: () => cook(true) }, 'Cook & eat'))));
+    }
+    // the angler's log
+    const log = g.state.fishLog || {};
+    const species = Object.keys(FISH).filter((id) => !FISH[id].dread || log[id]);
+    const caught = species.filter((id) => log[id]);
+    const logEl = h('div', { class: 'fishlog' });
+    for (const id of species) {
+      const r = log[id];
+      logEl.appendChild(h('div', { class: 'list-row' + (r ? '' : ' muted') },
+        h('span', {}, r ? ITEMS[id].name : '???'),
+        h('span', { class: 'muted' }, r ? `${r.n} caught${FISH[id].shape === 'junk' || FISH[id].dread ? '' : ` · best ${r.best} cm`}` : { water: 'water', dream: 'dreaming pools', lava: 'magma', acid: 'acid' }[FISH[id].liquid] + (FISH[id].when !== 'any' ? ` · ${FISH[id].when}` : ''))));
+    }
+    const el = h('div', { class: 'dialog wide interactive cooking' },
+      h('div', { class: 'dh' }, 'Nutrient Processor'),
+      h('div', { class: 'db' },
+        h('div', { class: 'lore' }, 'Hot food, far from home. Every dish restores health, and most leave something behind in you for a while.'),
+        list,
+        h('div', { class: 'section-title' }, `Angler's log · ${caught.length}/${species.length}`), logEl),
+      h('div', { class: 'dbtns' }, h('button', { class: 'btn small center primary', onclick: () => { this.game.audio.ui(); this.closeAll(); } }, 'Close')));
+    this._overlay(el);
+    this.open = 'dialog';
+  }
+
   prompt(title, value, onOk, back) {
     const inp = h('input', { type: 'text', value: value || '', maxlength: '28', spellcheck: 'false', style: { width: '100%', background: 'rgba(0,0,0,0.35)', color: 'var(--text)', border: '1px solid var(--line)', padding: '10px', fontFamily: 'var(--font)', fontSize: '18px' } });
     const done = (ok) => { const v = inp.value.trim(); this.closeAll(true); if (ok && v) onOk(v); if (back) back(); };
@@ -176,12 +222,69 @@ export class Menus {
       h('div', { class: 'title-menu', style: { marginTop: '0' } },
         h('button', { class: 'btn primary', onclick: () => { g.audio.ui(); this.closeAll(); g.resume(); } }, '▸ Resume'),
         h('button', { class: 'btn', onclick: () => { g.saveGame(true); } }, '⇩ Save'),
+        h('button', { class: 'btn', onclick: () => this.showMultiplayer(() => this.openPause(), false) }, g.net.active ? `⚯ Multiplayer (${g.net.players().length})` : '⚯ Multiplayer'),
         h('button', { class: 'btn', onclick: () => this.showSettings(() => this.openPause()) }, '⚙ Settings'),
         h('button', { class: 'btn', onclick: () => this.showControls(() => this.openPause()) }, '⌨ Controls'),
         h('button', { class: 'btn', onclick: () => { g.saveGame(false); g.quitToTitle(); } }, '⏏ Save & Quit to Title'),
       ));
     this._overlay(el);
     this.open = 'pause';
+  }
+
+  // ---------------- multiplayer ----------------
+  showMultiplayer(back, fromTitle) {
+    const g = this.game, N = g.net;
+    this.closeAll(true);
+    const body = h('div', { class: 'mp' });
+    const steam = N.transportKind === 'steam';
+    const nameIn = h('input', { type: 'text', value: g.settings.playerName || 'Dreamer', maxlength: '20', spellcheck: 'false', onchange: (e) => { g.settings.playerName = e.target.value.trim().slice(0, 20) || 'Dreamer'; g.saveSettings(); } });
+    body.appendChild(h('div', { class: 'mp-status' }, steam ? '● Steam connected · lobbies and P2P over Steam\'s relay network (app 480)' : '○ Local test mode · Steam desktop build not detected. Dreams are shared between tabs of this browser.'));
+    if (!steam) body.appendChild(h('div', { class: 'seed-row' }, 'NAME', nameIn));
+    const list = h('div', { class: 'mp-list' });
+    const run = async (fn, label) => {
+      try { await fn(); } catch (e) { g.hud.notify(e.message || String(e)); list.textContent = e.message || String(e); }
+    };
+    if (N.active) {
+      body.appendChild(h('div', { class: 'section-title' }, N.isHost ? 'You are sharing this dream' : 'You are a guest in this dream'));
+      for (const p of N.players()) {
+        const where = p.where ? (p.where.m === 'x' ? 'in space' : p.where.m === 's' ? (p.where.p === (g.surface.planet && g.surface.planet.id) ? 'on this world' : 'on another world') : 'somewhere') : p.you ? 'here' : '…';
+        body.appendChild(h('div', { class: 'recipe' },
+          h('div', {}, h('div', { class: 'rn' }, `${p.name}${p.you ? ' (you)' : ''}${p.host ? ' · host' : ''}`), h('div', { class: 'ri muted' }, where)),
+          !p.you && !fromTitle ? h('button', { class: 'btn small', onclick: () => N.travelTo(p.id) }, 'Travel to') : null));
+      }
+      body.appendChild(h('div', { class: 'row-flex' },
+        steam ? h('button', { class: 'btn small', onclick: () => N.invite() }, 'Invite friends') : null,
+        h('button', { class: 'btn small', onclick: () => { N.leave(); this.showMultiplayer(back, fromTitle); } }, 'Leave shared dream')));
+      body.appendChild(h('div', { class: 'muted' }, 'Z ping a spot · X wave · Enter chat'));
+    } else {
+      if (!fromTitle) {
+        body.appendChild(h('div', { class: 'section-title' }, 'Share this dream'));
+        body.appendChild(h('div', { class: 'row-flex' },
+          h('button', { class: 'btn small primary', onclick: () => run(async () => { await N.host({ visibility: 'friends' }); this.showMultiplayer(back, fromTitle); }) }, steam ? 'Host · friends only' : 'Host'),
+          steam ? h('button', { class: 'btn small', onclick: () => run(async () => { await N.host({ visibility: 'public' }); this.showMultiplayer(back, fromTitle); }) }, 'Host · public') : null));
+      } else body.appendChild(h('div', { class: 'muted' }, 'To host, continue or start a dream, then open Multiplayer from the pause menu.'));
+      body.appendChild(h('div', { class: 'section-title' }, 'Join a dream'));
+      body.appendChild(list);
+      const refresh = () => run(async () => {
+        list.textContent = 'Listening for dreams…';
+        const lobbies = await N.list();
+        list.textContent = '';
+        if (!lobbies.length) list.textContent = steam ? 'No dreams found. Ask a friend to invite you through Steam.' : 'No dreams found. Host from another tab first.';
+        for (const l of lobbies) {
+          list.appendChild(h('div', { class: 'recipe' },
+            h('div', {}, h('div', { class: 'rn' }, l.name || 'A dream'), h('div', { class: 'ri muted' }, `${l.members}${l.max ? '/' + l.max : ''} dreaming · seed ${l.data && l.data.seed}`)),
+            h('button', { class: 'btn small primary', onclick: () => run(async () => { list.textContent = 'Joining…'; await N.join(l.id); }) }, 'Join')));
+        }
+      });
+      body.appendChild(h('div', { class: 'row-flex' }, h('button', { class: 'btn small', onclick: refresh }, 'Find dreams')));
+      refresh();
+    }
+    const el = h('div', { class: 'dialog interactive', style: { width: 'min(720px, 94vw)' } },
+      h('div', { class: 'dh' }, 'Multiplayer'),
+      h('div', { class: 'db' }, body),
+      h('div', { class: 'dbtns' }, h('button', { class: 'btn small center primary', onclick: () => back() }, 'Back')));
+    this._overlay(el);
+    this.open = fromTitle ? 'title' : 'multiplayer';
   }
 
   showSettings(back) {

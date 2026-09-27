@@ -705,6 +705,30 @@ function paintTiles() {
     const g0 = 0.55 + fbmT(u, v, 8, 1, 147) * 0.08;
     return [g0 * 0.95, g0 * 0.72, g0 * 0.36, UNT];
   }));
+  t('cook_side', (p) => field(p, (u, v, x, y) => {
+    const f = frame(x, y);
+    if (f === 0) return [0.16, 0.16, 0.18, UNT];
+    // a little oven window with a warm glow, dials underneath
+    if (x >= 3 && x <= 12 && y >= 3 && y <= 8) {
+      if (x === 3 || x === 12 || y === 3 || y === 8) return [0.12, 0.12, 0.13, UNT];
+      const glow = 0.75 + 0.25 * Math.sin(x * 0.9 + y * 0.4);
+      return [1.1 * glow, 0.55 * glow, 0.2 * glow, UNT];
+    }
+    if (y === 11 && (x === 4 || x === 7 || x === 10)) return [0.95, 0.85, 0.6, UNT];
+    const g0 = 0.72 + fbmT(u, v, 8, 1, 149) * 0.08;
+    return [g0 * 0.98, g0 * 0.96, g0 * 0.92, UNT];
+  }));
+  t('cook_top', (p) => field(p, (u, v, x, y) => {
+    if (frame(x, y) === 0) return [0.16, 0.16, 0.18, UNT];
+    // two hot rings on a pale enamel top
+    for (const [cx, cy] of [[0.32, 0.36], [0.68, 0.64]]) {
+      const r = Math.hypot(u - cx, v - cy);
+      if (Math.abs(r - 0.14) < 0.03) return [1.1, 0.4, 0.15, UNT];
+      if (r < 0.11) return [0.2, 0.18, 0.18, UNT];
+    }
+    const g0 = 0.75 + fbmT(u, v, 8, 1, 151) * 0.06;
+    return [g0, g0 * 0.98, g0 * 0.94, UNT];
+  }));
   t('dream_water', (p) => {
     p.fill((x, y, r) => {
       const w = Math.sin((x - y * 0.5) * 0.7) * 0.06;

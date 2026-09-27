@@ -145,7 +145,7 @@ export function buildMultitool() {
 }
 
 // Per-frame animation. s: { mode, color (int), heat, overheated, active, time, blips, dread, ping }
-const MODE_NAMES = ['MINE', 'BUILD', 'BOLT'];
+const MODE_NAMES = ['MINE', 'BUILD', 'BOLT', 'LINE'];
 const _col = new THREE.Color();
 export function animateMultitool(tool, dt, s) {
   const U = tool.userData;

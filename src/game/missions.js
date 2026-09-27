@@ -6,6 +6,7 @@ import { RNG, hash32 } from '../core/rng.js';
 import { speciesForPlanet } from '../entities/creatures.js';
 import { ZONE_INFO } from '../world/zones.js';
 import { ITEMS } from '../data/items.js';
+import { FISH } from '../data/food.js';
 
 export const RANKS = [
   [0, 'Drifter'], [3, 'Wayfarer'], [7, 'Pathfinder'], [12, 'Lucid Warden'], [20, 'Keeper of the Fog'], [32, 'Architect of Sleep'],
@@ -15,6 +16,7 @@ const DELIVERIES = [
   ['ferrite', 200, 3], ['carbon', 150, 3], ['chromatic_metal', 40, 6], ['sodium', 60, 5], ['dihydrogen_jelly', 3, 40],
   ['gel_core', 3, 80], ['maw_tooth', 2, 160], ['mote_dust', 10, 40], ['acid_gland', 3, 90], ['carapace_plate', 2, 140],
   ['salvage', 3, 200], ['liquid_light', 2, 120], ['bubble_foam', 6, 50],
+  ['dream_minnow', 5, 90], ['lucid_eel', 2, 260], ['star_koi', 1, 900], ['grilled_fish', 3, 220],
 ];
 
 export class Missions {
@@ -49,7 +51,7 @@ export class Missions {
       const k = key(i);
       if (this.S.taken[k]) continue;
       const rng = new RNG(hash32(sys.seed || 1, epoch, 4242 + i)); // one stream per board slot
-      const kind = rng.weighted([['bounty', 3], ['survey', 2], ['zone', 2], ['cache', 1.2], ['deliver', 2]]);
+      const kind = rng.weighted([['bounty', 3], ['survey', 2], ['zone', 2], ['cache', 1.2], ['deliver', 2], ['angler', 1.4]]);
       const planet = planets[rng.int(0, planets.length - 1)];
       if (!planet) continue;
       let o = null;
@@ -71,6 +73,9 @@ export class Missions {
       } else if (kind === 'cache') {
         const need = rng.int(1, 2);
         o = { type: 'cache', need, title: `Cache run: ${planet.name}`, desc: `Open ${need} dream cache${need > 1 ? 's' : ''} on ${planet.name}. Your scanner (F) and ruins are a good start.`, units: Math.round(7000 * m + need * 2000), nanites: Math.round(20 * m) };
+      } else if (kind === 'angler') {
+        const need = rng.int(2, 5);
+        o = { type: 'angler', need, title: `Angler: ${planet.name}`, desc: `Land ${need} catches in the waters of ${planet.name}. You will need the Dream Line (Technology tab). Casting further out finds bigger fish.`, units: Math.round(5000 * m + need * 1800), nanites: Math.round(18 * m), bonus: ['koi_sashimi', 1] };
       } else {
         const [item, n, unit] = rng.pick(DELIVERIES);
         const need = Math.max(1, Math.round(n * (0.6 + rng.next() * 0.8)));
@@ -108,13 +113,14 @@ export class Missions {
     this._complete(m);
   }
 
-  // game events: kill {plan, planet} · scan {planet} · zone {zone, planet} · cache {planet}
+  // game events: kill {plan, planet} · scan {planet} · zone {zone, planet} · cache {planet} · fish {planet, id}
   event(type, e) {
-    const map = { kill: 'bounty', scan: 'survey', zone: 'zone', cache: 'cache' };
+    const map = { kill: 'bounty', scan: 'survey', zone: 'zone', cache: 'cache', fish: 'angler' };
     for (const m of [...this.S.active]) {
       if (m.type !== map[type] || (m.planet && e.planet !== m.planet)) continue;
       if (type === 'kill' && e.plan !== m.plan) continue;
       if (type === 'zone' && e.zone !== m.zone) continue;
+      if (type === 'fish' && FISH[e.id] && (FISH[e.id].shape === 'junk' || FISH[e.id].dread)) continue;
       m.have = Math.min(m.need, m.have + 1);
       if (m.have >= m.need) this._complete(m);
       else this.game.hud.notify(`${m.title}: ${m.have}/${m.need}`);

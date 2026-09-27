@@ -1,0 +1,19 @@
+{
+  "name": "lucid-sky-desktop",
+  "version": "1.0.0",
+  "description": "LUCID SKY desktop shell with Steam multiplayer (Steamworks via steamworks.js, app 480 for testing).",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "build-game": "cd .. && npm run build",
+    "start": "npm run build-game && electron .",
+    "start:nobuild": "electron ."
+  },
+  "dependencies": {
+    "steamworks.js": "^0.4.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  },
+  "license": "MIT"
+}

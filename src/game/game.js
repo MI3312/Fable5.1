@@ -22,6 +22,8 @@ import { Player } from '../entities/player.js';
 import { Missions } from './missions.js';
 import { Bases } from './bases.js';
 import { PhotoMode } from './photomode.js';
+import { NetSession } from '../net/session.js';
+import { Buffs } from './buffs.js';
 import { Corruption } from './corruption.js';
 import { SurfaceMode } from './surfaceMode.js';
 import { SpaceMode } from './spaceMode.js';
@@ -31,7 +33,7 @@ const SAVE_KEY = 'lucidsky.save.v1';
 const SETTINGS_KEY = 'lucidsky.settings.v1';
 
 const DEFAULT_SETTINGS = {
-  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, hudFade: true, fear: 1, gfx: 2,
+  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, hudFade: true, fear: 1, gfx: 2, playerName: 'Dreamer',
 };
 
 function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
@@ -62,6 +64,8 @@ export class Game {
     this.missions = new Missions(this);
     this.bases = new Bases(this);
     this.photo = new PhotoMode(this);
+    this.net = new NetSession(this);
+    this.buffs = new Buffs(this);
     this.surface = new SurfaceMode(this);
     this.space = new SpaceMode(this);
 
@@ -191,6 +195,53 @@ export class Game {
     this.enterSurface(0, { spawn: 'crash' });
   }
 
+  // Join someone else's dream: their universe, your own character (kept in a per-host save slot),
+  // arriving beside the host.
+  startGuest(w, onReady) {
+    this.audio.init();
+    if (this.state && this.isPlaying() && !this.guestKey) this.saveGame(false);
+    this.guestKey = `lucidsky.guest.${w.seed}`;
+    let st = null;
+    try { st = JSON.parse(safeGet(this.guestKey)); } catch (e) { st = null; }
+    const seed = Number(w.seed) >>> 0;
+    this.state = st ? { ...this.freshState(seed), ...st } : this.freshState(seed);
+    this.state.flags.intro = true;
+    this.state.system = { ...w.sys };
+    this.universe = new Universe(seed);
+    this.inventory = new Inventory(24);
+    this.inventory.onChange = () => { this.invDirty = true; };
+    if (st && st.inventory) this.inventory.load(st.inventory);
+    else {
+      this.inventory.add('carbon', 40); this.inventory.add('oxygen', 20); this.inventory.add('ferrite', 60);
+      this.inventory.addBlock(B.POOL_TILE, 24); this.inventory.addBlock(B.LAMP, 6);
+    }
+    this.player = new Player();
+    if (st && st.stats) Object.assign(this.player.stats, st.stats);
+    if (st && st.playerUpgrades) Object.assign(this.player.upgrades, st.playerUpgrades);
+    if (this.ship) this.ship.model.removeFromParent();
+    this.ship = new Ship((seed ^ 0x9e3779b9) >>> 0);
+    this.ship.thrustersRepaired = true;
+    this.ship.fuel.launch = 100; this.ship.fuel.pulse = 100;
+    if (st && st.shipData) { Object.assign(this.ship.fuel, st.shipData.fuel); Object.assign(this.ship.upgrades, st.shipData.upgrades || {}); }
+    if (!this.state.quest || this.state.quest < 5) this.state.quest = 5;
+    this.system = this.universe.getSystem(w.sys.gx, w.sys.gy, w.sys.gz);
+    this.menus.closeAll(true);
+    this.afterSurfaceReady = onReady;
+    if (w.w && w.w.m === 's' && w.w.pi !== undefined && w.w.pi >= 0) this.enterSurface(w.w.pi, { spawn: 'near', near: { x: w.x, y: w.y, z: w.z } });
+    else this.enterSpace({ arrival: true });
+    if (w.w && w.w.m !== 's' && onReady) { this.afterSurfaceReady = null; onReady(); }
+  }
+
+  // back to your own dream after leaving someone else's
+  onLeftSharedDream() {
+    if (!this.guestKey) return;
+    this.saveGame(false);
+    this.guestKey = null;
+    if (this.mode === 'surface') this.surface.leave();
+    if (safeGet(SAVE_KEY)) this.continueGame();
+    else this.quitToTitle();
+  }
+
   continueGame() {
     this.audio.init();
     let st;
@@ -236,6 +287,8 @@ export class Game {
 
   onSurfaceReady() {
     this.menus.hideLoading();
+    if (this.afterSurfaceReady) { const f = this.afterSurfaceReady; this.afterSurfaceReady = null; f(); }
+    else if (this.net.role === 'guest') this.net.requestEdits();
     this.mode = 'surface';
     this.hud.show(!this.hudHidden);
     const p = this.planet;
@@ -527,6 +580,8 @@ export class Game {
   }
 
   quitToTitle() {
+    if (this.net.active) { this.saveGame(false); this.net.leave(true); }
+    this.guestKey = null;
     this.menus.closeAll(true);
     this.galaxy.close();
     this.input.unlock();
@@ -551,7 +606,7 @@ export class Game {
     st.shipData = { fuel: { ...this.ship.fuel }, shield: this.ship.shield, hull: this.ship.hull, thrustersRepaired: this.ship.thrustersRepaired, upgrades: { ...this.ship.upgrades } };
     if (this.mode === 'surface') this.surface.writeState(st);
     else this.space.writeState(st);
-    const ok = safeSet(SAVE_KEY, JSON.stringify(st));
+    const ok = safeSet(this.guestKey || SAVE_KEY, JSON.stringify(st));
     if (announce) {
       this.hud.notify(ok ? 'Journey recorded' : 'Save failed (storage full?)');
       this.audio.ui();
@@ -710,7 +765,7 @@ export class Game {
       sodium_nitrate: 'Recharge hazard protection', ion_battery: 'Recharge hazard protection', dihydrogen_jelly: 'Fuel launch thrusters',
       launch_fuel: 'Fuel launch thrusters', uranium: 'Fuel launch thrusters', tritium: 'Fuel pulse engine', starshield_battery: 'Recharge ship shields',
       memory_fragment: 'Remember', carbon: 'Recharge exosuit shield',
-    }[id] || null;
+    }[id] || this.buffs.verb(id);
   }
 
   useItem(id) {
@@ -728,8 +783,18 @@ export class Game {
         this.menus.dialog('A Memory Surfaces', m, [{ label: 'Close', primary: true, action: () => this.openInventory() }]);
         return;
       }
-      default: return;
+      default: return this.buffs.eat(id);
     }
+  }
+
+  // Nutrient Processor: one dish from its ingredients
+  cook(dish) {
+    if (this.inventory.spaceFor(dish.id) < 1) { this.hud.notify('Not enough cargo space'); return false; }
+    if (!this.inventory.consume(dish.in)) { this.hud.notify('Missing ingredients'); return false; }
+    this.inventory.add(dish.id, 1);
+    this.audio.craft();
+    this.hud.notify(null, dish.id, 1);
+    return true;
   }
 
   rechargeStat(stat, item) {
@@ -801,7 +866,7 @@ export class Game {
     requestAnimationFrame((t) => this.loop(t));
     const dt = Math.min(0.05, Math.max(0.0001, (now - this.last) / 1000));
     this.last = now;
-    if (this.debugHold) { this.render(); return; }
+    if (this.debugHold) { if (!this.debugNoRender) this.render(); return; }
     this.tick(dt);
     this.render();
   }
@@ -829,6 +894,10 @@ export class Game {
         else if (!this.menus.anyOpen()) { this.input.unlock(); this.galaxy.open(); this.audio.ui(); }
       }
       if (input.rawHit('F2')) { this.hudHidden = !this.hudHidden; this.hud.show(!this.hudHidden); }
+      if (this.net.active && this.mode === 'surface' && !this.menus.anyOpen() && !this.chatOpen) {
+        if (input.rawHit('KeyZ')) this.net.ping();
+        if (input.rawHit('KeyX')) this.net.wave();
+      }
       if (input.rawHit('KeyP') && !this.photo.active && this.mode === 'surface' && !this.menus.anyOpen() && !this.galaxy.isOpen() && !this.chatOpen && !this.crashing) {
         this.photo.enter();
         input.pressed.delete('KeyP');
@@ -837,7 +906,7 @@ export class Game {
       if ((input.rawHit('Enter') || input.rawHit('Slash')) && this.mode === 'surface' && !this.menus.anyOpen() && !this.galaxy.isOpen() && !this.chatOpen && !this.crashing) {
         this.chatOpen = true;
         this.input.unlock();
-        this.hud.openChat((text) => this.corruption.onChat(text), () => { this.chatOpen = false; this.resume(); });
+        this.hud.openChat((text) => { this.corruption.onChat(text); this.net.chat(text); }, () => { this.chatOpen = false; this.resume(); });
       }
     }
     // a crash that is not a crash
@@ -871,6 +940,9 @@ export class Game {
       this.space.update(paused ? 0 : dt, paused);
       if (!paused) this._updateQuests(dt);
     }
+    if (this.state && (this.mode === 'surface' || this.mode === 'space')) this.buffs.update(paused || this.photo.active ? 0 : dt);
+    else this.buffs.hide();
+    this.net.update(dt);
     if (this.galaxy.isOpen()) this.galaxy.draw();
     if (this.invDirty && this.menus.open === 'inventory') { this.invDirty = false; }
     this._updateTransition(dt);

@@ -76,7 +76,7 @@ export class Player {
     const len = Math.hypot(mx, mz);
     if (len > 0) { mx /= len; mz /= len; }
     const sprint = controlsEnabled && (input.down('ShiftLeft') || input.down('ShiftRight'));
-    let speed = (sprint ? 7.6 : 4.6) * (this.speedMul || 1);
+    let speed = (sprint ? 7.6 : 4.6) * (this.speedMul || 1) * (this.buffSpeed || 1);
     this.sprinting = sprint && len > 0;
     if (this.inWater) speed *= 0.6;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
@@ -110,7 +110,7 @@ export class Player {
         // forward boost while jetting
         this.vel.x += wishX * 0.9 * dt;
         this.vel.z += wishZ * 0.9 * dt;
-        this.stats.jet = Math.max(0, this.stats.jet - dt * 30 / this.upgrades.jet);
+        this.stats.jet = Math.max(0, this.stats.jet - dt * 30 / this.upgrades.jet * (this.jetMul || 1));
       }
     }
     this.jetCooldown -= dt;

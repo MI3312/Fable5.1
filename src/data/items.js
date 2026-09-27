@@ -1,5 +1,6 @@
 // Item registry: raw elements, refined materials, products, dream-alchemy results.
 // symbol: short label drawn in the inventory tile; color: tile colour.
+import { FOOD_ITEMS } from './food.js';
 
 export const ITEMS = {
   // --- elements (NMS style) ---
@@ -68,6 +69,8 @@ export const ITEMS = {
   mote_dust: { name: 'Mote Dust', symbol: 'Md', color: '#ffd27a', cat: 'dream', value: 160, stack: 50, desc: 'Glows faintly in the dark, and more brightly near a lamp.' },
   carapace_plate: { name: 'Carapace Plate', symbol: 'Cp', color: '#6a7282', cat: 'dream', value: 700, stack: 20, desc: 'Scratched by everything it ever ran into.' },
   lurker_heart: { name: 'Lurker Heart', symbol: 'Lh', color: '#ffb347', cat: 'dream', value: 1400, stack: 10, desc: 'A lump of ore that beats, slowly, when held.' },
+  // --- fishing and cooking ---
+  ...FOOD_ITEMS,
 };
 
 export const ITEM_IDS = Object.keys(ITEMS);

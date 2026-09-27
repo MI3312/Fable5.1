@@ -17,6 +17,7 @@ import { SunShadows, castShadows } from '../world/shadows.js';
 import { VolumetricClouds } from '../surface/volclouds.js';
 import { Exocraft } from './exocraft.js';
 import { SkyEvents } from '../surface/skyevents.js';
+import { Fishing } from './fishing.js';
 import { CROPS, BASE_RADIUS } from './bases.js';
 import { Debris, Beam, ScanPulse, Bolts, makeSelectionBox } from '../surface/effects.js';
 import { CreatureManager } from '../entities/creatures.js';
@@ -31,8 +32,8 @@ import { ITEMS } from '../data/items.js';
 import { MONOLITH, TERMINAL, DREAM_WHISPERS } from '../data/lore.js';
 import { SURFACE_ENTRY_ALT } from '../config.js';
 
-const TOOL_MODES = ['Mining Beam', 'Builder', 'Boltcaster'];
-const TOOL_COLORS = [0x6ff3ff, 0xffa6ec, 0xffa45a];
+const TOOL_MODES = ['Mining Beam', 'Builder', 'Boltcaster', 'Dream Line'];
+const TOOL_COLORS = [0x6ff3ff, 0xffa6ec, 0xffa45a, 0x9ff0c8];
 const RESOURCE_BLOCKS = [B.FERRITE_ORE, B.COPPER_ORE, B.GOLD_ORE, B.URANIUM_ORE, B.COBALT_ORE, B.SODIUM_PLANT, B.OXYGEN_PLANT, B.DIHYDRO, B.SPECIAL_PLANT, B.CRYSTAL, B.CHEST, B.POD];
 const RESOURCE_ICON = {
   [B.FERRITE_ORE]: ['Fe', '#c6ccd4'], [B.COPPER_ORE]: ['Cu', '#e88a3c'], [B.GOLD_ORE]: ['Au', '#f7d046'], [B.URANIUM_ORE]: ['U', '#6be05a'],
@@ -57,7 +58,7 @@ const ENC_OFFS = [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [7, 7], [-7, -7], [7
 const _v = new THREE.Vector3();
 // blocks a ship can't set down on (trees, plants, furniture of the world)
 const LAND_ALT = 70;
-const FUNCTIONAL = new Set([B.BASE_CORE, B.TELEPORTER, B.PLANTER, B.STORAGE]);
+const FUNCTIONAL = new Set([B.BASE_CORE, B.TELEPORTER, B.PLANTER, B.STORAGE, B.NUTRIENT]);
 const W_above = (W, h) => W.getBlock(h.x, h.y + 1, h.z);
 const SITE_OBSTACLE = new Set([B.LOG, B.LEAVES, B.MUSHROOM_STEM, B.MUSHROOM_CAP, B.CACTUS, B.CORAL, B.CLOUD, B.CRYSTAL, B.MONOLITH, B.SENTINEL_PILLAR, B.CHEST, B.CHEST_OPEN, B.POD, B.POD_OPEN, B.LAMP, B.TERMINAL, B.EYE, B.GLASS, B.HULL]);
 const _c = new THREE.Color();
@@ -96,6 +97,7 @@ export class SurfaceMode {
     this.volClouds = new VolumetricClouds();
     this.rover = new Exocraft(this);
     this.skyEvents = new SkyEvents(this);
+    this.fishing = new Fishing(this);
     this.cloudIn = 0;
     // what creatures can do to the world and to you
     this.cfx = {
@@ -269,6 +271,10 @@ export class SurfaceMode {
     } else if (opts.spawn === 'void') {
       this.target = { x: VOID_SPAWN.x, z: VOID_SPAWN.z };
       g.inShip = false;
+    } else if (opts.spawn === 'near' && opts.near) {
+      this.target = { x: opts.near.x, z: opts.near.z };
+      this.nearSpot = opts.near;
+      g.inShip = false;
     } else if (opts.spawn === 'base' && opts.base) {
       this.target = { x: opts.base.x, z: opts.base.z };
       this.arriveBase = opts.base;
@@ -359,6 +365,19 @@ export class SurfaceMode {
       ship.speed = 0;
       g.inShip = true;
       player.pos.copy(ship.pos);
+    } else if (mode === 'near' && this.nearSpot) {
+      // beside a friend: find standing room a few steps from them, ship parked nearby
+      const n = this.nearSpot;
+      const a = Math.random() * Math.PI * 2;
+      const s = this._settle(Math.floor(n.x + Math.cos(a) * 3), Math.floor(n.z + Math.sin(a) * 3));
+      player.pos.set(s.x + 0.5, s.y, s.z + 0.5);
+      let guard = 0;
+      while (player.collides(W, player.pos.x, player.pos.y, player.pos.z) && guard++ < 30) player.pos.y += 1;
+      player.yaw = Math.atan2(-(n.x - player.pos.x), -(n.z - player.pos.z));
+      this._placeShipNear(player.pos, 14);
+      ship.state = 'landed';
+      g.inShip = false;
+      this.nearSpot = null;
     } else if (mode === 'base' && this.arriveBase) {
       this._arriveAtBase(this.arriveBase);
       this.arriveBase = null;
@@ -636,6 +655,7 @@ export class SurfaceMode {
     this.game.state.rover = this.rover.present && this.planet ? { planet: this.planet.id, ...this.rover.save() } : this.game.state.rover;
     this.rover.clear();
     this.skyEvents.clear();
+    this.fishing.cancel();
     this._clearNPCs();
     this.world.clear();
     this.creatures.clear();
@@ -1056,7 +1076,7 @@ export class SurfaceMode {
     this.horror.update(dt, {
       world: this.world, P: this.P, cam: g.camera, player: pc, daylight: this.daylight ?? 1, torch: this.torch && !g.inShip,
       inShip: g.inShip, interior: this.interior, zone: this.zoneCur, enc: this.encK || 0, time: g.time, fogFar: this.fogFar || 100,
-      playTime: g.state.playTime || 0, audio: g.audio, hud: g.hud, toolOut: this.tool.visible, fear: g.settings.fear ?? 1,
+      playTime: g.state.playTime || 0, audio: g.audio, hud: g.hud, toolOut: this.tool.visible, fear: g.settings.fear ?? 1, calm: g.buffs.mul('dread'),
       centerT: (t) => { this.centerT = t; },
       extraBlips: this.creatures.list.filter((c) => c.sp.watcher || c.sp.plan === 'manikin').map((c) => c.pos),
       onHurt: (dmg, why) => { this._hurtPlayer(dmg, why); },
@@ -1164,6 +1184,11 @@ export class SurfaceMode {
   }
 
   _updatePointLights(dt) {
+    const glow = this.game.buffs.has('glow') && !this.game.inShip;
+    if (glow && this.glowSlot != null) {
+      const p = this.game.player.pos;
+      voxelUniforms.uPL.value[this.glowSlot].set(p.x, p.y + 1.3, p.z);
+    }
     this.plTimer = (this.plTimer || 0) - dt;
     if (this.plTimer > 0) return;
     this.plTimer = 0.2;
@@ -1181,13 +1206,19 @@ export class SurfaceMode {
       }
     }
     cand.sort((a, b) => a[0] - b[0]);
+    this.glowSlot = null;
+    if (glow) {
+      const p = this.game.player.pos;
+      cand.unshift([0, p.x, p.y + 1.3, p.z, -1]);
+      this.glowSlot = 0;
+    }
     const u = voxelUniforms;
     const T = this.P.tints;
     for (let i = 0; i < u.uPL.value.length; i++) {
       const c = cand[i];
       if (!c) { u.uPL.value[i].set(0, -9999, 0); u.uPLCol.value[i].setRGB(0, 0, 0); continue; }
       u.uPL.value[i].set(c[1], c[2], c[3]);
-      const col = POINT_LIGHT_COLORS[c[4]] || [0.6, 0.6, 0.6];
+      const col = c[4] === -1 ? [0.55, 0.62, 1.4] : POINT_LIGHT_COLORS[c[4]] || [0.6, 0.6, 0.6];
       if (c[4] === B.CRYSTAL) u.uPLCol.value[i].setRGB(T[30] * 0.7, T[31] * 0.7, T[32] * 0.7);
       else u.uPLCol.value[i].setRGB(col[0], col[1], col[2]);
     }
@@ -1542,7 +1573,10 @@ export class SurfaceMode {
     this.fireCd -= dt; this.placeCd -= dt; this.scanCd -= dt;
     this.recoil = Math.max(0, this.recoil - dt * 6);
     // mode switching
-    if (input.hit('KeyQ')) { this.toolMode = (this.toolMode + 1) % 3; g.audio.ui(); this.mine.key = null; }
+    const nModes = g.upgradeCount('dream_line') ? 4 : 3;
+    if (input.hit('KeyQ')) { this.toolMode = (this.toolMode + 1) % nModes; g.audio.ui(); this.mine.key = null; }
+    if (this.toolMode >= nModes) this.toolMode = 0;
+    if (this.toolMode !== 3 && this.fishing.state !== 'idle') this.fishing.cancel();
     for (let i = 0; i < 9; i++) {
       if (input.hit('Digit' + (i + 1))) { g.selectedHot = i; this.toolMode = 1; }
     }
@@ -1559,7 +1593,7 @@ export class SurfaceMode {
     const origin = cam.position.clone();
     const dir = cam.getWorldDirection(new THREE.Vector3());
     const mode = this.toolMode;
-    const range = this.visor ? 60 : mode === 0 ? 24 : mode === 1 ? 7.5 : 70;
+    const range = this.visor ? 60 : mode === 0 ? 24 : mode === 1 ? 7.5 : mode === 3 ? 22 : 70;
     const hit = this.world.raycast(origin, dir, range);
     const cHit = this.creatures.raycast(origin, dir, range);
     const dHit = this.sentinels.raycast(origin, dir, range);
@@ -1572,7 +1606,7 @@ export class SurfaceMode {
     this.target = target;
 
     // selection box
-    if (hit && !this.visor && (mode !== 2) && (!target || target.kind === 'block')) {
+    if (hit && !this.visor && mode < 2 && (!target || target.kind === 'block')) {
       this.selection.visible = true;
       this.selection.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
       this.selection.material.color.set(TOOL_COLORS[mode]);
@@ -1622,6 +1656,11 @@ export class SurfaceMode {
         this._placeBlock(hit);
       }
       if (!input.mouseDown(2)) this.placeCd = Math.min(this.placeCd, 0);
+    } else if (mode === 3) {
+      hud.setCrosshair('ring');
+      hud.showScan(null);
+      hud.setProgress(null);
+      this.fishing.update(dt, { lmbHit: ctl && input.mouseHit(0), lmbDown: lmb, origin, dir, muzzle });
     } else {
       hud.setCrosshair('');
       hud.showScan(null);
@@ -1904,6 +1943,7 @@ export class SurfaceMode {
         else if (def.interact === 'basecore') { prompt = '<span class="key">E</span>Base Computer'; action = () => this._baseMenu(target.hit); }
         else if (def.interact === 'teleporter') { prompt = '<span class="key">E</span>Teleport'; action = () => this._teleportMenu(target.hit); }
         else if (def.interact === 'storage') { prompt = '<span class="key">E</span>Open storage crate'; action = () => this._storageMenu(target.hit); }
+        else if (def.interact === 'cook') { prompt = '<span class="key">E</span>Nutrient Processor'; action = () => { g.input.unlock(); g.menus.showCooking(); g.audio.ui(); }; }
         else if (def.interact === 'planter') {
           const pl = g.bases.planterAt(this.planet.id, target.hit.x, target.hit.y, target.hit.z);
           if (pl) {
@@ -2389,11 +2429,11 @@ export class SurfaceMode {
     const lvl = P.hazard.level;
     const storm = this.stormK || 0;
     if (lvl > 0 && (!sheltered || this.pocket === 'derelict') && !inShip) {
-      const rate = [0, 100 / 240, 100 / 150, 100 / 90][lvl] * (1 + storm * 2) / pl.upgrades.hazard;
+      const rate = [0, 100 / 240, 100 / 150, 100 / 90][lvl] * (1 + storm * 2) / pl.upgrades.hazard * g.buffs.mul('hazard');
       st.hazard = Math.max(0, st.hazard - rate * dt);
     } else st.hazard = Math.min(100, st.hazard + dt * (inShip ? 15 : 6));
     if (!inShip) {
-      const lrate = 100 / 420 * (P.hazard.type === 'vacuum' ? 1.5 : 1) * (pl.jetting ? 1.4 : 1) / pl.upgrades.life;
+      const lrate = 100 / 420 * (P.hazard.type === 'vacuum' ? 1.5 : 1) * (pl.jetting ? 1.4 : 1) / pl.upgrades.life * g.buffs.mul('life');
       st.life = Math.max(0, st.life - lrate * dt);
     } else st.life = Math.min(100, st.life + dt * 4);
     let hurting = false;
@@ -2480,6 +2520,10 @@ export class SurfaceMode {
     };
     if (!g.inShip) addM(ship.pos.clone().add(new THREE.Vector3(0, 3, 0)), '▲', 'Starship', '#ff9f5a');
     if (this.rover.present && !this.rover.driving) addM(this.rover.pos.clone().add(new THREE.Vector3(0, 3, 0)), '◆', 'Roamer', '#ffc46b');
+    if (g.net.active) {
+      for (const m of g.net.markers || []) addM(m.pos, '●', m.name, m.color);
+      for (const q of g.net.pings) addM(new THREE.Vector3(q.x, q.y, q.z), '◎', q.name, q.color);
+    }
     if (this.planet && !this.interior) for (const b of g.bases.list) if (b.planet === this.planet.id) addM(new THREE.Vector3(b.x + 0.5, b.y + 3, b.z + 0.5), '⌂', b.name, '#8fe6ff');
     else if (ship.state === 'flying' && this.landSite) addM(new THREE.Vector3(this.landSite.x, this.landSite.y + 1.5, this.landSite.z), '▼', 'Landing zone', '#9fffd0');
     for (const m of this.markers) addM(m.pos, m.icon, m.label, m.color);
@@ -2494,9 +2538,10 @@ export class SurfaceMode {
         this.overheated ? 'Overheated - cooling' : 'LMB mine · harvest resources',
         'LMB collect block · RMB place · 1-9 / wheel select',
         'LMB fire bolts',
+        { idle: 'LMB cast into water, magma or acid', cast: 'Casting…', wait: 'Wait for a bite · LMB reel in', bite: 'NOW - LMB to hook it!', reel: 'Hold LMB to reel · ease off when it pulls', retract: '' }[this.fishing.state],
       ];
       if (this.rover.driving) hud.setTool('Roamer', ['Roamer'], `${Math.round(Math.abs(this.rover.speed) * 3.6)} km/h · LMB cannon · Space hop · L lights · E exit`);
-      else hud.setTool(this.visor ? 'Analysis Visor' : TOOL_MODES[this.toolMode], this.visor ? ['Analysis Visor'] : TOOL_MODES, this.visor ? 'Hold LMB on fauna & flora to discover · V to close' : hints[this.toolMode]);
+      else hud.setTool(this.visor ? 'Analysis Visor' : TOOL_MODES[this.toolMode], this.visor ? ['Analysis Visor'] : TOOL_MODES.slice(0, g.upgradeCount('dream_line') ? 4 : 3), this.visor ? 'Hold LMB on fauna & flora to discover · V to close' : hints[this.toolMode]);
       hud.toolEl.style.display = '';
     } else hud.toolEl.style.display = 'none';
     hud.updateHotbar(g.inventory, g.selectedHot || 0, !g.inShip, this.toolMode === 1 && !this.visor);

@@ -29,6 +29,34 @@ double-clicking it, with no server.
 Requirements: a WebGL2 browser (current Chrome, Edge, Firefox or Safari). A GPU is
 strongly recommended.
 
+## Multiplayer
+
+Dreams can be shared. One player hosts their universe and others join it as guests. Everyone
+walks, builds, flies, drives and fishes in the same world, and sees each other's block edits.
+
+- **Online through Steam:** run the game in the desktop shell in [`desktop/`](desktop/README.md).
+  It uses Steamworks (app ID **480**, Valve's Spacewar test app) for friends-only or public lobbies,
+  invites through the Steam overlay, and P2P traffic over **Steam Datagram Relay**, so nobody needs
+  to forward ports.
+
+  ```bash
+  cd desktop && npm install && npm start   # Steam must be running
+  ```
+
+- **Local test mode:** in a plain browser, the Multiplayer menu uses a `BroadcastChannel`, so two
+  tabs of the same browser can share a dream. This is handy for trying it out alone.
+
+Open **Esc → Multiplayer** (or **Multiplayer** on the title screen) to host, find dreams, invite
+friends and travel to a friend.
+
+The host's world is canonical. The host keeps every block change on every planet and sends it to
+anyone who lands there. Guests keep their own character in a save slot for that host's seed, and
+their own journey is untouched when they leave. Players stream positions ~12×/s with interpolation.
+The time of day follows the host's.
+
+Social keys: **Enter** chat, **Z** ping where you look, **X** wave. Name tags and markers show
+where everyone is. Other players' ships, Roamers and fishing lines are drawn in your world.
+
 ## What's in the dream
 
 **Universe**
@@ -107,7 +135,11 @@ strongly recommended.
 - The starship is a signed-distance hull, voxelised finely: swept wings, nacelles, spine, fin, canopy and painted livery.
 - **Real-time sun shadows**: a texel-snapped shadow map follows you. Terrain, trees, grass, creatures and your ship cast soft Poisson-filtered shadows that stretch long at dusk.
 - **Volumetric clouds**: raymarched through a curved cloud shell with light marched toward the sun (Beer–Lambert, powder, silver-lining phase). Their shadows drift across the land. Storms thicken them, and flying through one whites out the world.
-- **Graphics** in Settings chooses Low, High (AO, bloom, shadows, clouds) or Ultra (full-rate everything).
+- **Volumetric light**: a raymarched pass through the shadow map puts real light shafts in the fog and dust (and a cone around your headlamp), blurred at half resolution.
+- **Wind**: leaves, grass, flowers, mushroom caps and coral sway in gusts, in their shadows too. Storms make it stronger.
+- **Rain**: rain soaks the ground. Surfaces darken and gloss, puddles gather in the low spots with rain rings on them, and everything dries slowly afterwards.
+- A lens flare with ghosts and a halo that the depth buffer hides behind hills.
+- **Graphics** in Settings chooses Low, High (AO, bloom, shadows, clouds, volumetrics) or Ultra (full-rate everything).
 
 **Sky events**
 - Lightning storms: branching bolts, the world lit white, thunder rolling in late. The strikes fuse sand to glass. Don't stand on the highest hill.
@@ -116,6 +148,13 @@ strongly recommended.
 
 **The Roamer**
 - Install the **Roamer Geobay** (Tech) and press **G** on any planet to deploy a rover: suspension that climbs block steps, boost slides, hops, headlights with light cones in the fog, and a roof cannon that blasts terrain straight into your cargo. It stays where you park it.
+
+**Fishing and cooking**
+- Install the **Dream Line** (Tech). It adds a fourth multi-tool mode (Q) that casts a glowing tether into water, dreaming pools, magma or acid.
+- Wait for the bobber to dip, hook it (LMB within a second), then reel: hold LMB to pull and ease off when the fish surges, or the line snaps.
+- What bites depends on the liquid, the hour, the weather and how far out you cast: Dream Minnows, Lucid Eels, Star Koi at dawn and dusk, deep-water Abyss Lanterns at night, Magma Rays, Bile Koi, Reverie Carp. Some catches are not fish.
+- Build a **Nutrient Processor** and cook dishes that heal and leave a buff: *Starlight Sashimi* (swift), *Deep Eel Broth* (slow breath), *Ember Stew* and *Acid Ceviche* (weatherproof), *Cloud Cake* (buoyant jetpack), *Lantern Soup* (you glow in the dark) and *Lullaby Soup* (fear takes longer).
+- An angler's log records every species and your personal bests. Missions boards post **Angler** contracts.
 
 **Contracts**
 - Station **Missions** boards post bounties on the hunters, visor surveys, expeditions into dream zones, cache runs and supply runs. Carry three at once; completing them raises your **Dreamwalker rank** and the rewards that come with it.
@@ -145,7 +184,7 @@ strongly recommended.
 - A pastel dream filter (chromatic fringe, grain, vignette), dream aurora skies, whispers on liminal worlds, and a generative ambient score.
 
 **No Man's Sky side**
-- Multi-tool with three modes: **Mining Beam** (with overheating), **Builder** and **Boltcaster**. The **Scanner** pulse (F) and the **Analysis Visor** (V) catalogue fauna and flora for units and nanites.
+- Multi-tool with three modes: **Mining Beam** (with overheating), **Builder** and **Boltcaster** (and the **Dream Line**, once installed). The **Scanner** pulse (F) and the **Analysis Visor** (V) catalogue fauna and flora for units and nanites.
 - Survival: health, shield, hazard protection (heat, cold, toxic, radiation, vacuum), life support and jetpack. Storms and shelter both matter.
 - Procedural creatures with six body plans and passive, skittish, curious or aggressive temperaments. You can feed them, and they will give you resources in return.
 - Sentinel drones get suspicious of heavy mining. They attack when provoked and follow a 3-star wanted system.
@@ -166,7 +205,7 @@ strongly recommended.
 | Mouse | Look / steer the ship |
 | Space | Jump · hold for jetpack · take off · hold in space for the pulse drive |
 | Shift | Sprint / boost |
-| LMB | Use tool (mine, collect block, fire) · ship cannons |
+| LMB | Use tool (mine, collect block, fire, cast / hook / reel) · ship cannons |
 | RMB | Place block (Builder) |
 | Q | Cycle multi-tool mode |
 | 1–9, Wheel | Select hotbar block |
@@ -175,6 +214,7 @@ strongly recommended.
 | E | Interact · board or exit ship · land · dock · ride / dismount a tamed creature |
 | C | Sink while flying a mount |
 | Enter or / | Chat |
+| Z / X | Ping where you look / wave (multiplayer) |
 | G | Deploy the Roamer (once installed) |
 | L | Roamer headlights |
 | P | Photo mode |
@@ -197,7 +237,9 @@ src/world/                  blocks, texture atlas, terrain, dream zones, pocket 
 src/surface/                sky, volumetric clouds, weather, sky events, horizon giants, effects
 src/entities/               player, ship, creatures and their behaviours, Lucid vermin, hunters, SDF voxel modelling, sentinels
 src/space/                  space scene, planet shaders
-src/game/                   game controller, surface and space modes, dread director, corruption, riding, Roamer, missions, bases, photo mode, inventory, quests
+src/game/                   game controller, surface and space modes, dread director, corruption, riding, Roamer, missions, bases, fishing, food buffs, photo mode, inventory, quests
+src/net/                    multiplayer: Steam and local transports, host-authoritative session, remote avatars
+desktop/                    Electron shell with Steamworks (lobbies, invites, relay P2P)
 src/ui/                     HUD, menus, galaxy map
 src/audio/                  procedural WebAudio music and SFX
 src/post/                   GPU post pipeline: SSAO, bloom, god rays, grading

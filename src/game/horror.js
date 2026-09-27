@@ -79,6 +79,7 @@ export class Horror {
     if (this.maws.some((m) => m.state !== 'hidden')) t += 0.35;
     if (this.visitor) t += this.visitor.state === 'run' || this.visitor.state === 'turn' ? 0.7 : 0.12;
     if (ctx.inShip) t *= 0.35;
+    t *= ctx.calm ?? 1;
     t = clamp(t, 0, 1);
     this.dread += (t - this.dread) * Math.min(1, dt * (t > this.dread ? 0.35 : 0.18));
     this._fx(dt, ctx, this.dread);

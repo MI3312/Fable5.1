@@ -303,6 +303,7 @@ export class World {
       let m = this.edits.get(k);
       if (!m) { m = new Map(); this.edits.set(k, m); }
       m.set(lx + 16 * (lz + 16 * y), id);
+      if (this.onEdit) this.onEdit(x, y, z, id);
     }
     return true;
   }
@@ -317,6 +318,7 @@ export class World {
     let m = this.edits.get(k);
     if (!m) { m = new Map(); this.edits.set(k, m); }
     m.set((x - cx * CHUNK) + 16 * ((z - cz * CHUNK) + 16 * y), id);
+    if (this.onEdit) this.onEdit(x, y, z, id);
   }
 
   exportEdits() {

@@ -290,3 +290,35 @@ button { font-family: var(--font); }
 .photo-ui .pt { font-size: 13px; letter-spacing: 0.4em; color: var(--dream, #ffb6ec); }
 .photo-ui .pv { font-size: 15px; margin: 4px 0; }
 .photo-ui .ph { font-size: 12px; opacity: 0.75; line-height: 1.5; }
+
+/* multiplayer */
+.mp { white-space: normal; font-family: var(--font-ui, sans-serif); font-size: 14px; display: flex; flex-direction: column; gap: 8px; }
+.mp .mp-status { color: #b9e9ff; font-size: 13px; }
+.mp .mp-list { display: flex; flex-direction: column; gap: 6px; min-height: 40px; color: var(--muted); }
+.mp .row-flex { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* buffs from food */
+.buffs { position: absolute; left: 22px; top: 312px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 300px; pointer-events: none; }
+.buffs .buff { display: flex; align-items: center; gap: 5px; padding: 2px 8px 2px 6px; font-size: 12px; color: #f2eefa; background: rgba(10, 8, 18, 0.55); border: 1px solid; border-radius: 10px; }
+.buffs .buff .bi { font-size: 13px; font-weight: 700; }
+.buffs .buff.fading { animation: buffFade 0.8s infinite alternate; }
+@keyframes buffFade { from { opacity: 1; } to { opacity: 0.35; } }
+
+/* fishing */
+.fish-ui { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); width: 300px; padding: 10px 14px; background: rgba(6, 12, 16, 0.62); border: 1px solid rgba(160, 255, 220, 0.35); color: #e8fff6; font-size: 13px; pointer-events: none; }
+.fish-ui.surge { border-color: rgba(255, 150, 110, 0.8); box-shadow: 0 0 18px rgba(255, 120, 80, 0.35); }
+.fish-ui .fish-title { font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-size: 12px; margin-bottom: 6px; color: #9ff0c8; }
+.fish-ui.surge .fish-title { color: #ffb08a; }
+.fish-ui .fish-row { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 8px; margin: 4px 0; }
+.fish-ui .fish-bar { height: 8px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.fish-ui .fish-bar .fill { height: 100%; width: 0; background: #8fffd0; transition: width 0.08s linear; }
+.fish-ui .fish-bar.reel .fill { background: linear-gradient(90deg, #6fd8ff, #b8fff0); }
+.fish-ui .fish-hint { margin-top: 6px; font-size: 11px; opacity: 0.7; }
+
+/* nutrient processor */
+.dialog.wide { width: min(760px, 94vw); }
+.dialog.cooking .db { white-space: normal; max-height: 64vh; overflow-y: auto; font-family: var(--font-ui, sans-serif); font-size: 14px; display: flex; flex-direction: column; gap: 8px; }
+.dialog.cooking .recipe .row-flex { display: flex; gap: 10px; align-items: center; }
+.dialog.cooking .recipe .muted { font-size: 12px; }
+.fishlog { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 18px; }
+.fishlog .list-row { display: flex; justify-content: space-between; font-size: 13px; }

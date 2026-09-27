@@ -41,6 +41,7 @@ export const RECIPES = [
   { id: 'b_teleporter', type: 'block', in: [['metal_plating', 3], ['chromatic_metal', 40], ['sodium_nitrate', 10]], out: ['block:' + B.TELEPORTER, 1] },
   { id: 'b_planter', type: 'block', in: [['pure_ferrite', 10], ['carbon', 30]], out: ['block:' + B.PLANTER, 2] },
   { id: 'b_storage', type: 'block', in: [['metal_plating', 1], ['carbon', 20]], out: ['block:' + B.STORAGE, 1] },
+  { id: 'b_nutrient', type: 'block', in: [['pure_ferrite', 15], ['sodium', 10], ['carbon', 20]], out: ['block:' + B.NUTRIENT, 1] },
   { id: 'b_checker', type: 'block', in: [['silicate', 8], ['carbon', 8]], out: ['block:' + B.CHECKER, 8] },
   { id: 'b_brick', type: 'block', in: [['silicate', 10], ['ferrite', 4]], out: ['block:' + B.BRICK, 8] },
   { id: 'b_planks', type: 'block', in: [['carbon', 12]], out: ['block:' + B.PLANKS, 8] },
@@ -131,6 +132,7 @@ export const UPGRADES = [
   { id: 'pulse', name: 'Pulse Engine Tuning', target: 'ship', cost: [['chromatic_metal', 50], ['microprocessor', 1]], desc: 'Pulse drive 40% faster and more efficient.', once: true },
   { id: 'hyperdrive', name: 'Hyperdrive Expansion', target: 'ship', cost: [['microprocessor', 2], ['chromatic_metal', 60]], desc: 'Hyperdrive jump range +3 light-years.', once: false, max: 3 },
   { id: 'deflector', name: 'Deflector Shield', target: 'ship', cost: [['ionised_cobalt', 20], ['metal_plating', 2]], desc: 'Starship shields 50% stronger.', once: true },
+  { id: 'dream_line', name: 'Dream Line', target: 'suit', cost: [['ferrite', 40], ['sodium', 10]], desc: 'A luminous fishing tether for the multi-tool (Q to select). Cast into water, magma, acid or dreaming pools; cook what you catch in a Nutrient Processor.', once: true },
   { id: 'roamer', name: 'Roamer Geobay', target: 'suit', cost: [['metal_plating', 2], ['carbon_nanotubes', 1], ['ferrite', 40]], desc: 'Summon the Roamer exocraft anywhere on a planet with G. Drive it, light the dark, and blast terrain with its roof cannon.', once: true },
 ];
 
