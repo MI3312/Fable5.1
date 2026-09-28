@@ -1,8 +1,8 @@
 // What each liminal pocket asks of you once you're inside. Every place has its own way out and
 // its own reason not to linger:
 //   Backrooms - follow the hum to the exit; when the lights go out, keep your torch on the dark.
-//   Poolrooms - follow the wet footprints to the warm pool and dive for the drain. Something
-//               else swims there.
+//   Poolrooms - follow the wet footprints down the long stair, across the flooded baths, to the
+//               well of daylight, and climb out. Something else swims there.
 //   Hallway   - the same corridor, again and again. Anything wrong: turn back. Nothing wrong:
 //               keep going. Eight in a row and there's a door.
 //   Library   - find the three books with your name on them, and walk softly. The Librarian
@@ -12,13 +12,13 @@ import * as THREE from 'three';
 import { B, IS_AIRLIKE, IS_SOLID } from '../world/blocks.js';
 import { clamp, lerp } from '../core/rng.js';
 import {
-  backroomsExit, poolExit, libraryBooks, warehouseExit, warehouseBreaker, prArch, HALL, STYLE,
+  backroomsExit, poolStair, poolWell, PR, libraryBooks, warehouseExit, warehouseBreaker, prArch, HALL, STYLE,
 } from '../world/liminalGen.js';
 import { buildNullFigure } from '../entities/horrorModels.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const fm = (a, n) => ((a % n) + n) % n;
-const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Vector3();
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Vector3(), _c = new THREE.Color();
 const box = new THREE.BoxGeometry(1, 1, 1);
 function blk(parent, mat, w, h, d, x, y, z) {
   const m = new THREE.Mesh(box, mat);
@@ -268,119 +268,299 @@ class Backrooms extends Kind {
 }
 
 // ======================================================================================= Poolrooms
-const printMat = new THREE.MeshBasicMaterial({ color: 0x223a48, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-// a bare wet footprint: the ball of the foot and a heel
-const printGeo = (() => {
-  const sh = new THREE.Shape();
-  sh.absellipse(0, 0.06, 0.065, 0.11, 0, Math.PI * 2, false, 0);
-  const heel = new THREE.Path();
-  heel.absellipse(0, -0.12, 0.048, 0.06, 0, Math.PI * 2, false, 0);
-  const g = new THREE.ShapeGeometry([sh, new THREE.Shape(heel.getPoints(12))], 10);
-  return g.rotateX(-Math.PI / 2);
+// a bare wet footprint, soft at the edges, toes forward (+z once laid flat)
+const printTex = (() => {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.shadowColor = '#fff'; x.shadowBlur = 6;
+  const e = (px, py, rx, ry) => { x.beginPath(); x.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2); x.fill(); };
+  // drawn toes-down so the flat plane's far end is the toes
+  e(33, 26, 14, 17);                                   // heel
+  e(24, 56, 7, 20);                                    // the outer edge of the arch
+  e(32, 84, 17, 20);                                   // ball
+  e(40, 112, 7, 8); e(29, 117, 5, 6); e(20, 115, 4.2, 5); e(13, 110, 3.8, 4.2); e(8, 102, 3.4, 3.6); // toes
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
 })();
+const printMat = new THREE.MeshBasicMaterial({ color: 0x3d5867, alphaMap: printTex, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+const printGeo = new THREE.PlaneGeometry(0.15, 0.3).rotateX(-Math.PI / 2);
+
+// the thing in the water: long, thin, and never quite at the surface
+function buildSwimmer() {
+  const mat = new THREE.MeshBasicMaterial({ color: 0x03080b, transparent: true, opacity: 0.8, depthWrite: false });
+  const root = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.3, 4, 10).rotateX(Math.PI / 2), mat);
+  body.scale.set(1.15, 0.7, 1);
+  root.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8), mat);
+  head.scale.set(0.9, 0.8, 1.25); head.position.set(0, 0.03, 1.02);
+  root.add(head);
+  const limb = (len, r) => new THREE.CapsuleGeometry(r, len, 3, 6).rotateX(Math.PI / 2).translate(0, 0, len / 2 + r);
+  const arms = [], legs = [];
+  for (const s of [-1, 1]) {
+    const a = new THREE.Group(); a.position.set(s * 0.24, 0, 0.62);
+    const upper = new THREE.Mesh(limb(0.7, 0.05), mat); a.add(upper);
+    const fore = new THREE.Group(); fore.position.z = 0.8; a.add(fore);
+    fore.add(new THREE.Mesh(limb(0.75, 0.04), mat));
+    for (let f = -1; f <= 1; f++) {
+      const fin = new THREE.Mesh(limb(0.28, 0.012), mat);
+      fin.position.set(f * 0.03, 0, 0.84); fin.rotation.y = f * 0.18;
+      fore.add(fin);
+    }
+    a.userData.fore = fore;
+    root.add(a); arms.push(a);
+    const l = new THREE.Group(); l.position.set(s * 0.12, 0, -0.72); l.rotation.y = Math.PI;
+    l.add(new THREE.Mesh(limb(1.05, 0.06), mat));
+    root.add(l); legs.push(l);
+  }
+  root.userData = { arms, legs, mat };
+  return root;
+}
+
 class Poolrooms extends Kind {
   start() {
     this.goneLine = 'Behind you there is only tile, and the sound of water.';
-    this.exitLine = 'You come up gasping in the grass. Your clothes are dry.';
-    this.E = poolExit(this.d);
+    this.exitLine = 'You climb out into long grass under a real sky. Your clothes are dry.';
+    this.S = poolStair(this.d);
+    this.well = poolWell(this.d);
+    this.minY = PR.LF - 7;
     this.prints = [];
-    this.printT = 4;
-    this.warmSaid = false;
+    this.printT = 3;
+    this.said = {};
     this.grabT = 0;
     this.grabbed = false;
-    this.ang = 0;
-    // the thing in the warm pool
-    const mat = new THREE.MeshBasicMaterial({ color: 0x02070a, transparent: true, opacity: 0.82, depthWrite: false });
-    const shape = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), mat);
-    body.scale.set(0.9, 0.55, 2.4);
-    shape.add(body);
-    for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), mat);
-      arm.scale.set(0.18, 0.12, 1.5); arm.position.set(s * 0.9, 0, 0.8); arm.rotation.y = s * 0.5;
-      shape.add(arm);
-    }
-    this.L.props.add(shape);
-    this.shape = shape;
+    this.ang = Math.random() * 6;
+    this.level = 0;       // 0 rooms, 1 baths, 2 the well
+    this.lowK = 0;        // how far the light has turned to the baths'
+    this.wellK = 0;       // and to daylight
+    this.glimpse = null;
+    this.glimpseT = rnd(18, 30);
+    this.shape = buildSwimmer();
+    this.L.props.add(this.shape);
     this.g.audio.setLoop('fluoro', true, 0.18);
-    this.g.audio.setLoop('water', true, 0.7);
+    this.g.audio.setLoop('water', true, 0.6);
   }
 
-  objective() { return ['Follow the wet footprints', 'The way out is at the bottom of the warm pool']; }
+  sub() { return ['Level 37', 'The Lower Baths', 'The Well'][this.level]; }
+  veilOpen() { return this.wellK; }
+  objective() {
+    if (this.level === 2) return ['Climb the stair up the wall', 'Stay out of the water'];
+    if (this.level === 1) return ['Cross the baths toward the daylight', 'The footprints know the way'];
+    return ['Follow the wet footprints', 'They lead down'];
+  }
+
+  // the light turns bluer and dimmer in the baths, and warm and open in the well
+  atmos(u, s) {
+    const m = this.L.mode, lo = this.lowK * s, we = this.wellK * s;
+    if (lo > 0.001) {
+      u.uAmbient.value.lerp(_c.setRGB(0.2, 0.29, 0.36), lo * 0.6);
+      u.uArtificial.value.lerp(_c.setRGB(0.72, 0.9, 1.08), lo * 0.5);
+      u.uCaveCol.value.lerp(_c.setRGB(0.2, 0.33, 0.42), lo);
+      m.scene.fog.color.lerp(_c, lo);
+    }
+    if (we > 0.001) {
+      u.uAmbient.value.lerp(_c.setRGB(0.6, 0.6, 0.56), we * 0.7);
+      u.uArtificial.value.lerp(_c.setRGB(1.1, 1.04, 0.92), we * 0.6);
+      u.uFogDensity.value = lerp(u.uFogDensity.value, 1 / 220, we);
+      u.uEnclosed.value = lerp(u.uEnclosed.value, 0.2, we);
+      u.uCaveCol.value.lerp(_c.setRGB(0.86, 0.87, 0.82), we);
+      m.scene.fog.color.lerp(_c, we);
+      m.scene.fog.density = lerp(m.scene.fog.density, 1 / 200, we);
+      m.sunLight.intensity = lerp(m.sunLight.intensity, 1.6 * Math.PI, we);
+      m.hemi.intensity = lerp(m.hemi.intensity, 1.0 * Math.PI, we);
+    }
+  }
+
+  say(key, text, t = 4) {
+    if (this.said[key]) return;
+    this.said[key] = true;
+    this.L.center(text, '#cfe8f4', t);
+  }
 
   update(dt) {
     super.update(dt);
-    const L = this.L, g = this.g, p = this.P.pos, E = this.E;
+    const L = this.L, g = this.g, p = this.P.pos, S = this.S, W = this.well, F = this.d.F;
     const [u, v] = L.local(p.x, p.z);
+    const ly = p.y - F;
+    const wr = Math.hypot(u - (W.u + 0.5), v - (W.v + 0.5));
     const i = Math.floor(u / 12), j = Math.floor(v / 12);
-    const inExitRoom = i === E.i && j === E.j;
-    if (inExitRoom && !this.warmSaid) { this.warmSaid = true; L.center('The water here is warm. The lights are off.', '#cfe8f4', 4); g.audio.swell(0.05); }
+    const onStair = u >= S.u0 && u < S.u1 + 1 && v >= S.v0 && v < S.v1 + 1;
+    this.level = wr < PR.R + 0.5 ? 2 : ly < PR.CEIL - 1 ? 1 : 0;
+    this.lowK += ((this.level === 1 ? 1 : ly < -3 && onStair ? 0.5 : 0) - this.lowK) * Math.min(1, dt * 0.8);
+    this.wellK += ((this.level === 2 ? clamp((PR.R + 0.5 - wr) / 3, 0, 1) : 0) - this.wellK) * Math.min(1, dt * 0.7);
+    // what you notice on the way
+    if (i === S.i && (j === S.j || j === S.j + 1) && ly > -1) this.say('stair', 'The stairs go down further than the floor is thick.');
+    if (this.level === 1) this.say('baths', 'Under the rooms, more water. Very still. Far off, daylight.', 4.5);
+    if (this.level === 2) { this.say('well', 'Real daylight. A stair climbs the wall. Stay out of the water.', 4.5); g.audio.swell(0.02); }
     // footprints leading on
     this.printT -= dt;
-    if (this.printT <= 0 && !inExitRoom) { this.printT = rnd(6, 9); this._trail(u, v, i, j); }
-    for (const pr of this.prints) { pr.t -= dt; pr.m.material.opacity = 0.45 * clamp(pr.t / 4, 0, 1); }
-    for (const pr of this.prints.filter((q) => q.t <= 0)) { pr.m.removeFromParent(); }
+    if (this.printT <= 0 && this.level < 2) { this.printT = rnd(5.5, 8); this._trail(u, v, ly, i, j, onStair); }
+    for (const pr of this.prints) { pr.t -= dt; pr.m.material.opacity = 0.5 * clamp(pr.t / 4, 0, 1); }
+    for (const pr of this.prints.filter((q) => q.t <= 0)) { pr.m.removeFromParent(); pr.m.material.dispose(); }
     this.prints = this.prints.filter((q) => q.t > 0);
-    // the swimmer circles the drain
-    this.ang += dt * (this.grabbed ? 0 : 0.42);
-    const [cx, cz] = L.worldAt(E.u + 0.5, E.v + 0.5);
-    const sw = this.shape;
-    sw.position.set(cx + Math.cos(this.ang) * 3.1, this.d.F - 6.5 + Math.sin(this.t * 0.6) * 1.8, cz + Math.sin(this.ang) * 3.1);
-    sw.rotation.y = -this.ang;
-    const inWater = inExitRoom && p.y < this.d.F - 0.4;
-    const ds = sw.position.distanceTo(_v.set(p.x, p.y + 0.9, p.z));
-    this.grabT -= dt;
-    if (inWater && ds < 2.8) {
-      if (!this.grabbed) { this.grabbed = true; L.scare(0.7); L.center('Something has you.', '#e8c0c0', 2); }
-      if (this.grabT <= 0) { this.grabT = 0.7; L.hurt(9, 'the deep end'); }
-      // it drags you up and away from the drain
-      _w.set(p.x - cx, 0, p.z - cz).normalize();
-      this.P.vel.x += _w.x * dt * 14; this.P.vel.z += _w.z * dt * 14; this.P.vel.y = Math.max(this.P.vel.y, 4.5);
-      L.power = Math.random() < 0.5 ? 0.3 : 1;
-    } else { this.grabbed = false; L.power = 1; }
-    // the drain
-    const [dx, dz] = L.worldAt(E.u + 0.5, E.v + 0.5);
-    if (Math.hypot(p.x - dx, p.z - dz) < 1.3 && p.y < this.d.F - 9.2) { L.exit(this.exitLine); return; }
-    g.audio.setLoop('water', true, inExitRoom ? 1.2 : 0.6);
-    this.dread = 0.14 + (inExitRoom ? 0.2 : 0) + (inWater ? clamp(1 - ds / 8, 0, 1) * 0.5 : 0);
+    // the swimmer
+    this._swim(dt, u, v, ly, wr);
+    // out: up the last step and onto the grass
+    if (ly > PR.TOP + 0.6 && wr < PR.R + 6) { L.exit(this.exitLine); return; }
+    g.audio.setLoop('water', true, this.level === 1 ? 1.0 : this.level === 2 ? 0.8 * (1 - clamp((ly - PR.CEIL) / 16, 0, 0.8)) : 0.55);
+    g.audio.setLoop('fluoro', true, this.level === 0 ? 0.18 : 0.04);
+    g.audio.setLoop('wind', this.level === 2, 0.15 + clamp((ly - PR.LF) / 30, 0, 1) * 0.35);
   }
 
-  // prints across the floor toward the next arch on the way to the warm pool
-  _trail(u, v, i, j) {
-    const L = this.L, d = this.d, E = this.E;
-    const opts = [];
-    const add = (ni, nj, pu, pv) => opts.push({ n: Math.abs(ni - E.i) + Math.abs(nj - E.j), pu, pv });
-    let a;
-    if ((a = prArch(d, i, j, 1))) add(i - 1, j, i * 12, j * 12 + (a[0] + a[1]) / 2);
-    if ((a = prArch(d, i + 1, j, 1))) add(i + 1, j, (i + 1) * 12, j * 12 + (a[0] + a[1]) / 2);
-    if ((a = prArch(d, j, i, 2))) add(i, j - 1, i * 12 + (a[0] + a[1]) / 2, j * 12);
-    if ((a = prArch(d, j + 1, i, 2))) add(i, j + 1, i * 12 + (a[0] + a[1]) / 2, (j + 1) * 12);
-    if (!opts.length) return;
-    opts.sort((x, y) => x.n - y.n);
-    const o = opts[0];
-    const tu = o.pu + 0.5, tv = o.pv + 0.5;
+  _swim(dt, u, v, ly, wr) {
+    const L = this.L, p = this.P.pos, W = this.well, F = this.d.F, sw = this.shape, ud = sw.userData;
+    const [cx, cz] = L.worldAt(W.u + 0.5, W.v + 0.5);
+    const inPool = this.level === 2 && wr < PR.R - 3.3 && ly < PR.LF + 1;
+    let tx, ty, tz, speed = 1.5;
+    this.grabT -= dt;
+    if (inPool) {
+      // it comes for you
+      tx = p.x; ty = p.y + 0.5; tz = p.z; speed = 3.6;
+    } else if (this.glimpse) {
+      // passing under one of the baths' pools, once, far off
+      const G = this.glimpse;
+      G.t += dt;
+      const k = G.t / G.dur;
+      tx = lerp(G.a[0], G.b[0], k); tz = lerp(G.a[1], G.b[1], k); ty = G.y;
+      sw.position.set(tx, ty, tz);
+      speed = 0;
+      if (k >= 1) this.glimpse = null;
+    } else {
+      this.ang += dt * 0.3;
+      tx = cx + Math.cos(this.ang) * 4.3; tz = cz + Math.sin(this.ang) * 4.3; ty = F + PR.LF - 2.2 + Math.sin(this.t * 0.5) * 0.8;
+    }
+    if (speed > 0) {
+      _v.set(tx - sw.position.x, ty - sw.position.y, tz - sw.position.z);
+      const d = _v.length();
+      if (d > 30) sw.position.set(tx, ty, tz);
+      else if (d > 0.01) sw.position.addScaledVector(_v, Math.min(1, speed * dt / d));
+    }
+    // it can't leave the water
+    sw.position.y = Math.min(sw.position.y, F + PR.LF + 0.35);
+    _w.set(tx - sw.position.x, 0, tz - sw.position.z);
+    if (_w.lengthSq() > 1e-4) {
+      const want = Math.atan2(_w.x, _w.z);
+      sw.rotation.y += wrapA(want - sw.rotation.y) * Math.min(1, dt * 3);
+    }
+    // a slow breaststroke; faster when it's coming
+    const st = this.t * (inPool ? 3.2 : 1.4);
+    ud.arms.forEach((a, k) => {
+      const s = k ? 1 : -1;
+      a.rotation.y = s * (0.35 + Math.sin(st) * 0.55);
+      a.rotation.x = Math.cos(st) * 0.2;
+      a.userData.fore.rotation.y = -s * (0.3 + Math.max(0, Math.sin(st + 0.8)) * 0.6);
+    });
+    ud.legs.forEach((l, k) => { l.rotation.x = Math.sin(st * 2 + k * Math.PI) * 0.25; });
+    sw.visible = this.level === 2 || !!this.glimpse;
+    ud.mat.opacity = this.glimpse ? 0.55 * Math.sin(Math.PI * clamp(this.glimpse.t / this.glimpse.dur, 0, 1)) : 0.8;
+    // a glimpse in the baths now and then
+    if (this.level === 1 && !this.glimpse) {
+      this.glimpseT -= dt;
+      if (this.glimpseT <= 0) { this.glimpseT = rnd(22, 40); this._glimpse(u, v); }
+    }
+    // the grab
+    const ds = sw.position.distanceTo(_q.set(p.x, p.y + 0.8, p.z));
+    if (inPool && ds < 1.9) {
+      if (!this.grabbed) { this.grabbed = true; L.scare(0.7); L.center('Something has you.', '#e8c0c0', 2); }
+      if (this.grabT <= 0) { this.grabT = 0.7; L.hurt(8, 'the deep end'); }
+      // it pulls you down, then lets you go at the edge
+      _w.set(p.x - cx, 0, p.z - cz).normalize();
+      this.P.vel.x += _w.x * dt * 10; this.P.vel.z += _w.z * dt * 10;
+      this.P.vel.y = Math.min(this.P.vel.y, -1.5);
+      L.power = Math.random() < 0.5 ? 0.4 : 1;
+    } else {
+      if (this.grabbed) L.power = 1;
+      this.grabbed = false;
+    }
+    this.dread = this.level === 2 ? (inPool ? 0.3 + clamp(1 - ds / 8, 0, 1) * 0.5 : 0.06) : this.level === 1 ? 0.22 : 0.14;
+  }
+
+  // a dark shape under a pool in the baths, in view, crossing and gone
+  _glimpse(pu, pv) {
+    const L = this.L, F = this.d.F;
+    for (let k = 0; k < 30; k++) {
+      const a = Math.random() * Math.PI * 2, r = rnd(9, 22);
+      const u = Math.floor(pu + Math.cos(a) * r), v = Math.floor(pv + Math.sin(a) * r);
+      const du = Math.random() < 0.5 ? 1 : 0, dv = 1 - du;
+      let n = 0;
+      while (n < 7 && L.get(u + du * n, PR.LF - 1, v + dv * n) === B.WATER && L.get(u + du * n, PR.LF, v + dv * n) === B.WATER) n++;
+      if (n < 5) continue;
+      L.point(u + 0.5, PR.LF - 0.55, v + 0.5, _v);
+      if (!L.visible(_v, L.world, 1.1)) continue;
+      const [ax, az] = L.worldAt(u + 0.5, v + 0.5), [bx, bz] = L.worldAt(u + du * (n - 1) + 0.5, v + dv * (n - 1) + 0.5);
+      this.glimpse = { a: [ax, az], b: [bx, bz], y: F + PR.LF - 0.55, t: 0, dur: 3.2 };
+      this.shape.position.set(ax, F + PR.LF - 0.55, az);
+      this.shape.rotation.y = Math.atan2(bx - ax, bz - az);
+      this.g.audio.distant('splash');
+      return;
+    }
+  }
+
+  // wet prints from where you stand toward the way on: through the rooms to the stair, down the
+  // stair, and across the baths toward the well
+  _trail(u, v, ly, i, j, onStair) {
+    const L = this.L, d = this.d, S = this.S, W = this.well;
+    let tu, tv;
+    if (onStair || (i === S.i && (j === S.j || j === S.j + 1))) {
+      if (!onStair && ly > -1 && v < S.v0) { tu = S.bu; tv = S.v0 + 0.5; }
+      else { tu = S.bu; tv = S.v1 + 3; }
+    } else if (ly < PR.CEIL - 1) {
+      tu = W.u + 0.5; tv = W.v + 0.5;
+    } else {
+      // the next arch toward the stair room
+      const opts = [];
+      const add = (ni, nj, pu, pv) => opts.push({ n: Math.abs(ni - S.i) + Math.abs(nj - S.j), pu, pv });
+      let a;
+      if ((a = prArch(d, i, j, 1))) add(i - 1, j, i * 12, j * 12 + (a[0] + a[1]) / 2);
+      if ((a = prArch(d, i + 1, j, 1))) add(i + 1, j, (i + 1) * 12, j * 12 + (a[0] + a[1]) / 2);
+      if ((a = prArch(d, j, i, 2))) add(i, j - 1, i * 12 + (a[0] + a[1]) / 2, j * 12);
+      if ((a = prArch(d, j + 1, i, 2))) add(i, j + 1, i * 12 + (a[0] + a[1]) / 2, (j + 1) * 12);
+      if (!opts.length) return;
+      opts.sort((x, y) => x.n - y.n);
+      tu = opts[0].pu + 0.5; tv = opts[0].pv + 0.5;
+    }
     let du = tu - u, dv = tv - v;
     const len = Math.hypot(du, dv);
     if (len < 2) return;
     du /= len; dv /= len;
-    const n = Math.min(24, Math.floor((len + 3) / 0.7));
+    const n = Math.min(26, Math.floor((len + 3) / 0.7));
+    let y0 = Math.floor(ly + 0.2), laid = 0;
     for (let k = 3; k < n; k++) {
-      const s = k * 0.7, side = (k & 1 ? 1 : -1) * 0.14;
+      const s = k * 0.7, side = (k & 1 ? 1 : -1) * 0.13;
       const pu = u + du * s - dv * side, pv = v + dv * s + du * side;
-      const f = L.get(Math.floor(pu), -1, Math.floor(pv)), a0 = L.get(Math.floor(pu), 0, Math.floor(pv));
-      if (f !== B.POOL_TILE || !IS_AIRLIKE[a0]) continue;
+      const fy = this._floorAt(Math.floor(pu), Math.floor(pv), y0);
+      if (fy === null) continue;
+      y0 = fy;
       const m = new THREE.Mesh(printGeo, printMat.clone());
       m.scale.x = k & 1 ? 1 : -1;
-      L.point(pu, 0.012, pv, m.position);
+      L.point(pu, fy + 0.012, pv, m.position);
       const [wx, wz] = L.dir(du, dv);
       m.rotation.y = Math.atan2(wx, wz);
       L.props.add(m);
       this.prints.push({ m, t: 16 + k * 0.25 });
+      laid++;
     }
-    this.g.audio.distant('steps');
+    if (laid) this.g.audio.distant('steps');
+  }
+  // the dry tile floor near height y0 in a column, or null
+  _floorAt(u, v, y0) {
+    const L = this.L;
+    for (let y = y0 + 1; y >= y0 - 3; y--) {
+      const a = L.get(u, y, v), b = L.get(u, y - 1, v);
+      if (a < 0 || b < 0) return null;
+      if (a === B.WATER || b === B.WATER) return null;
+      if (IS_AIRLIKE[a] && (b === B.POOL_TILE || b === B.POOL_DEEP)) return y;
+    }
+    return null;
   }
 
-  stop() { for (const pr of this.prints) pr.m.material.dispose(); }
+  stop() {
+    for (const pr of this.prints) pr.m.material.dispose();
+    this.g.audio.setLoop('wind', false);
+  }
 }
 
 // ======================================================================================= Hallway

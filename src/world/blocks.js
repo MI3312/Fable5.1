@@ -20,6 +20,7 @@ export const TILE = {
   cook_side: 93, cook_top: 94,
   exit_door_lo: 95, exit_door_hi: 96, exit_sign: 97, glow_book: 98, drain: 99, roller: 100, poster: 101, poster_odd: 102,
   breaker: 103, office_door_lo: 104, office_door_hi: 105,
+  moss_top: 106, moss_side: 107, dripstone: 108, glowcap: 109, glow_vine: 110,
 };
 
 // Tint channels. The palette of each planet supplies an RGB colour per channel.
@@ -49,6 +50,7 @@ export const B = {
   BASE_CORE: 82, TELEPORTER: 83, PLANTER: 84, STORAGE: 85, NUTRIENT: 86, WRECK_BEACON: 87, LIT_DIM: 88, LIT_DARK: 89,
   EXIT_DOOR: 90, EXIT_DOOR_TOP: 91, EXIT_SIGN: 92, GLOW_BOOK: 93, DRAIN: 94, ROLLER: 95, POSTER: 96, POSTER_ODD: 97,
   BREAKER: 98, OFFICE_DOOR: 99, OFFICE_DOOR_TOP: 100,
+  MOSS: 101, DRIPSTONE: 102, GLOWCAP: 103, GLOW_VINE: 104,
 };
 
 const T = TILE;
@@ -179,6 +181,11 @@ BLOCKS[B.POSTER_ODD] = def('Poster', [T.pool_tile, T.pool_tile, T.poster_odd], {
 BLOCKS[B.BREAKER] = def('Breaker Panel', [T.metal_plate, T.metal_plate, T.breaker], { hardness: 999, unbreakable: true, collect: false, interact: 'breaker', emissive: 0.25, color: [0.9, 0.3, 0.2] });
 BLOCKS[B.OFFICE_DOOR] = def('Door', [T.dark_wood, T.dark_wood, T.office_door_lo], { hardness: 999, unbreakable: true, collect: false, color: [0.55, 0.5, 0.45] });
 BLOCKS[B.OFFICE_DOOR_TOP] = def('Door', [T.dark_wood, T.dark_wood, T.office_door_hi], { hardness: 999, unbreakable: true, collect: false, color: [0.55, 0.5, 0.45] });
+// the underground: damp moss on cave floors, dripstone, fungi and threads that glow in the dark
+BLOCKS[B.MOSS] = def('Cave Moss', [T.moss_top, T.stone, T.moss_side], { tint: TINT.grass, hardness: 0.5, drops: [['carbon', 1, 2], ['ferrite', 0, 1]], color: [0.3, 0.45, 0.3] });
+BLOCKS[B.DRIPSTONE] = def('Dripstone', T.dripstone, { tint: TINT.stone, hardness: 0.8, drops: [['ferrite', 1, 2], ['silicate', 0, 1]], color: [0.62, 0.58, 0.52] });
+BLOCKS[B.GLOWCAP] = def('Glowcap', T.glowcap, { pass: PASS.cutout, solid: false, shape: 'cross', tint: TINT.crystal, emissive: 0.85, hardness: 0.1, drops: [['carbon', 1, 2], ['sodium', 0, 2]], color: [0.5, 0.95, 0.85] });
+BLOCKS[B.GLOW_VINE] = def('Glow Threads', T.glow_vine, { pass: PASS.cutout, solid: false, shape: 'cross', emissive: 0.6, hardness: 0.05, drops: [['carbon', 1, 1]], color: [0.62, 0.84, 1.0] });
 
 export const BLOCK_COUNT = BLOCKS.length;
 

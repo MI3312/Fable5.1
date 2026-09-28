@@ -150,6 +150,10 @@ export function voxelGelMaterial() {
 }
 
 const geoCache = new Map();
+// Free every cached shape whose key starts with a prefix (species of a world left behind)
+export function dropCached(prefix) {
+  for (const [k, g] of geoCache) if (k.startsWith(prefix)) { g.dispose(); geoCache.delete(k); }
+}
 // Build (or reuse) a voxel mesh for a keyed shape
 export function sdfMesh(key, spec, material) {
   let geo = geoCache.get(key);

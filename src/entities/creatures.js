@@ -2,12 +2,13 @@
 import * as THREE from 'three';
 import { RNG, hash32, hsl } from '../core/rng.js';
 import { creatureName, latinName } from '../core/names.js';
-import { applyCurvature } from '../core/shaderlib.js';
 import { IS_LIQUID, IS_SOLID } from '../world/blocks.js';
 import { VERMIN, VERMIN_BUILDERS } from './vermin.js';
 import { ENEMIES, ENEMY_BUILDERS } from './enemies.js';
 import { BEHAVE, HABITS, CreatureFX, assignBehaviour, wrapA } from './behaviours.js';
 import { castShadows } from '../world/shadows.js';
+import { buildFauna, animFauna } from './fauna.js';
+import { dropCached } from './sdfModel.js';
 
 const PLANS = [['quad', 5], ['biped', 3], ['hopper', 2], ['flyer', 2], ['floater', 2], ['crawler', 2]];
 const TEMPERS = [['Passive', 4], ['Skittish', 3], ['Curious', 2], ['Aggressive', 1.4]];
@@ -140,233 +141,11 @@ export function speciesForPlanet(planet) {
   return out.concat(hunters);
 }
 
-const matCache = new Map();
-function lam(rgb, emissive = 0) {
-  const key = rgb.join(',') + ':' + emissive;
-  if (matCache.has(key)) return matCache.get(key);
-  const c = new THREE.Color(rgb[0], rgb[1], rgb[2]);
-  const m = applyCurvature(new THREE.MeshLambertMaterial({ color: c, flatShading: true, emissive: emissive ? c : 0x000000, emissiveIntensity: emissive }));
-  matCache.set(key, m);
-  return m;
-}
-const BOX = new THREE.BoxGeometry(1, 1, 1);
-function part(parent, mat, w, h, d, x, y, z) {
-  const m = new THREE.Mesh(BOX, mat);
-  m.scale.set(w, h, d);
-  m.position.set(x, y, z);
-  parent.add(m);
-  return m;
-}
-
 export function buildCreatureModel(sp) {
   const custom = VERMIN_BUILDERS[sp.plan] || ENEMY_BUILDERS[sp.plan];
-  if (custom) {
-    const r = custom(sp);
-    r.scale.setScalar(sp.size);
-    return r;
-  }
-  const root = new THREE.Group();
-  const body = new THREE.Group();
-  root.add(body);
-  const m1 = lam(sp.c1), m2 = lam(sp.c2), m3 = lam(sp.c3, 0.4);
-  const white = lam([0.95, 0.95, 0.95]), black = lam([0.05, 0.05, 0.08]);
-  const legs = [];
-  let headRef = null, neckRef = null;
-  const wings = [];
-  const s = 1;
-  const L = sp.bodyLen;
-  const legH = sp.legLen * 0.7;
-  const addEyes = (head, hw, hh, hd) => {
-    const er = sp.bigEye ? 0.34 : 0.2;
-    for (const side of [-1, 1]) {
-      part(head, white, er, er, 0.06, side * hw * 0.28, hh * 0.15, -hd / 2 - 0.02);
-      part(head, black, er * 0.5, er * 0.5, 0.07, side * hw * 0.28, hh * 0.15, -hd / 2 - 0.05);
-    }
-  };
-  switch (sp.plan) {
-    case 'quad': case 'crawler': {
-      const nLegs = sp.plan === 'crawler' ? 6 : 4;
-      const bh = sp.plan === 'crawler' ? 0.45 : 0.7;
-      const lh = sp.plan === 'crawler' ? 0.35 : legH;
-      body.position.y = lh + bh / 2;
-      part(body, m1, 0.9, bh, L, 0, 0, 0);
-      part(body, m2, 0.92, bh * 0.3, L * 0.6, 0, bh * 0.4, 0);
-      const neck = new THREE.Group();
-      neck.position.set(0, bh * 0.2, -L / 2);
-      body.add(neck);
-      let hy = 0.15, hz = -0.3;
-      if (sp.longNeck) { part(neck, m1, 0.3, 1.1, 0.3, 0, 0.5, -0.1); hy = 1.1; hz = -0.2; }
-      const head = new THREE.Group();
-      head.position.set(0, hy, hz);
-      neck.add(head);
-      headRef = head; neckRef = neck;
-      part(head, m1, 0.6, 0.5, 0.6, 0, 0, 0);
-      part(head, m2, 0.4, 0.2, 0.3, 0, -0.15, -0.35);
-      addEyes(head, 0.6, 0.5, 0.6);
-      if (sp.horns) { part(head, m3, 0.1, 0.4, 0.1, -0.2, 0.4, 0.05); part(head, m3, 0.1, 0.4, 0.1, 0.2, 0.4, 0.05); }
-      if (sp.crest) part(body, m3, 0.1, 0.35, L * 0.8, 0, bh * 0.6, 0);
-      if (sp.tail) { const t = part(body, m2, 0.18, 0.18, 0.9, 0, 0.1, L / 2 + 0.4); t.rotation.x = 0.4; }
-      for (let i = 0; i < nLegs; i++) {
-        const side = i % 2 === 0 ? -1 : 1;
-        const row = Math.floor(i / 2);
-        const rows = nLegs / 2;
-        const z = -L / 2 + 0.2 + (L - 0.4) * (rows === 1 ? 0.5 : row / (rows - 1));
-        const leg = new THREE.Group();
-        leg.position.set(side * 0.38, -bh / 2, z);
-        body.add(leg);
-        part(leg, m2, 0.2, lh, 0.2, 0, -lh / 2, 0);
-        part(leg, black, 0.24, 0.1, 0.26, 0, -lh, -0.02);
-        leg.userData.phase = (row % 2 === 0 ? 0 : Math.PI) + (side > 0 ? Math.PI : 0);
-        legs.push(leg);
-      }
-      break;
-    }
-    case 'biped': {
-      const lh = legH * 1.1;
-      body.position.y = lh + 0.5;
-      part(body, m1, 0.8, 1.0, 0.6, 0, 0, 0);
-      part(body, m2, 0.82, 0.3, 0.62, 0, -0.3, 0);
-      const head = new THREE.Group();
-      head.position.set(0, 0.8, -0.1);
-      body.add(head);
-      headRef = head;
-      part(head, m1, 0.65, 0.55, 0.6, 0, 0, 0);
-      addEyes(head, 0.65, 0.55, 0.6);
-      if (sp.horns) part(head, m3, 0.12, 0.5, 0.12, 0, 0.45, 0);
-      if (sp.crest) part(head, m3, 0.1, 0.3, 0.5, 0, 0.35, 0.1);
-      for (const side of [-1, 1]) {
-        const arm = part(body, m2, 0.15, 0.6, 0.15, side * 0.5, -0.05, 0);
-        arm.rotation.z = side * 0.2;
-        const leg = new THREE.Group();
-        leg.position.set(side * 0.22, -0.5, 0);
-        body.add(leg);
-        part(leg, m2, 0.24, lh, 0.24, 0, -lh / 2, 0);
-        part(leg, black, 0.3, 0.1, 0.4, 0, -lh, -0.05);
-        leg.userData.phase = side > 0 ? Math.PI : 0;
-        legs.push(leg);
-      }
-      if (sp.tail) { const t = part(body, m2, 0.15, 0.15, 0.8, 0, -0.3, 0.6); t.rotation.x = 0.6; }
-      break;
-    }
-    case 'hopper': {
-      body.position.y = 0.5;
-      part(body, m1, 0.9, 0.8, 0.9, 0, 0, 0);
-      part(body, m2, 0.6, 0.3, 0.3, 0, 0.1, -0.5);
-      const head = new THREE.Group();
-      head.position.set(0, 0.2, -0.1);
-      body.add(head);
-      headRef = head;
-      addEyes(head, 0.9, 0.8, 0.9);
-      part(body, m3, 0.12, 0.6, 0.12, -0.25, 0.65, 0);
-      part(body, m3, 0.12, 0.6, 0.12, 0.25, 0.65, 0);
-      break;
-    }
-    case 'flyer': {
-      body.position.y = 0;
-      part(body, m1, 0.5, 0.4, 1.2, 0, 0, 0);
-      const head = new THREE.Group();
-      head.position.set(0, 0.05, -0.75);
-      body.add(head);
-      headRef = head;
-      part(head, m1, 0.4, 0.35, 0.35, 0, 0, 0);
-      part(head, m3, 0.12, 0.12, 0.35, 0, -0.05, -0.3);
-      addEyes(head, 0.4, 0.35, 0.35);
-      for (const side of [-1, 1]) {
-        const wing = new THREE.Group();
-        wing.position.set(side * 0.25, 0.1, 0);
-        body.add(wing);
-        part(wing, m2, 1.4, 0.06, 0.7, side * 0.7, 0, 0);
-        part(wing, m3, 0.5, 0.07, 0.4, side * 1.3, 0, 0.1);
-        wing.userData.side = side;
-        wings.push(wing);
-      }
-      part(body, m2, 0.6, 0.05, 0.5, 0, 0, 0.75);
-      break;
-    }
-    case 'manikin': {
-      const lh = 0.95;
-      body.position.y = lh + 0.45;
-      const joint = lam([0.55, 0.52, 0.5]);
-      part(body, m1, 0.55, 0.9, 0.3, 0, 0, 0);
-      part(body, m2, 0.5, 0.12, 0.28, 0, -0.35, 0);
-      part(body, joint, 0.14, 0.14, 0.14, 0, 0.52, 0);
-      const head = new THREE.Group();
-      head.position.set(0, 0.85, 0);
-      body.add(head);
-      headRef = head;
-      part(head, m1, 0.36, 0.46, 0.38, 0, 0, 0);
-      part(head, m2, 0.3, 0.02, 0.02, 0, -0.02, -0.2);
-      for (const side of [-1, 1]) {
-        const arm = new THREE.Group();
-        arm.position.set(side * 0.36, 0.38, 0);
-        body.add(arm);
-        part(arm, joint, 0.12, 0.12, 0.12, 0, 0, 0);
-        part(arm, m1, 0.12, 0.8, 0.12, 0, -0.45, 0);
-        arm.userData.phase = side > 0 ? 0 : Math.PI;
-        arm.userData.arm = true;
-        legs.push(arm);
-        const leg = new THREE.Group();
-        leg.position.set(side * 0.15, -0.45, 0);
-        body.add(leg);
-        part(leg, m1, 0.16, lh, 0.16, 0, -lh / 2, 0);
-        part(leg, joint, 0.13, 0.13, 0.13, 0, -lh * 0.5, 0);
-        leg.userData.phase = side > 0 ? Math.PI : 0;
-        legs.push(leg);
-      }
-      break;
-    }
-    case 'spider': {
-      body.position.y = 1.1;
-      part(body, m1, 1.3, 0.9, 1.6, 0, 0.1, 0.9);
-      part(body, m2, 0.9, 0.6, 0.9, 0, 0, -0.35);
-      const head = new THREE.Group();
-      head.position.set(0, 0.05, -0.85);
-      body.add(head);
-      headRef = head;
-      const eyeMat = lam(sp.c3, 0.9);
-      for (let i = 0; i < 6; i++) part(head, eyeMat, 0.1, 0.1, 0.05, (i % 3 - 1) * 0.18, (i < 3 ? 0.1 : -0.05), -0.05);
-      for (let i = 0; i < 8; i++) {
-        const side = i % 2 === 0 ? -1 : 1;
-        const row = Math.floor(i / 2);
-        const leg = new THREE.Group();
-        leg.position.set(side * 0.4, 0.05, -0.55 + row * 0.35);
-        leg.rotation.y = side * (0.2 - row * 0.25);
-        body.add(leg);
-        const upper = part(leg, m2, 1.2, 0.12, 0.12, side * 0.55, 0.35, 0);
-        upper.rotation.z = side * 0.6;
-        const lower = part(leg, m2, 0.1, 1.5, 0.1, side * 1.1, -0.25, 0);
-        lower.rotation.z = -side * 0.15;
-        leg.userData.phase = (row % 2 === 0 ? 0 : Math.PI) + (side > 0 ? Math.PI : 0);
-        leg.userData.spider = true;
-        legs.push(leg);
-      }
-      break;
-    }
-    case 'floater': {
-      body.position.y = 0;
-      const eyeball = sp.bigEye;
-      part(body, eyeball ? white : m1, 1.0, 1.0, 1.0, 0, 0, 0);
-      if (eyeball) {
-        part(body, lam(sp.c1), 0.6, 0.6, 0.06, 0, 0, -0.52);
-        part(body, black, 0.28, 0.28, 0.07, 0, 0, -0.55);
-      } else {
-        part(body, m2, 1.1, 0.3, 1.1, 0, -0.35, 0);
-        addEyes(body, 1.0, 1.0, 1.0);
-      }
-      for (let i = 0; i < 4; i++) {
-        const t = new THREE.Group();
-        t.position.set((i % 2 ? 1 : -1) * 0.3, -0.5, (i < 2 ? 1 : -1) * 0.3);
-        body.add(t);
-        part(t, m3, 0.1, 0.9, 0.1, 0, -0.45, 0);
-        t.userData.phase = i * 1.3;
-        legs.push(t);
-      }
-      break;
-    }
-  }
-  root.scale.setScalar(sp.size);
-  root.userData = { body, legs, wings, baseY: body.position.y, head: headRef, neck: neckRef };
-  return root;
+  const r = custom ? custom(sp) : buildFauna(sp);
+  r.scale.setScalar(sp.size);
+  return r;
 }
 
 export class CreatureManager {
@@ -386,6 +165,10 @@ export class CreatureManager {
     this.clear();
     this.planet = planet;
     this.species = speciesForPlanet(planet);
+    // the last world's wildlife goes; this one's is sculpted now, while the world loads, rather
+    // than in the middle of a walk the first time each species turns up
+    dropCached('fauna:');
+    for (const sp of this.species) { try { buildCreatureModel(sp); } catch (e) { console.warn('creature model', sp.plan, e); } }
     const a = (hash32(planet.seed, 404) % 6283) / 1000;
     this.wind.set(Math.cos(a), 0, Math.sin(a)).multiplyScalar(1.3);
     this.poi = null; this.poiT = 0; this.walkTo = null; this.mantaHome = null;
@@ -738,6 +521,7 @@ export class CreatureManager {
     m.visible = !c.hidden;
     if (Bh && Bh.anim) { m.position.copy(c.pos); m.rotation.y = c.yaw + Math.PI; Bh.anim(c, dt, time); return; }
     this._animBase(c, dt, time);
+    if (ud.rig === 'fauna' && !c.sp.watcher && c.state !== 'dying') animFauna(c, dt, time);
     // behaviour flourishes layered over the base animation
     if (c.hopY) m.position.y += c.hopY;
     if (c.sink) m.position.y -= c.sink * 1.3 * c.sp.size;

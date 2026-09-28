@@ -265,6 +265,20 @@ export function makePlanetParams(seed, biome, opts = {}) {
   // rivers wind across most worlds with a liquid; drier worlds keep their empty canyons
   P.rivers = P.liquid ? rng.chance(0.8) : (['barren', 'dead', 'scorched'].includes(biome) && rng.chance(0.45)) ? 'dry' : false;
   P.ruins = biome !== 'dead' && rng.chance(0.75);
+  // The shape of the land beyond its hills: sheer escarpments, stone forests, arches, ravines,
+  // sinkholes down to the water table, and caverns under everything. Its own stream, so worlds
+  // keep the hills they had.
+  const vr = new RNG(hash32(seed, 939));
+  const TT = P.terrain;
+  const some = (p) => vr.chance(p) ? vr.range(0.4, 1) : 0;
+  TT.caverns = biome === 'liminal' ? vr.range(0.3, 0.6) : vr.range(0.55, 1);
+  TT.cliffs = some(biome === 'liminal' ? 0.45 : 0.75);
+  TT.pillars = some(['lush', 'exotic', 'toxic', 'liminal', 'frozen'].includes(biome) ? 0.65 : 0.35);
+  TT.arches = some(['barren', 'scorched', 'dead', 'exotic', 'radioactive'].includes(biome) ? 0.75 : 0.4);
+  TT.ravines = some(0.55);
+  TT.cenotes = some(biome === 'frozen' ? 0.3 : 0.6);
+  TT.falls = P.liquid ? vr.range(0.5, 1) : 0;
+  TT.mountAmp = Math.min(TT.mountAmp * vr.range(1.05, 1.45), 116 - TT.base - TT.hillAmp);
   if (P.liquid === B.LAVA) setTint(T.water, [1, 1, 1]);
   if (!P.sky.cloudCover && P.sky.cloudCover !== 0) P.sky.cloudCover = 0.4;
   // sun tint shifts slightly with sky

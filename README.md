@@ -84,6 +84,20 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - A galaxy of seeded star systems (8 star classes), each with 2 to 5 planets, a space station and an asteroid field.
 - Nine planet biomes: Lush, Frozen, Scorched, Toxic, Irradiated, Barren, Exotic, **Liminal** and Dead. Each has its own palette, sky, terrain shape, flora, fauna, weather, hazards and Sentinel level.
 - Planets are infinite voxel worlds, streamed in 16×16×128 chunks by Web Workers. Terrain includes rolling hills, ridged mountains, mesas, overhangs, caves, floating islands, spires and craters. Fake planetary curvature makes each world feel like a small sphere.
+- **Verticality**: each world has its own mix of landforms.
+  - **Escarpments**: the land steps up in sheer walls along a wandering line, once or twice, into high tablelands.
+  - **Stone forests**: clusters of rock pillars 15 to 50 blocks tall, with gardens and trees on top.
+  - **Natural arches** that stand on two feet over open ground.
+  - **Ravines**: narrow cuts 20 to 35 blocks deep. Below sea level they flood.
+  - **Waterfalls**: springs pour down cliff faces into shallow pools (lava falls and acid falls on the worlds that have those instead). Falling water streams and breaks white.
+  - Taller mountains overall.
+- **Underground**:
+  - **Caverns**: big flat-floored chambers between the tunnels, with still lakes at the bottom (magma or acid on some worlds).
+  - Cave floors are damp stone, gravel and **cave moss**.
+  - **Glowcaps** grow in patches and light the dark. **Glow threads** hang from the roof like strings of beads.
+  - **Dripstone** rises from the floor and hangs from the roof.
+  - On the stranger worlds, now and then something has been left down there: a lamp post, a door, a chair.
+  - **Sinkholes**: round shafts dropping 30 or more blocks from the surface to a pool at the water table. They open into a hidden chamber around the water.
 - From orbit, planets are voxel-shaded spheres with oceans, ice caps, atmospheres and rings. Where you enter a planet decides where you land and what time of day it is there.
 
 **Liminality, fog and mystery**
@@ -124,7 +138,11 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - Some small buildings on liminal-touched worlds are not what they look like: a beige box with one door, a little tiled pool house, a brick doorway, a marble reading room, a locked metal shed. Walk in and follow the passage round its bend. When you turn around, the way you came in is gone.
 - Inside, the space goes on forever and you can't break the walls or build your way out. You have to find the exit, and every place has its own way out and its own rules:
   - **The Backrooms**: a maze of damp carpet and yellow wallpaper. Follow the hum: it's loudest near the exit. Sometimes the lights go out. Keep your headlamp up when they do.
-  - **The Poolrooms**: bright tiled halls and still water. Wet footprints lead toward the warm pool, and the way out is the drain at the very bottom. You won't be the only thing swimming.
+  - **The Poolrooms**: bright tiled halls, skylights and still water.
+    - Follow the wet footprints to a long stair that goes down further than the floor is thick.
+    - It descends through the ceiling of the **Lower Baths**: a dim, flooded hall of columns under a coffered roof, its floor one still mirror.
+    - Somewhere across the baths is a round well of real daylight with a waterfall. A stair climbs its wall all the way up to a lawn in the tiles, and that is the way out.
+    - Don't swim in the well's pool. You won't be the only thing in it.
   - **The Hallway**: one corridor, walked again and again. If anything is different, turn back. If nothing is, keep going. Get it right eight times in a row and there's a door. Get it wrong and you start again.
   - **The Endless Library**: find the three books with your name on the spine. The shelves move when nobody is looking. Walk, don't run: something in there hates noise.
   - **The Warehouse**: dark racks and pools of lamplight. Find the breaker in the office to power the loading door, then get to the daylight. Keep your torch on the mannequins.
@@ -245,6 +263,11 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - Multi-tool with three modes: **Mining Beam** (with overheating), **Builder** and **Boltcaster** (and the **Dream Line**, once installed). The **Scanner** pulse (F) and the **Analysis Visor** (V) catalogue fauna and flora for units and nanites.
 - Survival: health, shield, hazard protection (heat, cold, toxic, radiation, vacuum), life support and jetpack. Storms and shelter both matter.
 - Procedural creatures with six body plans and passive, skittish, curious or aggressive temperaments. You can feed them, and they will give you resources in return.
+- **Sculpted wildlife**: every species is modelled from signed distance fields and voxelised at a fine grain.
+  - The body plans are four-legged grazers and beasts (horns, antlers, humps, dorsal plates, tails), long-necked striders on digitigrade legs, big-footed hoppers, birds, bats and pterosaurs with jointed wings, jellyfish bells and drifting eyes, and plated six-legged crawlers.
+  - Legs have knees and ankles, tails sway in segments, and wings fold at the wrist. Heads bob as they walk and look about when they stop.
+  - Colours are muted and countershaded, and each species has its own pattern: spots, stripes, dapples, saddles, bands or rosettes. Some have glowing eyes or glowing flank spots.
+  - Manikins, Colossal Spiders, Lumen Mantas and Lamp Moths were re-sculpted too.
 - Sentinel drones get suspicious of heavy mining. They attack when provoked and follow a 3-star wanted system.
 - Your starship lands, takes off, flies in atmosphere, leaves the planet and uses a pulse drive in space. Its cannons break asteroids for Tritium.
 - **Walkable space stations**: dock, land in the hangar and walk through a liminal lobby with a pool, marble columns, fluorescent ceilings, windows onto space and NPC travellers. Terminals handle trade, supplies, a tech merchant, services and the save archive.
@@ -307,7 +330,7 @@ src/data/                   items, biomes, recipes and alchemy, lore
 src/universe/               galaxy, star system and planet generation
 src/world/                  blocks, texture atlas, terrain, dream zones, pocket spaces (Void, derelicts), liminal pockets, structures, mesher, worker, chunk manager, sun shadows
 src/surface/                sky, volumetric clouds, weather, sky events, horizon giants, effects
-src/entities/               player, ship, creatures and their behaviours, Lucid vermin, hunters, SDF voxel modelling, sentinels
+src/entities/               player, ship, creatures, sculpted wildlife and their behaviours, Lucid vermin, hunters, SDF voxel modelling, sentinels
 src/space/                  space scene, planet shaders
 src/game/                   game controller, surface and space modes, liminal pockets and their rules, movement kit, grenades, encounters, dread director, corruption, riding, Roamer, missions, bases, fishing, food buffs, photo mode, inventory, quests
 src/net/                    multiplayer: Steam and local transports, host-authoritative session, remote avatars

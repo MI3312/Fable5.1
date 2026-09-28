@@ -331,6 +331,7 @@ export class AudioSystem {
     else if (kind === 'door') { noise(0.25, 900, 0.05, 'bandpass', 3); noise(1.4, 220, 0.14, 'lowpass', 0.7, 0.18); osc(70, 1, 0.06, 'sine', 0.6, 0.18); }
     else if (kind === 'hum') { osc(60, 5, 0.025, 'sawtooth'); osc(120.4, 5, 0.012, 'square'); }
     else if (kind === 'chime') { [0, 5, 10].forEach((st, i) => osc(midi(83 + st), 3, 0.018, 'sine', 0, i * 0.9)); }
+    else if (kind === 'splash') { noise(0.5, 1400, 0.05, 'bandpass', 0.8); noise(1.6, 380, 0.06, 'lowpass', 0.7, 0.12); }
     else if (kind === 'steps') { for (let i = 0; i < 6; i++) noise(0.09, 500, 0.05, 'bandpass', 1.2, i * 0.55 + Math.random() * 0.05); }
   }
 

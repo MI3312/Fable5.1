@@ -153,11 +153,30 @@ export function backroomsExit(d) {
   const [u0, v0] = ring(d, 71, 95, 135);
   return { u: 4 * Math.round(u0 / 4), v: 4 * Math.floor(v0 / 4) + 2 };
 }
-export function poolExit(d) {
-  const [u0, v0] = ring(d, 73, 80, 110);
-  let i = Math.round(u0 / 12), j = Math.round(v0 / 12);
-  if (j <= 2) j = 3;
-  return { i, j, u: i * 12 + 6, v: j * 12 + 6 };
+// The Poolrooms go down before they come up: one long stair from the tiled rooms into the Lower
+// Baths, and somewhere across the baths a well of daylight with a stair up its wall to the grass.
+export const PR = { LF: -22, CEIL: -9, R: 11, LOOPS: 1.25, TOP: 7 };
+export function poolStair(d) {
+  const [u0, v0] = ring(d, 73, 30, 46);
+  const i = Math.floor(u0 / 12), j = Math.max(2, Math.floor(v0 / 12));
+  // four wide down the middle of rooms (i, j) and (i, j + 1), one step per block, running +v
+  return { i, j, u0: i * 12 + 4, u1: i * 12 + 7, v0: j * 12 + 2, v1: j * 12 + 21, bu: i * 12 + 6, bv: j * 12 + 23 };
+}
+export function poolWell(d) {
+  const S = d._pstair || (d._pstair = poolStair(d));
+  const a = Math.PI / 2 + (hf(d.seed, 74, 1) - 0.5) * 2.0;
+  const r = 44 + hf(d.seed, 74, 2) * 18;
+  return { u: Math.round(S.bu + Math.cos(a) * r), v: Math.round(S.bv + Math.sin(a) * r), a0: hf(d.seed, 74, 3) * Math.PI * 2 };
+}
+// the stair up the well: where on it a cell at angle a is, as the heights of the steps there
+export function wellSteps(W, a) {
+  const t = fm(a - W.a0, Math.PI * 2) / (Math.PI * 2);
+  const out = [];
+  for (let k = 0; k < 2; k++) {
+    const T = (t + k) / PR.LOOPS;
+    if (T <= 1) out.push(PR.LF + Math.round(T * (PR.TOP - PR.LF)));
+  }
+  return out;
 }
 export function libraryBooks(d) {
   const a0 = hf(d.seed, 75, 0) * Math.PI * 2;
@@ -244,61 +263,174 @@ export function prArch(d, line, cell, axis) {
   return [c, c + w - 1];
 }
 export function prRoomType(d, i, j) {
-  const E = d._pexit || (d._pexit = poolExit(d));
-  if (i === E.i && j === E.j) return 'drain';
+  const S = d._pstair || (d._pstair = poolStair(d));
+  if (i === S.i && j === S.j) return 'stair';
+  if (i === S.i && j === S.j + 1) return 'stair2';
   if (i >= -1 && i <= 0 && j >= 0 && j <= 1) return 'dry';
   const r = hf(d.seed, i, j, 31);
   return r < 0.38 ? 'shallow' : r < 0.6 ? 'pillars' : r < 0.76 ? 'deep' : r < 0.9 ? 'flooded' : 'sky';
 }
+// the long stair: its step height at a cell, or null if the cell isn't on it
+function prStep(S, u, v) {
+  if (u < S.u0 || u > S.u1 || v < S.v0 || v > S.v1) return null;
+  return -2 - (v - S.v0);
+}
 function poolrooms(d, u, y, v) {
-  if (y > 7) return B.AIR;
-  if (y < -12) return B.STONE;
+  if (y > PR.TOP + 1) return B.AIR;
+  if (y < PR.LF - 6) return B.STONE;
+  const S = d._pstair || (d._pstair = poolStair(d));
+  const W = d._pwell || (d._pwell = poolWell(d));
+  const wr = Math.hypot(u - W.u, v - W.v);
+  if (wr < PR.R + 6) {
+    const b = prWell(d, W, u, y, v, wr);
+    if (b >= 0) return b;
+  }
+  if (y <= PR.CEIL + 1) {
+    // the stair comes down through the ceiling of the baths
+    const st = prStep(S, u, v);
+    if (st !== null) {
+      if (y > st) return B.LIT_AIR;
+      if (y === st) return fm(v - S.v0, 2) === 0 ? B.POOL_TILE : B.POOL_DEEP;
+      if (y === st - 1 || y >= PR.CEIL) return B.POOL_TILE;
+    }
+    return baths(d, S, u, y, v);
+  }
+  if (y > 6) return B.AIR;
   const i = Math.floor(u / 12), j = Math.floor(v / 12);
   const iu = fm(u, 12), iv = fm(v, 12);
   const type = prRoomType(d, i, j);
+  const st = prStep(S, u, v);
+  // the stair trench, open down to the steps
+  if (st !== null && y < 0) {
+    if (y > st) return B.LIT_AIR;
+    if (y === st) return fm(v - S.v0, 2) === 0 ? B.POOL_TILE : B.POOL_DEEP;
+    return B.POOL_TILE;
+  }
   // walls and arches
   if (iu === 0 || iv === 0) {
-    if (y < -1) return B.STONE;
+    if (y < -1) return B.POOL_TILE;
     if (y === -1) return B.POOL_TILE;
     if (y === 7) return B.AIR;
     if (y === 6) return B.POOL_TILE;
     if (iu === 0 && iv === 0) return B.POOL_TILE;
+    // the two stair rooms are one long hall
+    if (iv === 0 && type === 'stair2' && y <= 5) return y === 5 || (y === 0 && (u === S.u0 - 1 || u === S.u1 + 1)) ? B.POOL_DEEP : B.LIT_AIR;
     const arch = iu === 0 ? prArch(d, i, j, 1) : prArch(d, j, i, 2);
     const k = iu === 0 ? iv : iu;
     if (arch && k >= arch[0] && k <= arch[1] && y <= 3) return B.LIT_AIR;
     if (clearing(u, v)) return B.LIT_AIR;
     return y === 1 ? B.POOL_DEEP : B.POOL_TILE;
   }
+  const stairRoom = type === 'stair' || type === 'stair2';
   // how deep the floor is here
   let depth = 0;
   const inner = (a, b) => iu >= a && iu <= b && iv >= a && iv <= b;
   if (type === 'shallow' && inner(3, 9)) depth = 1;
   else if (type === 'deep' && inner(2, 10)) depth = inner(4, 8) ? 5 : 2;
   else if (type === 'flooded') depth = 1;
-  else if (type === 'drain' && inner(2, 10)) depth = inner(3, 9) ? 10 : 3;
   if (clearing(u, v)) depth = 0;
-  const dark = type === 'drain';
-  const air = dark ? B.LIT_DIM : B.LIT_AIR;
-  if (y === 7) return type === 'sky' && inner(3, 9) ? B.AIR : B.AIR;
+  if (y === 7) return B.AIR;
   if (y === 6) {
-    if (type === 'sky' && inner(3, 9)) return B.GLASS;
-    return !dark && fm(iu, 3) === 1 && fm(iv, 3) === 1 ? B.LIGHT_PANEL : B.POOL_TILE;
+    if ((type === 'sky' && inner(3, 9)) || (stairRoom && u >= S.u0 - 1 && u <= S.u1 + 1 && fm(iv, 4) !== 0)) return B.GLASS;
+    return fm(iu, 3) === 1 && fm(iv, 3) === 1 ? B.LIGHT_PANEL : B.POOL_TILE;
   }
   if (y >= 0) {
+    // a low tiled rail along the sides and the far end of the stair
+    if (y === 0 && stairRoom && v >= S.v0 && v <= S.v1 + 1 && (u === S.u0 - 1 || u === S.u1 + 1 || (v === S.v1 + 1 && u >= S.u0 && u <= S.u1))) return B.POOL_DEEP;
     if (type === 'pillars' && fm(iu, 4) === 2 && fm(iv, 4) === 2 && !clearing(u, v)) return B.POOL_TILE;
-    return air;
+    return B.LIT_AIR;
   }
   // y < 0: water, then the pool floor
   const floorY = -1 - depth;
   if (y > floorY) return B.WATER;
-  if (y === floorY) {
-    if (depth === 0) return B.POOL_TILE;
-    if (type === 'drain' && depth === 10) {
-      if (iu === 6 && iv === 6) return B.DRAIN;
-      if ((iu === 4 || iu === 8) && (iv === 4 || iv === 8)) return B.LIGHT_PANEL;
-    }
-    return B.POOL_DEEP;
+  if (y === floorY) return depth === 0 ? B.POOL_TILE : B.POOL_DEEP;
+  return B.POOL_TILE;
+}
+
+// The Lower Baths: a hall of square columns ten blocks apart under a coffered ceiling, most of its
+// floor a still, flush pool you can see the columns in. Dimmer and bluer than the rooms above.
+function bathType(d, bi, bj) {
+  const r = hf(d.seed, bi, bj, 37);
+  return r < 0.42 ? 'still' : r < 0.7 ? 'dry' : r < 0.86 ? 'deep' : 'dark';
+}
+function baths(d, S, u, y, v) {
+  const { LF, CEIL } = PR;
+  if (y < LF - 6) return B.STONE;
+  const bi = Math.floor(u / 10), bj = Math.floor(v / 10);
+  const bu = fm(u, 10), bv = fm(v, 10);
+  // the stair's footprint and landing stay clear, and the water under it is shallow and still
+  const nearStair = u >= S.u0 - 3 && u <= S.u1 + 3 && v >= S.v0 + 5 && v <= S.v1 + 5;
+  const landing = nearStair && v > S.v1 - 1;
+  const column = bu <= 1 && bv <= 1 && !nearStair;
+  let type = bathType(d, bi, bj);
+  if (nearStair) type = landing ? 'dry' : 'still';
+  if (column) {
+    if (y === LF + 1 || y === CEIL - 1) return B.POOL_DEEP;
+    return B.POOL_TILE;
   }
+  // the ceiling: coffers between the columns, a panel in each
+  if (y >= CEIL) {
+    const inCoffer = bu >= 3 && bu <= 8 && bv >= 3 && bv <= 8;
+    if (y === CEIL && inCoffer) return type === 'dark' ? B.LIT_DARK : B.LIT_DIM;
+    if (y === CEIL + 1 && inCoffer && type !== 'dark' && bu >= 5 && bu <= 6 && bv >= 5 && bv <= 6) return B.LIGHT_PANEL;
+    return B.POOL_TILE;
+  }
+  const air = type === 'dark' ? B.LIT_DARK : landing ? B.LIT_AIR : B.LIT_DIM;
+  if (y > LF) return air;
+  // the floor and the water in it
+  const grid = bu <= 1 || bv <= 1;
+  let depth = 0;
+  if (type === 'still' && !grid) depth = 2;
+  else if (type === 'deep' && bu >= 3 && bu <= 8 && bv >= 3 && bv <= 8) depth = bu >= 4 && bu <= 7 && bv >= 4 && bv <= 7 ? 5 : 3;
+  if (depth) {
+    if (y > LF - depth) return B.WATER;
+    if (y === LF - depth) return (bu === 4 || bu === 7) && (bv === 4 || bv === 7) && type === 'deep' ? B.LIGHT_PANEL : B.POOL_DEEP;
+    return B.STONE;
+  }
+  if (y === LF) return grid ? B.POOL_DEEP : B.POOL_TILE;
+  return B.STONE;
+}
+
+// The well: a round shaft of daylight from the baths to the roof, a pool at its foot with something
+// in it, a waterfall, and a stair that climbs the wall all the way up to a lawn in the tiles.
+function prWell(d, W, u, y, v, r) {
+  const { LF, CEIL, R, TOP } = PR;
+  if (r >= R + 1.3) {
+    // a lawn around the opening, on the roof of the rooms
+    if (r < R + 5 && y === TOP) return B.GRASS;
+    if (r < R + 4.5 && y === TOP + 1) {
+      const h = hash32(d.seed, u, v, 91) & 255;
+      return h < 70 ? B.TALLGRASS : h < 80 ? B.FLOWER : B.AIR;
+    }
+    return -1;
+  }
+  if (r >= R) {
+    // the wall hangs down to six blocks above the baths' floor; below that the baths run in
+    if (y === TOP) return B.GRASS;
+    if (y > TOP) return B.AIR;
+    if (y >= LF + 7) return y === LF + 7 || y === CEIL || y === -1 ? B.POOL_DEEP : B.POOL_TILE;
+    return -1;
+  }
+  const a = Math.atan2(v - W.v, u - W.u);
+  // the waterfall, pouring from a beam at the top into the pool
+  const wa = fm(a - W.a0 - Math.PI * 0.8, Math.PI * 2);
+  if (wa < 0.2 && r >= 6.6 && r < 8.2 && y > LF && y < TOP - 1) return B.WATER;
+  if (wa < 0.24 && r >= 6.2 && y >= TOP - 1 && y <= TOP) return y === TOP ? B.GRASS : B.POOL_DEEP;
+  // the stair up the wall
+  if (r >= R - 2.5) {
+    for (const s of wellSteps(W, a)) {
+      if (y === s) return s === TOP ? B.GRASS : fm(Math.round(a * 20), 2) ? B.POOL_TILE : B.POOL_DEEP;
+      if (y === s - 1 && s > LF + 1) return B.POOL_TILE;
+    }
+    if (y === LF) return B.POOL_TILE;
+    if (y < LF) return B.STONE;
+    return y < CEIL ? B.LIT_AIR : B.AIR;
+  }
+  // the pool: flush with the floor, five deep, a ring of lights at the bottom
+  if (y > LF) return y < CEIL ? B.LIT_AIR : B.AIR;
+  if (r >= R - 3.3) return y === LF ? B.POOL_DEEP : B.STONE;
+  if (y > LF - 5) return B.WATER;
+  if (y === LF - 5) return r >= 3 && r < 4.2 && fm(Math.round(a * 4 / Math.PI), 2) === 0 ? B.LIGHT_PANEL : B.POOL_DEEP;
   return B.STONE;
 }
 
@@ -449,7 +581,7 @@ const SPACES = { backrooms, poolrooms, hallway, library, warehouse };
 export function pocketBlockAt(d, x, y, z) {
   const [u, v] = toLocal(d, x, z);
   const ly = y - d.F;
-  if (inBuilding(u, v)) {
+  if (inBuilding(u, v) && !(d.kind === 'poolrooms' && ly <= PR.CEIL)) {
     if (ly > 4 && ly > STYLE[d.kind].H) return B.AIR;
     return buildingBlock(d, u, ly, v, true);
   }
@@ -459,5 +591,6 @@ export function pocketBlockAt(d, x, y, z) {
 // the vertical band a pocket occupies
 export function pocketBand(d) {
   const H = STYLE[d.kind].H;
+  if (d.kind === 'poolrooms') return [Math.max(1, d.F + PR.LF - 7), Math.min(127, d.F + PR.TOP + 1)];
   return [Math.max(1, d.F - 14), Math.min(127, d.F + H + 2)];
 }

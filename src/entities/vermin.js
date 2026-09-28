@@ -267,39 +267,63 @@ function buildBubbleBear(sp) {
 
 // ------------------------------------------------------------------------------------------
 // Lumen Manta: a wide, slow flyer with glowing freckles. Big enough to ride.
+// The shapes here only need to know inside from outside, so the wings are planforms with a
+// thickness profile rather than true distance fields.
 function buildManta(sp) {
   const root = new THREE.Group();
   const body = group(root, 0, 0, 0);
-  const top = shade(sp.c1, 0.55), belly = mix(sp.c2, [1, 1, 1], 0.5);
-  const key = 'manta' + (sp.seed % 9);
+  const top = mix(shade(sp.c1, 0.8), [0.24, 0.26, 0.3], 0.3), belly = mix(sp.c2, [0.92, 0.92, 0.9], 0.62);
+  const key = 'manta2:' + (sp.seed % 9);
   const skin = (p) => {
-    const dots = noise3(p[0] * 6, p[1] * 6, p[2] * 6) > 0.55;
-    if (p[1] > 0.02 && dots) return sp.c3;
-    return p[1] > 0 ? shade(top, 0.9 + fbm3(p[0] * 3, 0, p[2] * 3, 2) * 0.3) : belly;
+    if (p[1] < -0.01) {
+      const gill = Math.abs(p[0]) > 0.2 && Math.abs(p[0]) < 0.42 && p[2] < -0.45 && p[2] > -0.9 && Math.sin(p[2] * 48) > 0.55;
+      return gill ? shade(belly, 0.55) : shade(belly, 0.94 + fbm3(p[0] * 4, 0, p[2] * 4, 2) * 0.12);
+    }
+    if (noise3(p[0] * 5, 0, p[2] * 5) > 0.45 && noise3(p[0] * 19, p[1] * 19, p[2] * 19) > 0.15) return sp.c3;
+    return shade(top, 0.82 + fbm3(p[0] * 2.5, 0, p[2] * 2.5, 2) * 0.38);
   };
   body.add(sdfMesh(key + 'body', {
-    min: [-1.05, -0.45, -1.9], max: [1.05, 0.45, 3.4], step: 0.07,
+    min: [-1.0, -0.36, -1.95], max: [1.0, 0.42, 3.4], step: 0.05,
     sdf: (p) => {
-      let d = ellipsoid(p, 0, 0, 0, 0.85, 0.3, 1.3);
-      for (const s of [-1, 1]) d = smin(d, capsule(p, s * 0.42, 0, -1.1, s * 0.34, -0.14, -1.65, 0.12, 0.06), 0.08);
-      d = Math.min(d, capsule(p, 0, 0.02, 1.1, 0, 0.06, 3.3, 0.08, 0.02));
-      return d;
+      let d = ellipsoid(p, 0, 0, 0.1, 0.95, 0.27, 1.2);
+      d = smin(d, ellipsoid(p, 0, 0.02, -0.95, 0.56, 0.19, 0.42), 0.15);
+      d = smin(d, ellipsoid(p, 0, 0.17, 0.95, 0.03, 0.12, 0.16), 0.05);
+      // the cephalic fins, curled forward under the mouth
+      for (const s of [-1, 1]) {
+        d = smin(d, capsule(p, s * 0.42, 0, -1.2, s * 0.36, -0.06, -1.62, 0.09, 0.055), 0.06);
+        d = smin(d, capsule(p, s * 0.36, -0.06, -1.62, s * 0.26, -0.16, -1.8, 0.055, 0.03), 0.03);
+      }
+      return Math.min(d, capsule(p, 0, 0.02, 1.2, 0, 0.08, 3.3, 0.07, 0.012));
     },
     color: skin,
   }));
   const wings = [];
+  const tipX = 1.95;
   for (const s of [-1, 1]) {
-    const w = group(body, s * 0.62, 0, 0.05);
+    const w = group(body, s * 0.72, 0, 0.05);
     w.add(sdfMesh(key + 'wing' + s, {
-      min: s < 0 ? [-2.6, -0.3, -1.0] : [-0.1, -0.3, -1.0], max: s < 0 ? [0.1, 0.3, 1.3] : [2.6, 0.3, 1.3], step: 0.07,
-      sdf: (p) => smin(ellipsoid(p, s * 1.0, 0, 0.05, 1.1, 0.1, 0.8), capsule(p, s * 1.2, 0, 0.1, s * 2.4, 0.04, 0.75, 0.16, 0.03), 0.3),
-      color: skin,
+      min: s < 0 ? [-tipX - 0.1, -0.2, -1.05] : [-0.12, -0.2, -1.05], max: s < 0 ? [0.12, 0.45, 1.0] : [tipX + 0.1, 0.45, 1.0], step: 0.05,
+      sdf: (p) => {
+        const x = p[0] * s;
+        if (x < -0.1 || x > tipX) return 1;
+        const k = Math.max(0, x) / tipX;
+        // swept leading edge, a trailing edge that curves back to the tip
+        const zLe = -0.95 + 1.25 * Math.pow(k, 1.25), zTe = 0.85 - 0.45 * k * k;
+        const hc = (zTe - zLe) / 2, zc = (zLe + zTe) / 2;
+        if (hc <= 0.01) return 1;
+        const q = (p[2] - zc) / hc;
+        if (Math.abs(q) >= 1) return 1;
+        const th = (0.22 * (1 - k) + 0.018) * Math.sqrt(1 - q * q);
+        const camber = 0.18 * k * k;
+        return Math.abs(p[1] - camber) - th;
+      },
+      color: (p) => skin([p[0] + s * 0.72, p[1] - 0.18 * Math.pow(Math.abs(p[0]) / tipX, 2), p[2]]),
     }));
     w.userData.side = s;
     wings.push(w);
   }
   const head = group(body, 0, 0.05, -1.3);
-  for (const s of [-1, 1]) glowBox(head, sp.c3, 0.08, 0.06, 0.04, s * 0.3, 0.12, -0.05);
+  for (const s of [-1, 1]) glowBox(head, sp.c3, 0.07, 0.05, 0.04, s * 0.32, 0.1, 0.0);
   root.userData = { body, legs: [], wings, baseY: 0, head, slowWings: true };
   return root;
 }
@@ -308,25 +332,57 @@ function buildManta(sp) {
 function buildMoth(sp) {
   const root = new THREE.Group();
   const body = group(root, 0, 0, 0);
-  const key = 'moth' + (sp.seed % 7);
-  const dust = (p) => shade(sp.c1, 0.75 + fbm3(p[0] * 8, p[1] * 8, p[2] * 8, 2) * 0.4);
+  const key = 'moth2:' + (sp.seed % 7);
+  const base = mix(sp.c1, [0.62, 0.56, 0.48], 0.35);
+  const dust = (p) => shade(base, 0.72 + fbm3(p[0] * 9, p[1] * 9, p[2] * 9, 2) * 0.45);
   body.add(sdfMesh(key + 'body', {
-    min: [-0.2, -0.2, -0.3], max: [0.2, 0.2, 0.7], step: 0.035,
-    sdf: (p) => smin(capsule(p, 0, 0, -0.1, 0, -0.02, 0.6, 0.1, 0.06), sphere(p, 0, 0.02, -0.18, 0.1), 0.05) + noise3(p[0] * 20, p[1] * 20, p[2] * 20) * 0.01,
-    color: dust,
+    min: [-0.2, -0.2, -0.36], max: [0.2, 0.22, 0.66], step: 0.022,
+    sdf: (p) => {
+      let d = ellipsoid(p, 0, 0.02, -0.08, 0.12, 0.12, 0.14);                       // the furry thorax
+      d = smin(d, sphere(p, 0, 0.0, -0.24, 0.08), 0.04);                          // head
+      for (let i = 0; i < 5; i++) d = smin(d, ellipsoid(p, 0, -0.01 - i * 0.008, 0.1 + i * 0.1, 0.085 - i * 0.012, 0.075 - i * 0.01, 0.07), 0.03);
+      return d + noise3(p[0] * 30, p[1] * 30, p[2] * 30) * 0.012;
+    },
+    color: (p) => (p[2] > 0.06 && Math.sin(p[2] * 62) > 0.4 ? shade(base, 0.5) : p[2] < -0.28 ? [0.08, 0.07, 0.06] : dust(p)),
   }));
+  // feathery antennae
   for (const s of [-1, 1]) {
-    const f = group(body, 0, 0.06, -0.24);
-    f.add(sdfMesh('moth-feeler' + s, { min: [-0.3, -0.05, -0.4], max: [0.3, 0.3, 0.05], step: 0.03, sdf: (p) => capsule(p, s * 0.02, 0, 0, s * 0.18, 0.2, -0.3, 0.02, 0.015), color: () => [0.2, 0.18, 0.15] }));
+    body.add(sdfMesh('moth2-feeler' + s, {
+      min: [Math.min(0, s * 0.3) - 0.06, -0.04, -0.62], max: [Math.max(0, s * 0.3) + 0.06, 0.34, -0.2], step: 0.016,
+      sdf: (p) => {
+        let d = capsule(p, s * 0.03, 0.06, -0.28, s * 0.2, 0.26, -0.52, 0.012, 0.008);
+        for (let i = 1; i < 7; i++) {
+          const t = i / 7, x = s * (0.03 + 0.17 * t), y = 0.06 + 0.2 * t, z = -0.28 - 0.24 * t;
+          d = Math.min(d, capsule(p, x, y, z, x + s * 0.05 * (1 - t), y - 0.02, z + 0.03, 0.006, 0.004), capsule(p, x, y, z, x - s * 0.02, y + 0.03, z + 0.04, 0.006, 0.004));
+        }
+        return d;
+      },
+      color: () => [0.3, 0.26, 0.2],
+    }));
   }
   const wings = [];
   for (const s of [-1, 1]) {
-    const w = group(body, s * 0.06, 0.05, 0.1);
-    const eye = (p) => Math.hypot(p[0] - s * 0.5, p[2] - 0.05);
+    const w = group(body, s * 0.06, 0.05, -0.05);
+    const eye = (p) => Math.hypot(p[0] - s * 0.46, p[2] + 0.05);
     w.add(sdfMesh(key + 'wing' + s, {
-      min: s < 0 ? [-0.95, -0.06, -0.45] : [-0.05, -0.06, -0.45], max: s < 0 ? [0.05, 0.06, 0.65] : [0.95, 0.06, 0.65], step: 0.035,
-      sdf: (p) => Math.min(ellipsoid(p, s * 0.45, 0, -0.08, 0.45, 0.03, 0.34), ellipsoid(p, s * 0.32, 0, 0.35, 0.3, 0.03, 0.26)),
-      color: (p) => { const e = eye(p); return e < 0.06 ? [0.05, 0.03, 0.03] : e < 0.12 ? sp.c3 : e < 0.15 ? [0.95, 0.92, 0.85] : dust(p); },
+      min: s < 0 ? [-0.98, -0.05, -0.5] : [-0.05, -0.05, -0.5], max: s < 0 ? [0.05, 0.05, 0.72] : [0.98, 0.05, 0.72], step: 0.022,
+      sdf: (p) => {
+        const slab = Math.abs(p[1]) - 0.014;
+        const fore = ellipsoid([p[0], 0, p[2]], s * 0.46, 0, -0.1, 0.48, 1, 0.3);
+        const hind = ellipsoid([p[0], 0, p[2]], s * 0.3, 0, 0.36, 0.3, 1, 0.3);
+        // scalloped hem
+        const hem = Math.abs(Math.sin(Math.atan2(p[2], p[0] * s) * 11)) * 0.025;
+        return Math.max(slab, Math.min(fore, hind) + hem);
+      },
+      color: (p) => {
+        const e = eye(p);
+        if (e < 0.05) return [0.04, 0.03, 0.03];
+        if (e < 0.1) return sp.c3;
+        if (e < 0.13) return [0.92, 0.88, 0.8];
+        const band = Math.abs(Math.hypot(p[0], p[2] + 0.1) - 0.62) < 0.04;
+        const vein = Math.abs(Math.sin(Math.atan2(p[2] + 0.1, p[0] * s) * 9)) < 0.08;
+        return band ? shade(base, 0.45) : vein ? shade(base, 0.6) : dust(p);
+      },
     }));
     w.userData.side = s;
     wings.push(w);

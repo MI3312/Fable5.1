@@ -828,6 +828,56 @@ function paintTiles() {
   });
   t('office_door_lo', officeDoor(false));
   t('office_door_hi', officeDoor(true));
+  // the underground
+  t('moss_top', (p) => field(p, (u, v, x, y) => {
+    const n = fbmT(u, v, 3, 4, 41), [f1, f2] = worleyT(u, v, 4, 43);
+    const c = 0.55 + n * 0.45 - (f2 - f1 < 0.06 ? 0.12 : 0) + (th(x, y, 44) - 0.5) * 0.1;
+    return [c, c, c, 255];
+  }));
+  t('moss_side', (p) => field(p, (u, v, x, y) => {
+    // stone below, moss hanging over the top edge in uneven drips
+    const [f1, f2] = worleyT(u, v, 2, 11);
+    let sc = 0.68 + fbmT(u, v, 2, 3, 5) * 0.22;
+    if (f2 - f1 < 0.07) sc -= 0.14;
+    const drip = 3 + Math.floor(vn(u, 0.5, 8, 1, 47) * 5) + (th(x, 0, 48) < 0.2 ? 3 : 0);
+    if (y < drip) { const c = 0.5 + fbmT(u, v, 4, 2, 49) * 0.4; return [c, c, c, 255]; }
+    // the rock under it is left untinted, so paint it the damp grey stone usually comes out as
+    sc *= 0.58;
+    return [sc, sc * 0.98, sc * 0.97, UNT];
+  }));
+  t('dripstone', (p) => field(p, (u, v, x, y) => {
+    // vertical streaks of mineral, wet sheen at the ridges
+    const streak = vn(u, v, 8, 1, 51) * 0.6 + vn(u, v, 16, 2, 52) * 0.4;
+    const band = Math.sin(v * TAU * 3 + streak * 4) * 0.5 + 0.5;
+    const c = 0.6 + streak * 0.28 + band * 0.08 + (th(x, y, 53) - 0.5) * 0.06;
+    return [c * 1.02, c, c * 0.94, 255];
+  }));
+  cross('glowcap', null, null, 255, (p) => {
+    // a few pale stems with glowing caps, the biggest at the back
+    const cap = (cx, cy, r, stem) => {
+      for (let y = cy; y < 16; y++) { p.set(cx, y, 0.72, 0.74, 0.68, UNT); if (stem > 1) p.set(cx + 1, y, 0.62, 0.64, 0.58, UNT); }
+      for (let y = cy - r; y <= cy; y++) for (let x = cx - r - 1; x <= cx + r + 1; x++) {
+        const d = Math.hypot((x - cx - 0.5) / (r + 1.2), (y - cy) / (r + 0.3));
+        if (d < 1 && y <= cy) { const k = 1 - d * 0.35; p.set(x, y, k, k, k, 255); }
+      }
+      p.set(cx, cy - r, 1, 1, 1, 255);
+    };
+    cap(8, 6, 3, 2); cap(3, 10, 2, 1); cap(12, 11, 1, 1);
+  });
+  cross('glow_vine', null, null, 255, (p) => {
+    // threads hanging from above, beaded with little lights
+    // a few fine strands, faint between the beads, each ending in a drop of light
+    for (let i = 0; i < 4; i++) {
+      const x = 2 + i * 4 + p.rng.int(-1, 1);
+      const len = p.rng.int(7, 16), gap = p.rng.int(3, 5), off = p.rng.int(0, 3);
+      for (let y = 0; y < len; y++) {
+        if ((y + off) % gap === 0) p.set(x, y, 0.78, 0.94, 1.0, UNT);
+        else if (y % 2 === 0) p.set(x, y, 0.3, 0.38, 0.44, UNT);
+      }
+      p.set(x, len, 0.92, 1.0, 1.0, UNT);
+      if (len < 15) p.set(x, len + 1, 0.6, 0.8, 0.95, UNT);
+    }
+  });
   t('dream_water', (p) => {
     p.fill((x, y, r) => {
       const w = Math.sin((x - y * 0.5) * 0.7) * 0.06;

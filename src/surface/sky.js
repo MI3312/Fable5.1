@@ -27,6 +27,9 @@ export class Sky {
       uStorm: { value: 0 },
       uSkyFog: { value: 0 },
       uMistCol: voxelUniforms.uMistCol,
+      uVeil: { value: 0 },
+      uVeilOpen: { value: 0 },
+      uVeilCol: { value: new THREE.Color() },
       uClouds: { value: null },
       uAurora: { value: 0 },
       uAuroraA: { value: new THREE.Color(0.2, 1.0, 0.55) },
@@ -57,6 +60,9 @@ export class Sky {
         uniform float uBodySize[${MAX_BODIES}];
         uniform float uStorm;
         uniform float uSkyFog;
+        uniform float uVeil;
+        uniform float uVeilOpen;
+        uniform vec3 uVeilCol;
         uniform vec3 uMistCol;
         uniform sampler2D uClouds;
         uniform float uAurora, uRainbow, uFlash;
@@ -163,6 +169,8 @@ export class Sky {
           // the horizon dissolves into mist: the world ends in fog, not in a line
           float hz = 1.0 - smoothstep(-0.1, 0.55, dir.y);
           col = mix(col, mix(col, uMistCol, 0.8), uSkyFog * hz);
+          // inside a pocket the sky is only the room's own haze, unless there's a way up to it
+          col = mix(col, uVeilCol, uVeil * (1.0 - uVeilOpen * smoothstep(0.12, 0.6, dir.y)));
           gl_FragColor = vec4(col, 1.0);
         }`,
       side: THREE.BackSide,

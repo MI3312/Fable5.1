@@ -76,6 +76,7 @@ const GLOSS = {
   base_top: [0.3, 0.1], tele_top: [0.35, 0.08], ceiling_tile: [0.08, 0.3], light_panel: [0.2, 0.05],
   exit_door_lo: [0.28, 0.14], exit_door_hi: [0.32, 0.1], poster: [0.4, 0.02], poster_odd: [0.4, 0.02], roller: [0.22, 0.2],
   breaker: [0.25, 0.12], drain: [0.4, 0.06], exit_sign: [0.3, 0.03],
+  dripstone: [0.3, 0.1], moss_top: [0.1, 0.35],
 };
 function glossTexture() {
   const data = new Uint8Array(256 * 4);
@@ -405,6 +406,14 @@ void main() {
     col = mix(col, refl, clamp(fres * 1.15, 0.0, 0.88 - 0.22 * uMood) * (1.0 - emit));
     col += uSunColor * spec * (1.0 - emit);
     alpha = mix(clamp(uAlpha + fres * 0.4 - clarity * 0.5, 0.18, 0.97), 1.0, emit);
+    if (abs(fn.y) < 0.5) {
+      // water on its way down a cliff: pale streaks falling, breaking white here and there
+      vec2 q = vec2(dot(vWorld.xz, vec2(fn.z, -fn.x)) * 2.6, vWorld.y * 0.8 + uTime * 3.4);
+      float st = fogNoise(vec3(q.x, q.y, 0.5)) * 0.7 + fogNoise(vec3(q.x * 2.3, q.y * 1.9, 3.1)) * 0.3;
+      float streak = smoothstep(0.5, 0.78, st);
+      col = mix(col, vec3(0.84, 0.88, 0.9) * (0.3 + 0.7 * uDaylight), streak * 0.6 * (1.0 - emit));
+      alpha = max(alpha, 0.5 + streak * 0.4);
+    }
   }
   if (wet > 0.01 && fn.y > 0.5) {
     // raindrop rings on the wet surface, then sky and sun reflected in it

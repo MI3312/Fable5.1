@@ -35,13 +35,23 @@ export class TerrainGen {
     this.nReg = new Noise(s + 137);
     this.nRock = new Noise(s + 139);
     this.nPatch = new Noise(s + 149);
+    this.nEsc = new Noise(s + 151);
+    this.nPil = new Noise(s + 157);
+    this.nRav = new Noise(s + 163);
+    this.nCav = new Noise(s + 167);
     this.gen = new Uint8Array(GW * GW * HEIGHT);
     this.hf = new Float32Array(GW * GW);
     this.top = new Int16Array(GW * GW);
     this.fOver = new Float32Array(CGX * CGX * CGY);
     this.fCave = new Float32Array(CGX * CGX * CGY);
     this.fIsle = new Float32Array(CGX * CGX * CGY);
+    this.fCav = new Float32Array(CGX * CGX * CGY);
+    // per coarse cell: can the cave / cavern field carve anywhere inside it?
+    this.hotCave = new Uint8Array((CGX - 1) * (CGX - 1) * (CGY - 1));
+    this.hotCav = new Uint8Array((CGX - 1) * (CGX - 1) * (CGY - 1));
+    this.cnCol = new Array(GW * GW).fill(null);
     this.zoneCache = new Map();
+    this._rimCache = new Map();
     this.zType = new Array(GW * GW).fill('natural');
     this.zBlend = new Float32Array(GW * GW);
     this.zFloor = new Float32Array(GW * GW);
@@ -51,7 +61,7 @@ export class TerrainGen {
   }
 
   // Terrain surface height (float) at a world column, ignoring 3D features
-  heightAt(x, z) {
+  heightAt(x, z, noSink = false) {
     if (this.p.interior === 'liminal') return this.p.pocket.F - 1;
     if (this.p.interior) return 39;
     const t = this.p.terrain;
@@ -74,6 +84,12 @@ export class TerrainGen {
       const sn = this.nSpike.n2(x * 0.045, z * 0.045);
       const thr = 1 - t.spikes * 0.28;
       if (sn > thr) h += Math.sqrt((sn - thr) / (1 - thr)) * 45;
+    }
+    // escarpments: the land steps up in sheer walls along a wandering line, once or twice
+    if (t.cliffs > 0) {
+      const e = this.nEsc.fbm2(wx * 0.0032, wz * 0.0032, 3);
+      const cw = 0.012, H1 = 10 + t.cliffs * 16;
+      h += H1 * smoothstep(0.08 - cw, 0.08 + cw, e) + H1 * 0.7 * smoothstep(0.42 - cw, 0.42 + cw, e);
     }
     if (t.craters) {
       const cs = 72;
@@ -102,9 +118,104 @@ export class TerrainGen {
         if (k > 0 && bed < h) h += (bed - h) * k * k * (3 - 2 * k);
       }
     }
+    // ravines: narrow cuts with steep walls, twenty or thirty blocks down
+    if (t.ravines > 0) {
+      const a = Math.abs(this.nRav.fbm2(wx * 0.0028 + 71.3, wz * 0.0028 - 13.1, 3));
+      const rw = 0.02;
+      if (a < rw) {
+        const lo = 0.12 - t.ravines * 0.3;
+        const kk = smoothstep(lo, lo + 0.2, this.nRav.n2(x * 0.0012 - 40, z * 0.0012 + 90));
+        const q = a / rw;
+        if (kk > 0) h -= (16 + t.ravines * 20) * kk * (1 - q * q * q * q);
+      }
+    }
+    // stone forests: pillars standing out of the land, gardens on top
+    if (t.pillars > 0) h += this._pillar(x, z);
+    // sinkholes: a round shaft to a pool at the water table
+    if (t.cenotes > 0 && !noSink) {
+      const cn = this._cenote(x, z);
+      if (cn) {
+        const R = cn.R + this.nPil.n2(x * 0.21, z * 0.21) * 1.1;
+        if (cn.d < R) h = Math.min(h, cn.floor);
+        else if (cn.d < R + 2.5) h -= (1 - (cn.d - R) / 2.5) * 2;
+      }
+    }
     const zi = zoneAt(this, x, z);
     if (zi.blend > 0) h += (zoneFloor(this, zi.type, x, z) - h) * zi.blend;
     return Math.max(4, Math.min(HEIGHT - 8, h));
+  }
+
+  // height a stone-forest pillar adds at a column
+  _pillar(x, z) {
+    const t = this.p.terrain;
+    const lo = 0.42 - t.pillars * 0.3;
+    const k = smoothstep(lo, lo + 0.18, this.nPil.fbm2(x * 0.0026, z * 0.0026, 2));
+    if (k <= 0) return 0;
+    const cs = 17, gx = Math.floor(x / cs), gz = Math.floor(z / cs);
+    let best = 0;
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const hh = hash32(this.seed, gx + dx, gz + dz, 71);
+      if ((hh & 255) > 150) continue;
+      const cx = (gx + dx) * cs + 3 + ((hh >>> 8) & 15) * 0.7, cz = (gz + dz) * cs + 3 + ((hh >>> 12) & 15) * 0.7;
+      const d = Math.hypot(x - cx, z - cz), r = 2.2 + ((hh >>> 16) & 15) * 0.25;
+      if (d > r + 1.2) continue;
+      const rr = r + this.nPil.n2(x * 0.35, z * 0.35) * 0.9;
+      if (d > rr) continue;
+      const top = (14 + ((hh >>> 20) & 31) * 1.1) * k - Math.pow(d / rr, 6) * 3;
+      if (top > best) best = top;
+    }
+    return best;
+  }
+
+  // the nearest sinkhole, if this column is near one: { d, R, floor, lake }
+  _cenote(x, z) {
+    const t = this.p.terrain;
+    const cs = 150, gx = Math.floor(x / cs), gz = Math.floor(z / cs);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const hh = hash32(this.seed, gx + dx, gz + dz, 73);
+      if ((hh & 255) > 100 * t.cenotes) continue;
+      const cx = (gx + dx) * cs + 30 + ((hh >>> 8) & 63) * 1.4, cz = (gz + dz) * cs + 30 + ((hh >>> 14) & 63) * 1.4;
+      const R = 5 + ((hh >>> 20) & 7) * 0.7, d = Math.hypot(x - cx, z - cz);
+      if (d < R * 1.7 + 3) {
+        const floor = 9 + ((hh >>> 24) & 7);
+        // only inland, and only where the land stands well above the pool
+        const key = `${gx + dx},${gz + dz}`;
+        let rim = this._rimCache.get(key);
+        if (rim === undefined) {
+          const o = R + 5;
+          rim = Math.min(this.heightAt(cx + o, cz, true), this.heightAt(cx - o, cz, true), this.heightAt(cx, cz + o, true), this.heightAt(cx, cz - o, true));
+          if (this._rimCache.size > 512) this._rimCache.clear();
+          this._rimCache.set(key, rim);
+        }
+        if ((this.p.liquid && rim < this.p.seaLevel + 3) || rim < floor + 16) return null;
+        return { d, R, floor, lake: floor + 5 };
+      }
+    }
+    return null;
+  }
+
+  // natural arches whose bounds might reach this chunk
+  _archesNear(wx0, wz0) {
+    const t = this.p.terrain, out = [];
+    const cs = 90, g0x = Math.floor((wx0 - 30) / cs), g1x = Math.floor((wx0 + GW + 30) / cs);
+    const g0z = Math.floor((wz0 - 30) / cs), g1z = Math.floor((wz0 + GW + 30) / cs);
+    for (let gx = g0x; gx <= g1x; gx++) for (let gz = g0z; gz <= g1z; gz++) {
+      const hh = hash32(this.seed, gx, gz, 79);
+      if ((hh & 255) > 140 * t.arches) continue;
+      const ax = gx * cs + 15 + ((hh >>> 8) & 63) * 0.9, az = gz * cs + 15 + ((hh >>> 14) & 63) * 0.9;
+      const R = 9 + ((hh >>> 20) & 7) * 1.3, th = 2.2 + ((hh >>> 23) & 3) * 0.45;
+      const ang = ((hh >>> 25) & 63) / 64 * Math.PI, c = Math.cos(ang), sn = Math.sin(ang);
+      if (Math.abs(ax - (wx0 + GW / 2)) > R + th + GW || Math.abs(az - (wz0 + GW / 2)) > R + th + GW) continue;
+      // it stands on its two feet with open ground under the span
+      const f1 = this.heightAt(ax + c * R, az + sn * R), f2 = this.heightAt(ax - c * R, az - sn * R);
+      const base = Math.min(f1, f2) - 1.5;
+      if (base < this.p.seaLevel + 1) continue;
+      let under = 0;
+      for (const k of [-0.5, 0, 0.5]) under = Math.max(under, this.heightAt(ax + c * R * k, az + sn * R * k));
+      if (under > base + R * 0.45) continue;
+      out.push({ ax, az, R, th, c, s: sn, base });
+    }
+    return out;
   }
 
   zoneAt(x, z) { return zoneAt(this, x, z); }
@@ -162,6 +273,7 @@ export class TerrainGen {
       const col = gx + GW * gz;
       const wx = wx0 + gx, wz = wz0 + gz;
       this.hf[col] = this.heightAt(wx, wz);
+      this.cnCol[col] = T.cenotes > 0 ? this._cenote(wx, wz) : null;
       const zi = zoneAt(this, wx, wz);
       this.zType[col] = zi.type;
       this.zBlend[col] = zi.blend;
@@ -189,7 +301,30 @@ export class TerrainGen {
         return this.n3a.fbm3(x * 0.022 + 300, y * 0.05, z * 0.022 - 200, 3);
       });
     }
+    // caverns: big flat-floored chambers, mostly between y 8 and 34, with still water at the bottom
+    const useCav = T.caverns > 0 && !P.interior;
+    if (useCav) {
+      this._fillCoarse(this.fCav, wx0, wz0, (x, y, z) => (y > 60 || y < 2 ? -1 : this.nCav.fbm3(x * 0.015, y * 0.03, z * 0.015, 2)));
+    }
+    const cavThr = 0.36 - (T.caverns || 0) * 0.14;
+    const cavWater = 9 + (this.seed % 5);
+    const cavLiquid = liquid || B.WATER;
     const caveThr = 0.012 * T.caves;
+    // the fields interpolate between corners, so a cell whose corners can't pass never carves
+    const markHot = (field, out, pass) => {
+      const C = CGX - 1;
+      for (let cy = 0; cy < CGY - 1; cy++) for (let cz = 0; cz < C; cz++) for (let cx = 0; cx < C; cx++) {
+        let hot = 0;
+        for (let k = 0; k < 8 && !hot; k++) {
+          const i = (cx + (k & 1)) + CGX * ((cz + ((k >> 1) & 1)) + CGX * (cy + (k >> 2)));
+          if (pass(field[i])) hot = 1;
+        }
+        out[cx + C * (cz + C * cy)] = hot;
+      }
+    };
+    if (useCave) markHot(this.fCave, this.hotCave, (v) => v < caveThr);
+    if (useCav) markHot(this.fCav, this.hotCav, (v) => v > cavThr);
+    const cellOf = (gx, y, gz) => ((gx / CS) | 0) + (CGX - 1) * (((gz / CS) | 0) + (CGX - 1) * ((y / CS) | 0));
     const isleThr = 0.95 - T.islands * 0.35;
 
     // 3. density fill
@@ -205,8 +340,15 @@ export class TerrainGen {
           d += this._interp(this.fOver, gx, y, gz) * T.overhang;
         }
         let solid = d > 0;
-        if (solid && useCave && !plain && y > 3 && y < h - 3) {
+        if (solid && useCave && !plain && y > 3 && y < h - 3 && this.hotCave[cellOf(gx, y, gz)]) {
           if (this._interp(this.fCave, gx, y, gz) < caveThr) solid = false;
+        }
+        if (solid && useCav && !plain && y > 3 && y < h - 7 && y < 58 && this.hotCav[cellOf(gx, y, gz)]) {
+          const py = (y - 21) / 15;
+          if (this._interp(this.fCav, gx, y, gz) - py * py * 0.3 > cavThr) {
+            solid = false;
+            if (y <= cavWater) { gen[col + GW * GW * y] = cavLiquid; continue; }
+          }
         }
         if (solid) { groundTop = y; gen[col + GW * GW * y] = 1; continue; }
         if (useIsle && !plain && y > isleMin && y < isleMax) {
@@ -217,12 +359,51 @@ export class TerrainGen {
       }
       // liquid
       if (liquid) {
-        for (let y = groundTop + 1; y <= sea; y++) {
+        let seaTop = sea;
+        const cn = this.cnCol[col];
+        if (cn && cn.d < cn.R * 1.7 + 1) seaTop = Math.min(sea, cn.lake);
+        for (let y = groundTop + 1; y <= seaTop; y++) {
           const i = col + GW * GW * y;
           if (gen[i] === 0) gen[i] = (P.iceSea && y === sea) ? B.ICE : liquid;
         }
       }
       gen[col] = B.BEDROCK;
+    }
+
+    // 3b. sinkholes open out below into a chamber around their pool; arches stand over the land
+    if (T.cenotes > 0) {
+      for (let gz = 0; gz < GW; gz++) for (let gx = 0; gx < GW; gx++) {
+        const col = gx + GW * gz, cn = this.cnCol[col];
+        if (!cn || cn.d > cn.R * 1.65) continue;
+        for (let y = cn.floor + 1; y <= cn.floor + 14; y++) {
+          const Rb = cn.R * (1 + 0.65 * (1 - (y - cn.floor) / 14));
+          if (cn.d >= Rb || y >= this.hf[col] - 6) continue;
+          const i = col + GW * GW * y;
+          gen[i] = y <= cn.lake ? (liquid || B.WATER) : 0;
+        }
+        if (cn.d < cn.R * 1.65) for (let y = cn.floor + 1; y <= cn.lake; y++) {
+          const i = col + GW * GW * y;
+          if (gen[i] === 0) gen[i] = liquid || B.WATER;
+        }
+      }
+    }
+    if (T.arches > 0) {
+      for (const A of this._archesNear(wx0, wz0)) {
+        const ext = A.R + A.th + 1;
+        const x0 = Math.max(0, Math.floor(A.ax - ext - wx0)), x1 = Math.min(GW - 1, Math.ceil(A.ax + ext - wx0));
+        const z0 = Math.max(0, Math.floor(A.az - ext - wz0)), z1 = Math.min(GW - 1, Math.ceil(A.az + ext - wz0));
+        for (let gz = z0; gz <= z1; gz++) for (let gx = x0; gx <= x1; gx++) {
+          const dx = wx0 + gx + 0.5 - A.ax, dz = wz0 + gz + 0.5 - A.az;
+          const along = dx * A.c + dz * A.s, across = -dx * A.s + dz * A.c;
+          if (Math.abs(across) > A.th + 0.6 || Math.abs(along) > A.R + A.th) continue;
+          const col = gx + GW * gz;
+          for (let y = Math.floor(A.base); y <= A.base + (A.R + A.th) * 1.15 + 1 && y < HEIGHT - 1; y++) {
+            const q = Math.hypot(along, (y + 0.5 - A.base) / 1.15) - A.R;
+            const th = A.th * (0.85 + 0.3 * this.nRock.n2((wx0 + gx) * 0.3, y * 0.3));
+            if (q * q + across * across * 1.3 < th * th) gen[col + GW * GW * y] = 1;
+          }
+        }
+      }
     }
 
     // 4. surface layering + ores
@@ -244,7 +425,11 @@ export class TerrainGen {
           let block;
           const above = y + 1 < HEIGHT ? gen[i + GW * GW] : 0;
           const underLiquid = above !== 0 && above !== 1 && above !== 2 && (IS_LIQUID[above] || above === B.ICE);
-          if (depth === 0) {
+          if (depth === 0 && top >= 0 && y < top - 5) {
+            // a floor underground: bare rock, damp moss, gravel
+            const mn = this.nPatch.n2(wx * 0.09 + y * 0.3, wz * 0.09);
+            block = underLiquid ? S.stone : mn > 0.1 ? B.MOSS : mn < -0.55 ? B.GRAVEL : S.stone;
+          } else if (depth === 0) {
             if (underLiquid || y < sea - 1) block = S.underwater;
             else if (liquid && y <= sea + 1 && v === 1) block = S.beach;
             else if (y + snowJ > snowLine) block = S.snowBlock;
@@ -272,6 +457,10 @@ export class TerrainGen {
       }
       this.top[col] = top;
     }
+
+    // 4b. waterfalls where a cliff stands over lower ground, and the dressing of caves
+    if (T.falls > 0 && liquid) this._falls(wx0, wz0, liquid, T.falls);
+    this._caveDressing(wx0, wz0);
 
     // 5. features: trees, plants, boulders, deposits, dream props
     this._features(wx0, wz0);
@@ -343,6 +532,71 @@ export class TerrainGen {
     }
     if (edits) for (let i = 0; i < edits.length; i += 4) data[edits[i] + PW * (edits[i + 2] + PW * edits[i + 1])] = edits[i + 3];
     return data;
+  }
+
+  // A spring at the lip of a cliff pours down its face into a shallow pool at the foot. Decided per
+  // 4 x 4 stretch of cliff so falls come as sheets, not single columns.
+  _falls(wx0, wz0, liquid, k) {
+    const gen = this.gen, L = GW * GW;
+    for (let gz = 1; gz < GW - 1; gz++) for (let gx = 1; gx < GW - 1; gx++) {
+      const col = gx + GW * gz, top = this.top[col];
+      if (top < 2 || top >= HEIGHT - 3 || this.zBlend[col] > 0.2) continue;
+      if (gen[col + L * (top + 1)] !== 0) continue;
+      let hi = top, hc = -1, hx = 0, hz = 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const t2 = this.top[col + dx + GW * dz]; if (t2 > hi) { hi = t2; hc = col + dx + GW * dz; hx = dx; hz = dz; } }
+      if (hi - top < 7 || gen[hc + L * (hi + 1)] !== 0) continue;
+      const wx = wx0 + gx, wz = wz0 + gz;
+      if ((hash32(this.seed, wx >> 2, wz >> 2, 77) & 255) > 34 * k) continue;
+      // springs come out of the land, not off the tops of pillars
+      if (this.p.terrain.pillars > 0 && this._pillar(wx + hx, wz + hz) > 0) continue;
+      gen[hc + L * (hi + 1)] = liquid;
+      for (let y = top + 1; y <= hi; y++) if (gen[col + L * y] === 0) gen[col + L * y] = liquid;
+      gen[col + L * top] = liquid;
+    }
+  }
+
+  // Caves: glowing fungus in patches on damp floors, threads of light hanging from the roof,
+  // dripstone up and down, and now and then something that was left down here.
+  _caveDressing(wx0, wz0) {
+    const gen = this.gen, L = GW * GW, P = this.p;
+    const odd = P.biome === 'liminal' || P.biome === 'exotic' || P.biome === 'dead';
+    for (let gz = 0; gz < GW; gz++) for (let gx = 0; gx < GW; gx++) {
+      const col = gx + GW * gz, top = this.top[col];
+      if (top < 8) continue;
+      const wx = wx0 + gx, wz = wz0 + gz;
+      for (let y = 3; y < top - 5; y++) {
+        const i = col + L * y, b = gen[i];
+        if (!IS_SOLID[b]) continue;
+        const up = gen[i + L], dn = gen[i - L];
+        if (up === 0) {
+          const h = hash32(this.seed, wx, y, wz ^ 0x5a17), r = h & 1023;
+          const patch = this.nPatch.n2(wx * 0.07 + 13, wz * 0.07 + y * 0.2) > 0.25;
+          if (patch && r < 260 && b === B.MOSS) gen[i + L] = B.GLOWCAP;
+          else if (r < 14) {
+            const n = 1 + ((h >>> 10) & 3);
+            for (let k = 1; k <= n && gen[i + L * k] === 0; k++) gen[i + L * k] = B.DRIPSTONE;
+          } else if (odd && r === 1023 && ((h >>> 12) & 7) === 0 && gx >= MARGIN && gx < MARGIN + CHUNK && gz >= MARGIN && gz < MARGIN + CHUNK) {
+            const rng = new RNG(h);
+            stampProp(rng.weighted([['lamppost', 3], ['door', 2], ['tv', 1], ['chair', 1.5]]), gx, y + 1, gz, (x, yy, z, id) => {
+              if (x < 0 || z < 0 || x >= GW || z >= GW || yy < 1 || yy >= HEIGHT) return;
+              const j = x + GW * (z + GW * yy);
+              if (gen[j] === 0) gen[j] = id;
+            }, rng);
+          }
+        }
+        if (dn === 0) {
+          const h = hash32(this.seed, wx, y, wz ^ 0x2b91), r = h & 1023;
+          const patch = this.nPatch.n2(wx * 0.05 - 7, wz * 0.05 + y * 0.15) > 0.3;
+          if (patch && r < 150) {
+            const n = 2 + ((h >>> 10) & 7);
+            for (let k = 1; k <= n && gen[i - L * k] === 0; k++) gen[i - L * k] = B.GLOW_VINE;
+          } else if (r < 22) {
+            const n = 1 + ((h >>> 10) & 3);
+            for (let k = 1; k <= n && gen[i - L * k] === 0; k++) gen[i - L * k] = B.DRIPSTONE;
+          }
+        }
+      }
+    }
   }
 
   _features(wx0, wz0) {

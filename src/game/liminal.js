@@ -177,7 +177,7 @@ export class Liminal {
     for (const [o] of this.hidden) o.visible = false;
     const p = g.player.pos;
     // whatever happens, don't fall out of the world
-    if (p.y < this.d.F - 20) {
+    if (p.y < this.d.F + (this.kind.minY ?? -20)) {
       const [x, z] = this.worldAt(6.5, 14.5);
       p.set(x, this.d.F + 0.1, z); g.player.vel.set(0, 0, 0);
     }
@@ -199,8 +199,8 @@ export class Liminal {
 
   // lights, fog and air: a slow turn from the planet's to the pocket's, so the swap itself is invisible
   applyAtmos() {
-    const m = this.mode, u = voxelUniforms;
-    if (!this.inside) { u.uArtificial.value.setRGB(...SURF_ART); u.uPanelK.value = 1; return; }
+    const m = this.mode, u = voxelUniforms, sk = m.sky.uniforms;
+    if (!this.inside) { u.uArtificial.value.setRGB(...SURF_ART); u.uPanelK.value = 1; sk.uVeil.value = 0; return; }
     u.uPanelK.value = clamp(this.powerK, 0.04, 1.6);
     const A = ATMOS[this.d.kind], K = this.K, pw = this.powerK;
     const s = K * K * (3 - 2 * K);
@@ -217,6 +217,10 @@ export class Liminal {
     m.sunLight.intensity = lerp(m.sunLight.intensity, A.sun * Math.PI, s);
     m.hemi.intensity = lerp(m.hemi.intensity, A.hemi * Math.PI * pw, s);
     if (this.kind && this.kind.atmos) this.kind.atmos(u, s);
+    // the far edge of the pocket fades into its own haze, never the planet's sky
+    sk.uVeil.value = s;
+    sk.uVeilOpen.value = this.kind && this.kind.veilOpen ? this.kind.veilOpen() : 0;
+    sk.uVeilCol.value.copy(m.scene.fog.color);
   }
 
   // ------------------------------------------------------------------ out
