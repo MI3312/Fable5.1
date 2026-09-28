@@ -223,7 +223,7 @@ export class VolumetricClouds {
     this.enabled = on && quality > 0 && this.cover > 0.01;
     cloudUniforms.uCloudShadow.value = this.enabled ? 1 : 0;
     if (!this.enabled) return null;
-    const div = quality >= 2 ? 2 : 3;
+    const div = quality >= 2 ? 2.5 : 3.5;
     const rw = Math.max(1, Math.ceil(w / div)), rh = Math.max(1, Math.ceil(h / div));
     if (!this.rt || this.rt.width !== rw || this.rt.height !== rh) {
       this.rt?.dispose();
@@ -235,7 +235,7 @@ export class VolumetricClouds {
     cloudUniforms.uCloudCover.value = cover;
     U.uDensity.value = 1 + storm * 1.5;
     U.uStorm.value = storm;
-    U.uSteps.value = quality >= 2 ? 40 : 24;
+    U.uSteps.value = quality >= 2 ? 30 : 20;
     cloudUniforms.uCloudWind.value.copy(this.wind).multiplyScalar(time * 0.0035);
     U.uCam.value.copy(camera.position);
     U.uInvProj.value.copy(camera.projectionMatrixInverse);

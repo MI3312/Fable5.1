@@ -21,6 +21,7 @@ class Chunk {
     this.heights = null;
     this.meshes = [null, null, null];
     this.dirty = false;
+    this.rev = 0; // bumped on every edit (props dressing the blocks watch it)
   }
 }
 
@@ -296,6 +297,7 @@ export class World {
       n.data[px + PW * (pz + PW * y)] = id;
       n.heights[px + PW * pz] = computeColumnHeight(n.data, px, pz);
       n.dirty = true;
+      n.rev++;
       // neighbouring columns' light may change for AO/sky: mark adjacent chunks dirty too
     }
     if (record) {

@@ -31,6 +31,7 @@ export class Player {
     this.control = 1;     // how much WASD steers velocity (0 = momentum only)
     this.gravMul = 1;
     this.crouch = 0;      // lowers the eye while sliding
+    this.sneaking = false; // C held while walking: slow, low and quiet
     this.noJet = false;   // a move is using Space
   }
 
@@ -81,8 +82,9 @@ export class Player {
     const len = Math.hypot(mx, mz);
     if (len > 0) { mx /= len; mz /= len; }
     const sprint = controlsEnabled && (input.down('ShiftLeft') || input.down('ShiftRight'));
-    let speed = (sprint ? 7.6 : 4.6) * (this.speedMul || 1) * (this.buffSpeed || 1);
-    this.sprinting = sprint && len > 0;
+    let speed = (sprint && !this.sneaking ? 7.6 : 4.6) * (this.speedMul || 1) * (this.buffSpeed || 1);
+    if (this.sneaking) speed *= 0.46;
+    this.sprinting = sprint && len > 0 && !this.sneaking;
     if (this.inWater) speed *= 0.6;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wishX = (mx * cos + mz * sin) * speed;

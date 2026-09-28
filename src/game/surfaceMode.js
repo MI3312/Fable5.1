@@ -7,7 +7,7 @@ import { createAtlasTexture } from '../world/atlas.js';
 import { createVoxelMaterials, voxelUniforms } from '../world/voxelMaterial.js';
 import { Liminal } from './liminal.js';
 import { World } from '../world/world.js';
-import { B, BLOCKS, IS_LIQUID, IS_CROSS, IS_AIRLIKE, IS_SOLID, isPlaceable } from '../world/blocks.js';
+import { B, BLOCKS, IS_LIQUID, IS_CROSS, IS_AIRLIKE, IS_SOLID, IS_HIDDEN, isPlaceable } from '../world/blocks.js';
 import { planStructure, REGION, STRUCTURE_INFO } from '../world/structures.js';
 import { ZONE_INFO, ZONE_ATMOS } from '../world/zones.js';
 import { Sky, Clouds, Weather } from '../surface/sky.js';
@@ -54,6 +54,7 @@ const POINT_LIGHT_COLORS = {
   [B.LIGHT_PANEL]: [0.72, 0.76, 0.8], [B.LAMP]: [1.0, 0.78, 0.5], [B.NEON]: [1.0, 0.35, 0.85], [B.SODIUM_PLANT]: [0.9, 0.65, 0.2],
   [B.DIHYDRO]: [0.3, 0.55, 1.0], [B.STARRY]: [0.4, 0.3, 0.9], [B.POD]: [0.35, 0.85, 1.0], [B.SENTINEL_PILLAR]: [1.0, 0.18, 0.12],
   [B.EMERGENCY]: [1.0, 0.1, 0.06], [B.MISSING]: [0.9, 0.0, 0.9], [B.TV]: [0.7, 0.75, 0.85],
+  [B.PROP_LAMP]: [1.0, 0.74, 0.44],
 };
 
 const VERMIN_DROPS = {
@@ -1259,6 +1260,16 @@ export class SurfaceMode {
       if (F.t <= 0) { this.flash = null; this.plTimer = 0; }
       else return;
     }
+    // lights the pocket's inhabitants carry (the Librarian's lantern) follow them every frame
+    const kl = this.liminal.inside && this.liminal.kind ? this.liminal.kind.lights : null;
+    if (kl && this.klSlots) {
+      for (const [slot, j] of this.klSlots) {
+        const l = kl[j];
+        if (!l) continue;
+        voxelUniforms.uPL.value[slot].copy(l.pos);
+        voxelUniforms.uPLCol.value[slot].setRGB(l.col[0], l.col[1], l.col[2]);
+      }
+    }
     this.plTimer = (this.plTimer || 0) - dt;
     if (this.plTimer > 0) return;
     this.plTimer = 0.2;
@@ -1276,6 +1287,13 @@ export class SurfaceMode {
       }
     }
     cand.sort((a, b) => a[0] - b[0]);
+    if (kl) {
+      for (let j = kl.length - 1; j >= 0; j--) {
+        const l = kl[j];
+        if (l && l.pos.distanceTo(cam) < 40) cand.unshift([0, l.pos.x, l.pos.y, l.pos.z, -2, j]);
+      }
+    }
+    this.klSlots = [];
     this.glowSlot = null;
     if (glow) {
       const p = this.game.player.pos;
@@ -1288,6 +1306,7 @@ export class SurfaceMode {
       const c = cand[i];
       if (!c) { u.uPL.value[i].set(0, -9999, 0); u.uPLCol.value[i].setRGB(0, 0, 0); continue; }
       u.uPL.value[i].set(c[1], c[2], c[3]);
+      if (c[4] === -2) { this.klSlots.push([i, c[5]]); const k = kl[c[5]].col; u.uPLCol.value[i].setRGB(k[0], k[1], k[2]); continue; }
       const col = c[4] === -1 ? [0.55, 0.62, 1.4] : POINT_LIGHT_COLORS[c[4]] || [0.6, 0.6, 0.6];
       if (c[4] === B.CRYSTAL) u.uPLCol.value[i].setRGB(T[30] * 0.7, T[31] * 0.7, T[32] * 0.7);
       else u.uPLCol.value[i].setRGB(col[0], col[1], col[2]);
@@ -1347,7 +1366,7 @@ export class SurfaceMode {
     const ambientDark = 1 - this.daylight;
     const lampOn = this.rover.driving ? this.rover.lights : this.torch && !g.inShip;
     this.torchK = (this.torchK || 0) + ((lampOn ? 1 : 0) - (this.torchK || 0)) * Math.min(1, (dt || 0) * 8);
-    voxelUniforms.uTorchOn.value = this.torchK * lerp(1, this.horror.flicker, 0.85);
+    voxelUniforms.uTorchOn.value = this.torchK * lerp(1, this.horror.flicker, 0.85) * (this.torchMul ?? 1);
     this.torchSpot.intensity = voxelUniforms.uTorchOn.value * 70;
     // underwater post effect
     const camBlock = this.world.getBlock(g.camera.position.x, g.camera.position.y, g.camera.position.z);
@@ -1707,7 +1726,7 @@ export class SurfaceMode {
     this.target = target;
 
     // selection box
-    if (hit && !this.visor && mode < 2 && (!target || target.kind === 'block')) {
+    if (hit && !this.visor && mode < 2 && (!target || target.kind === 'block') && !IS_HIDDEN[hit.id]) {
       this.selection.visible = true;
       this.selection.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
       this.selection.material.color.set(TOOL_COLORS[mode]);

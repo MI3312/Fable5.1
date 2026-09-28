@@ -79,6 +79,7 @@ export class SunShadows {
     U.uShadowOn.value = this.fade * Math.min(1, sunDir.y / 0.12);
     if (U.uShadowOn.value < 0.01) { U.uShadowOn.value = 0; U.uShadowOn2.value = 0; return; }
     this.frame++;
+    U.uShadowTaps.value = quality >= 2 ? 8 : 6;
     // the far cascade, every third frame (Ultra) or every sixth (High)
     if (this.frame % (quality >= 2 ? 3 : 6) === 0) {
       this._render(scene, this.cam2, this.rt2, center, sunDir, this.extent2, this.size2, false);

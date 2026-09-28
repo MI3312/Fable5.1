@@ -36,7 +36,7 @@ const SAVE_KEY = 'lucidsky.save.v1';
 const SETTINGS_KEY = 'lucidsky.settings.v1';
 
 const DEFAULT_SETTINGS = {
-  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, mood: 0.8, hudFade: true, fear: 1, gfx: 2, playerName: 'Dreamer',
+  sensitivity: 1, renderDist: 7, fov: 75, renderScale: 1, master: 0.8, music: 0.55, sfx: 0.8, invertY: false, dreamFx: 0.7, mood: 0.8, hudFade: true, fear: 1, gfx: 2, dynRes: true, sharp: false, playerName: 'Dreamer',
 };
 
 function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
@@ -130,8 +130,9 @@ export class Game {
     this.spaceCamera.fov = s.fov; this.spaceCamera.updateProjectionMatrix();
     this.surface.setRenderDistance(s.renderDist);
     this.audio.setVolumes({ master: s.master, music: s.music, sfx: s.sfx });
-    if (this.post.scale !== s.renderScale) { this.post.scale = s.renderScale; this.resize(); }
-    this.post.quality = s.gfx ?? 2;
+    if (this.post.scale !== s.renderScale || this.post.sharp !== !!s.sharp) { this.post.scale = s.renderScale; this.post.sharp = !!s.sharp; this.resize(); }
+    const q = s.gfx ?? 2;
+    if (this.post.quality !== q) { this.post.quality = q; if (this.post.rt) this.resize(); }
     // the colour mood: vivid (0) to damp and bleak (1)
     this.post.uniforms.uMood.value = s.mood ?? 0.8;
     voxelUniforms.uMood.value = s.mood ?? 0.8;
@@ -139,15 +140,17 @@ export class Game {
 
   saveSettings() { safeSet(SETTINGS_KEY, JSON.stringify(this.settings)); }
 
-  resize() {
+  resize(keepExposure = false) {
     const w = window.innerWidth, h = window.innerHeight;
-    const pr = Math.min(window.devicePixelRatio || 1, 1.5);
+    // draw at the window's own size: on a high-DPI screen (a laptop at 125-150%) matching the
+    // device pixels costs up to 2.25x the work for little you can see. 'Sharp' opts back in.
+    const pr = this.settings.sharp ? Math.min(window.devicePixelRatio || 1, 1.5) : 1;
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     this.spaceCamera.aspect = w / h; this.spaceCamera.updateProjectionMatrix();
     this.surface.viewCamera.aspect = w / h; this.surface.viewCamera.updateProjectionMatrix();
-    this.post.resize(w, h, pr);
+    this.post.resize(w, h, pr, keepExposure);
     this.width = w; this.height = h;
   }
 
@@ -897,11 +900,30 @@ export class Game {
   // ---------------- main loop ----------------
   loop(now) {
     requestAnimationFrame((t) => this.loop(t));
-    const dt = Math.min(0.05, Math.max(0.0001, (now - this.last) / 1000));
+    const raw = (now - this.last) / 1000;
+    const dt = Math.min(0.05, Math.max(0.0001, raw));
     this.last = now;
     if (this.debugHold) { if (!this.debugNoRender) this.render(); return; }
     this.tick(dt);
     this.render();
+    this._dynamicResolution(raw);
+  }
+
+  // Dynamic resolution: when frames run long for a while the picture is drawn a little smaller
+  // (and scaled up), and when there is room to spare it comes back. Changes are rare and in steps.
+  _dynamicResolution(raw) {
+    const P = this.post;
+    if (!this.settings.dynRes || this.mode !== 'surface' || this.transition || document.hidden || raw > 0.25) {
+      if (!this.settings.dynRes && P.dyn !== 1) { P.dyn = 1; this.resize(); }
+      return;
+    }
+    this.frameEma = this.frameEma ? this.frameEma + (raw - this.frameEma) * 0.05 : raw;
+    this.dynT = (this.dynT || 0) + raw;
+    if (this.dynT < 2.5) return;
+    let next = P.dyn;
+    if (this.frameEma > 1 / 50) next = Math.max(0.6, P.dyn - 0.1);
+    else if (this.frameEma < 1 / 72 && this.dynT > 5) next = Math.min(1, P.dyn + 0.1);
+    if (Math.abs(next - P.dyn) > 0.01) { P.dyn = +next.toFixed(2); this.dynT = 0; this.resize(true); }
   }
 
   // One simulation step (also used by automated tests)

@@ -7,16 +7,28 @@
 //               keep going. Eight in a row and there's a door.
 //   Library   - find the three books with your name on them, and walk softly. The Librarian
 //               hears running, and walks through shelves.
-//   Warehouse - find the breaker, then the loading door. The mannequins only move in the dark.
+//   Warehouse - three ways out: the loading dock (throw the breaker), the fire exit (find the
+//               bolt cutters), the freight lift (call it and hold out). The mannequins only move
+//               when unseen, and the torch runs down.
 import * as THREE from 'three';
-import { B, IS_AIRLIKE, IS_SOLID } from '../world/blocks.js';
+import { B, IS_AIRLIKE, IS_SOLID, ART_LEVEL } from '../world/blocks.js';
 import { clamp, lerp } from '../core/rng.js';
 import {
-  backroomsExit, poolStair, poolWell, poolTrail, PR, libraryBooks, warehouseExit, warehouseBreaker, prArch, STYLE,
+  backroomsExit, backroomsExits, poolStair, poolWell, poolTrail, PR, libraryBooks, warehouseExit, warehouseBreaker, prArch, STYLE,
   HALL, hallT, hallTurn, hallOpen, hallHeight, hallCeiling, HALL_DOORS, HALL_POSTERS_N, HALL_POSTERS_S, HALL_ALCOVES,
+  libFloorProp, libZoneAt, BR, brZone, brOfficeAt, brL1Prop, brL1Exit, brHasL1, brStairAt,
+  warehouseFire, warehouseLift, warehouseCage, whFloorProp, whSiteAt,
 } from '../world/liminalGen.js';
 import { buildNullFigure } from '../entities/horrorModels.js';
 import * as HP from '../entities/hallProps.js';
+import * as LP from '../entities/libraryProps.js';
+import * as BP from '../entities/backroomsProps.js';
+import * as GP from '../entities/glitchProps.js';
+import * as WP from '../entities/warehouseProps.js';
+import * as MQ from '../entities/mannequin.js';
+import { buildLibrarian, poseLibrarian, warmLibrarian } from '../entities/librarian.js';
+import { propGlowK, setPropArt, propLitMaterial } from '../entities/propLight.js';
+import { PropField } from './propField.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const fm = (a, n) => ((a % n) + n) % n;
@@ -28,6 +40,9 @@ function blk(parent, mat, w, h, d, x, y, z) {
   parent.add(m);
   return m;
 }
+// a quick hash of integer cells to 0..1
+const hq = (a, b, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const wrapA = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 
 class Kind {
@@ -94,6 +109,26 @@ class Kind {
     if (free(obj.position.x, nz)) { obj.position.z = nz; return true; }
     return false;
   }
+  // keep the player out of the furniture modelled on the faces of blocks of a kind (bookcases,
+  // racking) which stands `depth` out from them
+  keepOut(id, depth) {
+    const P = this.P, p = P.pos, F = this.d.F, W = this.W;
+    if (p.y > F + 6.5 || p.y < F - 1.5) return;
+    const R = depth + 0.3;
+    const x0 = Math.floor(p.x), z0 = Math.floor(p.z);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const cx = x0 + dx, cz = z0 + dz;
+      if (W.getBlock(cx, F + 3, cz) !== id) continue;
+      const ax = cx - R, bx = cx + 1 + R, az = cz - R, bz = cz + 1 + R;
+      if (p.x <= ax || p.x >= bx || p.z <= az || p.z >= bz) continue;
+      const pen = [p.x - ax, bx - p.x, p.z - az, bz - p.z];
+      const k = pen.indexOf(Math.min(...pen));
+      if (k === 0) { p.x = ax; P.vel.x = Math.min(P.vel.x, 0); }
+      else if (k === 1) { p.x = bx; P.vel.x = Math.max(P.vel.x, 0); }
+      else if (k === 2) { p.z = az; P.vel.z = Math.min(P.vel.z, 0); }
+      else { p.z = bz; P.vel.z = Math.max(P.vel.z, 0); }
+    }
+  }
   face(obj, x, z, k = 1) {
     const want = Math.atan2(x - obj.position.x, z - obj.position.z);
     obj.rotation.y += wrapA(want - obj.rotation.y) * k;
@@ -108,32 +143,288 @@ class Kind {
 }
 
 // ======================================================================================= Backrooms
+let BR_GEOS = null;
+function brGeos() {
+  if (BR_GEOS) return BR_GEOS;
+  const G = {};
+  G.part = BP.partitionGeometry();
+  for (let i = 0; i < 3; i++) { G['desk' + i] = BP.deskGeometry(i * 7 + 1); G['screen' + i] = BP.screenGeometry(i * 7 + 1); }
+  G.chair = BP.officeChairGeometry();
+  G.cab = BP.cabinetGeometry();
+  G.cooler = BP.coolerGeometry();
+  G.copier = BP.copierGeometry();
+  for (let i = 0; i < 3; i++) G['wires' + i] = BP.wiresGeometry(i + 1);
+  for (let i = 0; i < 2; i++) G['tile' + i] = BP.fallenTileGeometry(i + 1);
+  G.crate = BP.crateGeometry(false); G.crate2 = BP.crateGeometry(true); G.drum = BP.drumGeometry();
+  G.pipes = BP.pipesGeometry();
+  for (let i = 0; i < 5; i++) G['spike' + i] = BP.spikeGeometry(i * 11 + 3);
+  G.chairUp = BP.upsideDown(() => BP.officeChairGeometry());
+  G.deskUp = BP.upsideDown(() => BP.deskGeometry(40));
+  for (const a of ['<', '>', '^', 'v']) {
+    G['graf' + a] = BP.graffitiGeometry(a, 'EXIT', [0.5, 0.07, 0.05], a.charCodeAt(0));
+    G['grafL1' + a] = BP.graffitiGeometry(a, 'OUT', [0.08, 0.08, 0.09], a.charCodeAt(0) + 5);
+  }
+  BR_GEOS = G;
+  return G;
+}
+const BR_WALL = new Set([B.WALLPAPER, B.WALLPAPER_B, B.MISSING]);
+const ARROWS = ['<', '>', '^', 'v'];
+
 class Backrooms extends Kind {
+  static warm() { brGeos(); }
+
   start() {
+    const L = this.L, d = this.d;
     this.goneLine = 'Where the door was, there is only wallpaper.';
     this.exitLine = 'The bar gives. The hum stops. Wind, grass, sky.';
-    this.E = backroomsExit(this.d);
+    this.minY = BR.L1F - 6;
+    this.exits = backroomsExits(d);
+    this.E = this.exits[0];
+    this.L1E = brHasL1(d) ? brL1Exit(d) : null;
     this.bo = { on: false, t: 0, next: rnd(40, 70) };
     this.stalker = null;
     this.mercy = false;
     this.warned = false;
     this.navT = 0;
+    this.level = 0;
+    this.l1k = 0;
+    this.saidL1 = false;
+    this.knockT = rnd(8, 16);
+    this.watcher = null;
+    this.watchT = rnd(20, 40);
+    this.field = new PropField(L, brGeos(), (c) => this._scan(c), { nearR: 16, farR: 34, yR: 7.5, max: 3000 });
+    this.gl = new Map();
+    this.glT = 0;
+    this.signs = new Map();
     this.g.audio.setLoop('fluoro', true, 0.4);
   }
 
+  stop() {
+    if (this.field) this.field.dispose();
+    for (const o of this.gl.values()) { o.removeFromParent(); GP.disposeGlitch(o); }
+    for (const o of this.signs.values()) o.removeFromParent();
+    this.gl.clear(); this.signs.clear();
+    propGlowK.value = 1;
+    this.g.audio.setLoop('wind', false);
+  }
+
+  sub() { return this.level === 1 ? 'Level 1' : 'Level 0'; }
+
   objective() {
-    return this.bo.on ? ['The lights are out', 'Keep your torch on the dark'] : ['Find the exit', 'The hum is loudest by the door'];
+    if (this.level === 1) return ['Find the maintenance exit', 'Listen for the fan: it blows by the door', 'The stairs lead back up'];
+    return this.bo.on ? ['The lights are out', 'Keep your torch on the dark']
+      : ['Find a way out: there are three doors', 'The hum is loudest near one; arrows on the walls point the way', this.L1E ? 'Or take a concrete stairwell down' : 'Keep moving'];
+  }
+
+  // what to model in a chunk: the offices' furniture, the wet wings' wires and fallen tiles, the
+  // broken regions' spikes and upturned chairs, and Level 1's crates, drums and pipes
+  _scan(c) {
+    const d = this.d, F = d.F, data = c.data, L = this.L;
+    const S = 18;
+    const at = (px, pz, y) => data[px + S * (pz + S * (F + y))];
+    const out = [];
+    const X0 = c.cx * 16, Z0 = c.cz * 16;
+    const yaw = (fu, fv, j = 0) => { const [dx, dz] = L.dir(fu, fv); return Math.atan2(dx, dz) + j; };
+    for (let lz = 0; lz < 16; lz++) for (let lx = 0; lx < 16; lx++) {
+      const px = lx + 1, pz = lz + 1, x = X0 + lx, z = Z0 + lz;
+      const [u, v] = L.cellLocal(x, z);
+      const h = hq(u, v, d.seed & 1023);
+      const b0 = at(px, pz, 0);
+      // ---- Level 0
+      if (b0 === B.PROP) {
+        const o = brOfficeAt(d, u, v);
+        const art = ART_LEVEL[at(px, pz, 2)] || 0.5;
+        if (o) {
+          if (o.t === 'part') out.push({ g: 'part', x: x + 0.5, y: F, z: z + 0.5, ry: o.ax === 'u' ? yaw(0, 1) : yaw(1, 0), art });
+          else if (o.t === 'desk') {
+            if (o.a) {
+              const k = Math.floor(h * 3), [wx, wz] = L.worldAt(u + 1, v + 0.5), ry = yaw(o.fu, o.fv);
+              out.push({ g: 'desk' + k, x: wx, y: F, z: wz, ry, art });
+              out.push({ g: 'screen' + k, x: wx, y: F, z: wz, ry, art: 1, glow: 1 });
+            }
+          } else out.push({ g: o.t, x: x + 0.5, y: F, z: z + 0.5, ry: yaw(o.fu, o.fv, o.t === 'chair' ? (h - 0.5) * 1.4 : 0), art });
+        }
+      } else if (IS_AIRLIKE[b0]) {
+        const zone = brZone(d, u, v);
+        if (zone === 7 && IS_AIRLIKE[at(px, pz, 4)]) {
+          const art = ART_LEVEL[at(px, pz, 1)] || 0.4;
+          out.push({ g: 'wires' + Math.floor(h * 3), x: x + 0.5, y: F, z: z + 0.5, ry: h * 6.28, art });
+          if (h < 0.6) out.push({ g: 'tile' + (h < 0.3 ? 0 : 1), x: x + 0.5, y: F, z: z + 0.5, ry: h * 9, art });
+        }
+        if (zone === 4 && h < 0.014 && IS_AIRLIKE[at(px, pz, 3)]) out.push({ g: h < 0.008 ? 'chairUp' : 'deskUp', x: x + 0.5, y: F, z: z + 0.5, ry: h * 700, art: ART_LEVEL[at(px, pz, 2)] || 0.5 });
+      } else if (BR_WALL.has(at(px, pz, 1)) && hq(x, z, 77) < 0.035) {
+        // an arrow in marker, pointing to the nearest door (or anywhere at all, where things have come apart)
+        for (const [dx, dz] of DIRS4) {
+          if (!IS_AIRLIKE[at(px + dx, pz + dz, 1)] || !IS_AIRLIKE[at(px + dx, pz + dz, 2)]) continue;
+          const fx = x + 0.5 + dx * 0.5, fz = z + 0.5 + dz * 0.5;
+          out.push({ g: 'graf' + (brZone(d, u, v) === 4 ? ARROWS[Math.floor(h * 97) % 4] : this._arrow(fx, fz, dx, dz, 0)), x: fx, y: F, z: fz, ry: Math.atan2(dx, dz), art: ART_LEVEL[at(px + dx, pz + dz, 1)] || 0.5, face: [dx, dz] });
+          break;
+        }
+      }
+      if (BR_WALL.has(at(px, pz, 1)) && brZone(d, u, v) === 4) {
+        for (const [dx, dz] of DIRS4) {
+          if (!IS_AIRLIKE[at(px + dx, pz + dz, 1)] || hq(x, z, dx * 3 + dz + 50) > 0.05) continue;
+          out.push({ g: 'spike' + Math.floor(hq(x, z, dx + 70) * 5), x: x + 0.5 + dx * 0.5, y: F, z: z + 0.5 + dz * 0.5, ry: Math.atan2(dx, dz), art: ART_LEVEL[at(px + dx, pz + dz, 1)] || 0.5, face: [dx, dz] });
+        }
+      }
+      // ---- Level 1
+      if (!this.L1E) continue;
+      const b1 = at(px, pz, BR.L1F + 1);
+      if (b1 === B.PROP) {
+        const t = brL1Prop(d, u, v);
+        if (t) out.push({ g: t, x: x + 0.5, y: F + BR.L1F + 1, z: z + 0.5, ry: h * 6.28, art: ART_LEVEL[at(px, pz, BR.L1F + 4)] || 0.2 });
+      }
+      if (at(px, pz, BR.L1F + 2) === B.CINDER && hq(x, z, 79) < 0.05) {
+        for (const [dx, dz] of DIRS4) {
+          if (!IS_AIRLIKE[at(px + dx, pz + dz, BR.L1F + 2)]) continue;
+          const fx = x + 0.5 + dx * 0.5, fz = z + 0.5 + dz * 0.5;
+          out.push({ g: 'grafL1' + this._arrow(fx, fz, dx, dz, 1), x: fx, y: F + BR.L1F + 1, z: fz, ry: Math.atan2(dx, dz), art: ART_LEVEL[at(px + dx, pz + dz, BR.L1F + 2)] || 0.3, face: [dx, dz] });
+          break;
+        }
+      }
+      const top = at(px, pz, BR.L1C - 1);
+      if (IS_AIRLIKE[top] && at(px, pz, BR.L1C) !== B.LIGHT_PANEL && !brStairAt(d, Math.floor(u / 8), Math.floor(v / 8))) {
+        const pu = fm(u, 8), pv = fm(v, 8);
+        if (pv === 3 || pu === 6) out.push({ g: 'pipes', x: x + 0.5, y: F + BR.L1C, z: z + 0.5, ry: pv === 3 ? yaw(0, 1) : yaw(1, 0), art: ART_LEVEL[top] || 0.2 });
+      }
+    }
+    return out;
+  }
+
+  // which way a mark on a wall facing (dx, dz) at (x, z) should point to reach the nearest door
+  _arrow(x, z, dx, dz, level) {
+    const L = this.L;
+    const [u, v] = L.local(x, z);
+    let best = null, bd = 1e9;
+    for (const E of level === 1 ? [this.L1E] : this.exits) { const dd = Math.hypot(E.u - u, E.v - v); if (dd < bd) { bd = dd; best = E; } }
+    const [wx, wz] = L.worldAt(best.u + 0.5, best.v + 0.5);
+    let ddx = wx - x, ddz = wz - z;
+    const dl = Math.hypot(ddx, ddz) || 1; ddx /= dl; ddz /= dl;
+    const r = ddx * dz - ddz * dx, a = -(ddx * dx + ddz * dz);
+    return Math.abs(r) > 0.38 ? (r > 0 ? '>' : '<') : a > 0 ? '^' : 'v';
+  }
+
+  // the regions that have come apart: tears, cubes, fragments and loose lights around you
+  _glitch(dt) {
+    const L = this.L, d = this.d, p = this.P.pos, g = this.g;
+    this.glT -= dt;
+    if (this.glT <= 0) {
+      this.glT = 0.5;
+      const want = new Set();
+      if (this.level === 0) {
+        const [pu, pv] = L.local(p.x, p.z);
+        const cu = Math.floor(pu), cv = Math.floor(pv);
+        for (let du = -24; du <= 24; du++) for (let dv = -24; dv <= 24; dv++) {
+          if (du * du + dv * dv > 576) continue;
+          const u = cu + du, v = cv + dv;
+          if (brZone(d, u, v) !== 4) continue;
+          const h = hq(u, v, (d.seed & 1023) + 7);
+          const kind = h < 0.006 ? 'tear' : h < 0.016 ? 'cube' : h < 0.021 ? 'frag' : h < 0.026 ? 'ghost' : null;
+          if (!kind) continue;
+          const key = `${u},${v}`;
+          want.add(key);
+          if (this.gl.has(key)) continue;
+          if (!IS_AIRLIKE[L.get(u, 1, v)] || !IS_AIRLIKE[L.get(u, 2, v)]) continue;
+          const seed = Math.floor(h * 1e6);
+          const o = kind === 'tear' ? GP.buildTear(seed, 0.6 + (h * 997 % 1) * 0.9, 1.8 + (h * 331 % 1) * 1.4)
+            : kind === 'cube' ? GP.buildErrorCube(seed) : kind === 'frag' ? GP.buildFragments(seed) : GP.buildGhostPanel(seed);
+          L.point(u + 0.5, kind === 'tear' ? 1.5 : 0, v + 0.5, o.position);
+          o.userData.base = o.position.clone();
+          if (kind === 'tear') o.rotation.y = h * 9000;
+          L.props.add(o);
+          this.gl.set(key, o);
+        }
+      }
+      for (const [k, o] of this.gl) if (!want.has(k)) { o.removeFromParent(); GP.disposeGlitch(o); this.gl.delete(k); }
+    }
+    let near = 99;
+    for (const o of this.gl.values()) {
+      const u = o.userData;
+      u.tick(this.t, dt);
+      if (u.dy !== undefined) o.position.set(u.base.x + (u.dx || 0), u.base.y + u.dy, u.base.z + (u.dz || 0));
+      if (u.tear) near = Math.min(near, o.position.distanceTo(p) - 1);
+    }
+    // close to a tear, the picture tears too, and there's static on the air
+    if (near < 6) {
+      const k = clamp(1 - near / 6, 0, 1);
+      const H = L.mode.horror;
+      H.glitch = Math.max(H.glitch, k * 0.35 * (0.5 + 0.5 * Math.sin(this.t * 11)));
+      if (Math.random() < dt * (0.6 + k * 3)) g.audio.noiseHit(0.05 + Math.random() * 0.1, 3000 + Math.random() * 3000, 0.02 + k * 0.05, 'highpass');
+    }
+  }
+
+  // signs over the stairwells near you
+  _signs() {
+    const L = this.L, d = this.d, p = this.P.pos;
+    if (!this.L1E) return;
+    const [pu, pv] = L.local(p.x, p.z);
+    const a0 = Math.floor(pu / 8), b0 = Math.floor(pv / 8);
+    const want = new Set();
+    for (let da = -4; da <= 4; da++) for (let db = -4; db <= 4; db++) {
+      const a = a0 + da, b = b0 + db;
+      if (!brStairAt(d, a, b)) continue;
+      for (const top of [true, false]) {
+        const key = `${a},${b},${top}`;
+        want.add(key);
+        if (this.signs.has(key)) continue;
+        const s = GP.buildSign(top ? 'STAIRS' : 'UP', top);
+        L.point(a * 8 + (top ? 2.5 : 6.5), top ? 3.45 : BR.L1F + 4.45, b * 8 - 0.04, s.position);
+        s.rotation.y = L.yaw(0, 1);
+        L.props.add(s);
+        this.signs.set(key, s);
+      }
+    }
+    for (const [k, o] of this.signs) if (!want.has(k)) { o.removeFromParent(); this.signs.delete(k); }
+  }
+
+  atmos(u, s) {
+    const m = this.L.mode, k = this.l1k * s;
+    if (k < 0.001) return;
+    // Level 1: colder, greyer, darker, the air thicker
+    u.uAmbient.value.lerp(_c.setRGB(0.07, 0.08, 0.09), k * 0.7);
+    u.uArtificial.value.lerp(_c.setRGB(0.72, 0.8, 0.86).multiplyScalar(this.L.powerK), k * 0.6);
+    u.uCaveCol.value.lerp(_c.setRGB(0.05, 0.055, 0.06), k);
+    m.scene.fog.color.lerp(_c, k);
+    u.uFogDensity.value = lerp(u.uFogDensity.value, 1 / 30, k);
   }
 
   update(dt) {
     super.update(dt);
-    const L = this.L, g = this.g, p = this.P.pos;
+    const L = this.L, g = this.g, p = this.P.pos, d = this.d;
+    const ly = p.y - d.F;
+    this.level = ly < -4 ? 1 : 0;
+    this.l1k += ((this.level === 1 ? 1 : 0) - this.l1k) * Math.min(1, dt * 1.5);
+    this.field.update(dt, g.camera.position);
+    this._glitch(dt);
+    this._signs();
+    propGlowK.value = clamp(L.powerK, 0.15, 1.2);
     const [u, v] = L.local(p.x, p.z);
-    const de = Math.hypot(u - this.E.u, v - this.E.v);
+    const bo = this.bo;
+    if (this.level === 1) {
+      if (bo.on) this._blackout(false);
+      if (!this.saidL1) { this.saidL1 = true; L.center('Level 1. Concrete, and the drip of water somewhere, and something knocking on the pipes.', '#c8d0d4', 4.5); }
+      // the fan by the maintenance door
+      const de = this.L1E ? Math.hypot(u - this.L1E.u, v - this.L1E.v) : 99;
+      const near = clamp(1 - de / 60, 0, 1);
+      g.audio.setLoop('fluoro', true, 0.12 * L.powerK);
+      g.audio.setLoop('wind', true, 0.08 + near * near * 0.9);
+      // knocking along the pipes, never where you are
+      this.knockT -= dt;
+      if (this.knockT <= 0) {
+        this.knockT = rnd(7, 18);
+        const pan = rnd(-1, 1);
+        for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) setTimeout(() => { g.audio.distant('thud', { pan, gain: 0.5 }); g.audio.tone(170 + Math.random() * 40, 0.25, 'triangle', 0.015, 0.92); }, i * rnd(280, 420));
+      }
+      this._watch(dt);
+      this.dread = 0.28 + (this.watcher ? 0.2 : 0);
+      return;
+    }
+    g.audio.setLoop('wind', false);
+    let de = 1e9;
+    for (const E of this.exits) { const dd = Math.hypot(u - E.u, v - E.v); if (dd < de) { de = dd; this.E = E; } }
     const near = clamp(1 - de / 140, 0, 1);
     g.audio.setLoop('fluoro', true, (0.3 + near * near * 1.6) * L.powerK);
     // blackouts
-    const bo = this.bo;
     if (!bo.on) {
       bo.next -= dt;
       if (bo.next <= 0) this._blackout(true);
@@ -148,6 +439,39 @@ class Backrooms extends Kind {
     if (!this.mercy && this.t > 420 && de > 48) this._mercyExit();
     const sd = this.stalker ? this.stalker.position.distanceTo(p) : 99;
     this.dread = 0.22 + (bo.on ? 0.3 : 0) + clamp(1 - sd / 20, 0, 1) * 0.45;
+  }
+
+  // Level 1: a figure at the far end of the pillars, there when you look, gone when you come
+  _watch(dt) {
+    const L = this.L, p = this.P.pos, d = this.d;
+    if (!this.watcher) {
+      this.watchT -= dt;
+      if (this.watchT > 0) return;
+      this.watchT = rnd(25, 50);
+      const [pu, pv] = L.local(p.x, p.z);
+      for (let i = 0; i < 30; i++) {
+        const a = Math.random() * Math.PI * 2, r = rnd(16, 26);
+        const u = Math.floor(pu + Math.cos(a) * r), v = Math.floor(pv + Math.sin(a) * r);
+        const y0 = BR.L1F + 1;
+        if (!IS_AIRLIKE[L.get(u, y0, v)] || !IS_AIRLIKE[L.get(u, y0 + 1, v)] || !IS_SOLID[L.get(u, y0 - 1, v)]) continue;
+        const m = buildNullFigure(false);
+        L.point(u + 0.5, y0, v + 0.5, m.position);
+        L.props.add(m);
+        this.watcher = { m, seenT: 0, life: 20 };
+        return;
+      }
+      return;
+    }
+    const w = this.watcher, m = w.m;
+    this.face(m, p.x, p.z, 1);
+    w.life -= dt;
+    const dist = m.position.distanceTo(p);
+    if (this.seen(m.position, 1.6, false)) w.seenT += dt;
+    if (w.seenT > 1.4 || dist < 9 || w.life <= 0) {
+      if (w.seenT > 0 || dist < 9) this.g.audio.distant('thud', { pan: this.pan(m.position.x, m.position.z), gain: 0.5 });
+      m.removeFromParent();
+      this.watcher = null;
+    }
   }
 
   _blackout(on) {
@@ -261,6 +585,7 @@ class Backrooms extends Kind {
       if (L.visible(_v, L.world, 1.2)) continue;
       L.set(u, 0, v, B.EXIT_DOOR); L.set(u, 1, v, B.EXIT_DOOR_TOP); L.set(u, 2, v, B.EXIT_SIGN);
       this.E = { u, v };
+      this.exits.push(this.E);
       this.mercy = true;
       this.g.audio.distant('door');
       L.center('Somewhere close, a door clicks open.', '#d8f0d0', 3.5);
@@ -959,50 +1284,94 @@ class Hallway extends Kind {
 
 // ======================================================================================= Library
 const TITLES = ['The Book of Your Name', 'Everything You Forgot, Volume II', 'Where You Were Going', 'Your Handwriting', 'A Map of This Room', 'The Last Page Is Blank'];
-function buildLibrarian() {
-  const g = new THREE.Group();
-  const robe = new THREE.MeshLambertMaterial({ color: 0x14100d });
-  const skin = new THREE.MeshLambertMaterial({ color: 0xd8d0c4, emissive: 0x151412 });
-  const glow = new THREE.MeshBasicMaterial({ color: 0xffc070 });
-  const body = new THREE.Group(); g.add(body);
-  blk(body, robe, 0.9, 2.0, 0.6, 0, 1.0, 0);
-  blk(body, robe, 0.62, 0.5, 0.45, 0, 2.2, 0);
-  const head = new THREE.Group(); head.position.set(0, 2.62, 0); body.add(head);
-  blk(head, skin, 0.34, 0.5, 0.36, 0, 0, 0);
-  for (const s of [-1, 1]) {
-    const arm = new THREE.Group(); arm.position.set(s * 0.42, 2.35, 0); body.add(arm);
-    blk(arm, robe, 0.16, 1.5, 0.16, 0, -0.75, 0);
-    blk(arm, skin, 0.1, 0.45, 0.1, 0, -1.65, 0);
-    if (s > 0) { blk(arm, glow, 0.18, 0.24, 0.18, 0, -2.0, 0.05); }
-    arm.rotation.x = -0.15;
-  }
-  g.userData = { head, body };
-  return g;
+let LIB_GEOS = null;
+function libGeos() {
+  if (LIB_GEOS) return LIB_GEOS;
+  const G = {};
+  for (let i = 0; i < 10; i++) G['bay' + i] = LP.bayGeometry(i + 1);
+  G.gap2 = LP.bayGeometry(31, { gap: 2 });
+  G.gap4 = LP.bayGeometry(37, { gap: 4 });
+  G.door = LP.bayGeometry(41, { door: true });
+  G.end = LP.endPanelGeometry(false, false); G.endL = LP.endPanelGeometry(true, false);
+  G.endR = LP.endPanelGeometry(false, true); G.endLR = LP.endPanelGeometry(true, true);
+  G.ladder = LP.ladderGeometry();
+  G.table0 = LP.tableGeometry(1); G.table1 = LP.tableGeometry(2);
+  G.chair = LP.chairGeometry();
+  G.banker = LP.bankerLampGeometry(); G.bankerGlow = LP.bankerGlowGeometry();
+  G.pendant = LP.pendantGeometry(); G.pendantGlow = LP.pendantGlowGeometry();
+  G.cabinet0 = LP.catalogueGeometry(1); G.cabinet1 = LP.catalogueGeometry(2);
+  G.cart0 = LP.cartGeometry(1); G.cart1 = LP.cartGeometry(2);
+  G.pile0 = LP.pileGeometry(1); G.pile1 = LP.pileGeometry(2); G.pile2 = LP.pileGeometry(3);
+  G.name = LP.nameBookGeometry();
+  LIB_GEOS = G;
+  return G;
 }
+// a soft gold glow around a book with your name
+let haloTex = null;
+function bookHalo() {
+  if (!haloTex && typeof document !== 'undefined') {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,214,140,0.9)'); gr.addColorStop(0.35, 'rgba(255,176,80,0.35)'); gr.addColorStop(1, 'rgba(255,150,60,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    haloTex = new THREE.CanvasTexture(c);
+  }
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  s.scale.set(1.35, 1.35, 1);
+  return s;
+}
+const LIB_SAY = {
+  listen: 'It is listening', investigate: 'It heard something', search: 'It is searching', hunt: 'It sees you - get out of its sight',
+};
 
 class Library extends Kind {
+  // shapes that take a moment to build are made while the building is still ahead of you
+  static warm() { warmLibrarian(); libGeos(); }
+
   start() {
+    const L = this.L;
     this.goneLine = 'Where the door was, there is a shelf. None of the books have titles.';
     this.exitLine = 'You step out into the air. You can\'t remember what the books were called.';
     this.books = libraryBooks(this.d).map((b) => ({ ...b, got: false }));
+    const [fx, fz] = L.dir(0, -1);
+    this.bookCells = new Map();
+    for (const b of this.books) {
+      const [x, z] = L.cellWorld(b.u, b.v);
+      this.bookCells.set(`${x},${z}`, { b, fx, fz });
+      b.halo = bookHalo();
+      b.halo.position.set(x + 0.5 + fx * 0.88, this.d.F + LP.levelFloor(LP.bookLevel(b.y)) + 0.22, z + 0.5 + fz * 0.88);
+      L.props.add(b.halo);
+    }
     this.have = 0;
     this.noise = 0;
     this.shiftT = rnd(12, 18);
     this.rustleT = 6;
     this.exitOpen = false;
-    const lib = buildLibrarian();
-    const [x, z] = this.L.worldAt(6.5 + rnd(-30, 30), 50 + rnd(0, 20));
-    lib.position.set(x, this.d.F, z);
-    this.L.props.add(lib);
-    this.lib = { m: lib, state: 'wander', target: null, lost: 0 };
+    this.hintT = 5;
+    this.field = new PropField(L, libGeos(), (c) => this._scan(c), { nearR: 13, farR: 40, max: 6000 });
+    const m = buildLibrarian();
+    const [x, z] = L.worldAt(6.5 + rnd(-30, 30), 50 + rnd(0, 20));
+    m.position.set(x, this.d.F, z);
+    L.props.add(m);
+    this.lib = { m, state: 'wander', a: 0, target: null, heard: null, lastSeen: null, lost: 0, stepT: 0, creakT: 3, shelveT: rnd(12, 22), hearCd: 0, sawT: 0, react: 0, face: null };
+    this.lantern = { pos: new THREE.Vector3(), col: [0, 0, 0] };
+    this.lights = [this.lantern];
     this.wasGround = true;
+  }
+
+  stop() {
+    if (this.field) this.field.dispose();
+    propGlowK.value = 1;
+    this.lights = null;
   }
 
   objective() {
     const q = clamp(this.noise, 0, 1);
     const bar = '▮'.repeat(Math.round(q * 4)) + '▯'.repeat(4 - Math.round(q * 4));
-    if (this.exitOpen) return ['A door has opened somewhere near', `Noise ${bar}`];
-    return [`Books with your name: ${this.have}/3`, 'Listen for pages turning; look for a lamp over an aisle', `Noise ${bar}`];
+    const lb = this.lib, dl = lb.m.position.distanceTo(this.P.pos);
+    const say = LIB_SAY[lb.state] || (dl < 22 ? 'It is close - hold C to creep' : null);
+    if (this.exitOpen) return ['A door has opened somewhere near', say || 'Find it before it finds you', `Noise ${bar}`];
+    return [`Books with your name: ${this.have}/3`, say || 'Look for a lamp over an aisle; listen for pages turning', `Noise ${bar}`];
   }
 
   interact(hit) {
@@ -1012,14 +1381,82 @@ class Library extends Kind {
 
   onNoise(a) { this.noise += a; }
 
+  // what to model in a chunk: a bookcase on every open face of the shelving (panelled ends
+  // where a range stops), ladders, lamps, and the furniture the generator stood in PROP blocks
+  _scan(c) {
+    const d = this.d, F = d.F, data = c.data, W = this.W, L = this.L;
+    const S = 18;
+    const at = (px, pz, y) => data[px + S * (pz + S * (F + y))];
+    const shelf = (px, pz) => at(px, pz, 3) === B.LIB_SHELF;
+    const shelfW = (x, z) => (W.getBlock(x, F + 3, z) === B.LIB_SHELF ? 1 : 0);
+    const open = (px, pz) => IS_AIRLIKE[at(px, pz, 2)] === 1;
+    const out = [];
+    const X0 = c.cx * 16, Z0 = c.cz * 16;
+    for (let lz = 0; lz < 16; lz++) for (let lx = 0; lx < 16; lx++) {
+      const px = lx + 1, pz = lz + 1, x = X0 + lx, z = Z0 + lz;
+      if (shelf(px, pz)) {
+        // which way the range runs: the way the shelving goes on further
+        const sx = shelf(px - 1, pz) + shelf(px + 1, pz), sz = shelf(px, pz - 1) + shelf(px, pz + 1);
+        const alongX = sx !== sz ? sx > sz : shelfW(x - 2, z) + shelfW(x + 2, z) >= shelfW(x, z - 2) + shelfW(x, z + 2);
+        const bk = this.bookCells.get(`${x},${z}`);
+        const door = at(px, pz, 0) === B.EXIT_DOOR;
+        for (const [dx, dz] of DIRS4) {
+          if (!open(px + dx, pz + dz)) continue;
+          const ry = Math.atan2(dx, dz), fx = x + 0.5 + dx * 0.5, fz = z + 0.5 + dz * 0.5;
+          const art = ART_LEVEL[at(px + dx, pz + dz, 2)] || 0.2;
+          const end = alongX ? dx !== 0 : dz !== 0;
+          if (end && !door) {
+            const tx = dz, tz = -dx; // the bay's +x, in the world
+            const g = 'end' + (open(px - tx, pz - tz) ? 'L' : '') + (open(px + tx, pz + tz) ? 'R' : '');
+            out.push({ g, x: fx, y: F, z: fz, ry, art, face: [dx, dz] });
+            continue;
+          }
+          let g;
+          if (door) g = 'door';
+          else if (bk && bk.fx === dx && bk.fz === dz) {
+            g = bk.b.y <= 1 ? 'gap2' : 'gap4';
+            if (at(px, pz, bk.b.y) === B.GLOW_BOOK) out.push({ g: 'name', x: fx, y: F + LP.levelFloor(LP.bookLevel(bk.b.y)), z: fz, ry, art: 1, glow: 1, face: [dx, dz] });
+          } else g = 'bay' + Math.floor(hq(x, z, dx * 3 + dz) * 10);
+          out.push({ g, x: fx, y: F, z: fz, ry, art, face: [dx, dz] });
+          if (!door && !bk && hq(x, z, 91 + dx * 3 + dz) < 0.035) out.push({ g: 'ladder', x: fx, y: F, z: fz, ry, art, face: [dx, dz] });
+        }
+        continue;
+      }
+      if (at(px, pz, 6) === B.PROP_LAMP) {
+        out.push({ g: 'pendant', x: x + 0.5, y: F, z: z + 0.5, art: 1 });
+        out.push({ g: 'pendantGlow', x: x + 0.5, y: F, z: z + 0.5, art: 1, glow: 1 });
+      }
+      if (at(px, pz, 1) === B.PROP_LAMP) {
+        out.push({ g: 'banker', x: x + 0.5, y: F, z: z + 0.5, ry: hq(x, z, 5) * 0.6 - 0.3, art: 1 });
+        out.push({ g: 'bankerGlow', x: x + 0.5, y: F, z: z + 0.5, ry: hq(x, z, 5) * 0.6 - 0.3, art: 1, glow: 1 });
+      }
+      if (at(px, pz, 0) !== B.PROP) continue;
+      const [u, v] = L.cellLocal(x, z);
+      const fp = libFloorProp(d, u, v);
+      if (!fp || !fp.a) continue;
+      const h = hq(x, z, 7);
+      let ou = 0.5, ov = 0.5, fu = 0, fv = 1, g, jit = 0;
+      if (fp.t === 'table') { ou = 1; ov = 1; g = 'table' + (h < 0.5 ? 0 : 1); jit = (h - 0.5) * 0.05; }
+      else if (fp.t === 'chair') { fu = fp.fu; fv = fp.fv; g = 'chair'; jit = (h - 0.5) * 0.6; ou += (h - 0.5) * 0.2; }
+      else if (fp.t === 'cabinet') { ou = 1; g = 'cabinet' + (h < 0.5 ? 0 : 1); }
+      else if (fp.t === 'cart') { ov += fm(v, 5) === 2 ? -0.1 : 0.1; fu = 1; fv = 0; g = 'cart' + (h < 0.5 ? 0 : 1); jit = (h - 0.5) * 0.4; }
+      else { g = 'pile' + Math.floor(h * 3); jit = h * 6.28; }
+      const [wx, wz] = L.worldAt(u + ou, v + ov), [ddx, ddz] = L.dir(fu, fv);
+      out.push({ g, x: wx, y: F, z: wz, ry: Math.atan2(ddx, ddz) + jit, art: ART_LEVEL[at(px, pz, 2)] || 0.3 });
+    }
+    return out;
+  }
+
   _take(hit) {
     const L = this.L, g = this.g;
-    this.W.setBlock(hit.x, hit.y, hit.z, B.BOOKSHELF);
+    this.W.setBlock(hit.x, hit.y, hit.z, B.LIB_SHELF);
     const [u, v] = L.cellLocal(hit.x, hit.z);
     const b = this.books.find((q) => q.u === u && q.v === v) || this.books.find((q) => !q.got);
     if (b) b.got = true;
     this.have = this.books.filter((q) => q.got).length;
+    this.noise += 0.2;
     g.audio.distant('chime');
+    g.audio.distant('page', { pan: 0, gain: 1.5 });
     L.center(`"${TITLES[Math.floor(Math.random() * TITLES.length)]}" - the name on the spine is yours.`, '#f4dca0', 3.5);
     if (this.have >= 3 && !this.exitOpen) this._openExit();
   }
@@ -1027,59 +1464,195 @@ class Library extends Kind {
   _openExit() {
     const L = this.L, p = this.P.pos;
     const [pu, pv] = L.local(p.x, p.z);
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 160; i++) {
       const u = Math.floor(pu + rnd(-16, 16)), r = Math.floor(pv / 5) + Math.floor(rnd(-3, 3));
       const v = r * 5 + 3;
       if (Math.hypot(u - pu, v - pv) < 7) continue;
-      if (L.get(u, 0, v) !== B.BOOKSHELF || L.get(u, 1, v) !== B.BOOKSHELF || !IS_AIRLIKE[L.get(u, 0, v - 1)]) continue;
+      if (L.get(u, 0, v) !== B.LIB_SHELF || L.get(u, 1, v) !== B.LIB_SHELF || L.get(u, 3, v) !== B.LIB_SHELF || !IS_AIRLIKE[L.get(u, 0, v - 1)] || !IS_AIRLIKE[L.get(u, 1, v - 1)]) continue;
+      if (L.get(u - 1, 3, v) !== B.LIB_SHELF || L.get(u + 1, 3, v) !== B.LIB_SHELF) continue;
       L.point(u + 0.5, 1, v + 0.5, _v);
       if (L.visible(_v, L.world, 1.2)) continue;
       L.set(u, 0, v, B.EXIT_DOOR); L.set(u, 1, v, B.EXIT_DOOR_TOP); L.set(u, 2, v, B.EXIT_SIGN);
       this.exitOpen = true;
       this.g.audio.distant('door');
       L.center('Somewhere near, a door creaks open. Something heard it too.', '#f0e0c0', 4);
-      this.lib.state = 'hunt'; this.lib.lost = 0;
+      const lb = this.lib;
+      lb.heard = [p.x, p.z];
+      this._setState('investigate');
+      lb.target = [p.x, p.z];
       return;
     }
+  }
+
+  _setState(s) {
+    const lb = this.lib;
+    if (lb.state === s) return;
+    lb.state = s; lb.a = 0;
+    if (s === 'hunt') {
+      const g = this.g;
+      g.audio.noiseHit(0.5, 220, 0.18, 'lowpass');
+      g.audio.tone(70, 1.2, 'sawtooth', 0.04, 0.8);
+      if (this.t - (lb.sawT || -99) > 12) this.L.center('It has seen you.', '#e8c8b0', 2.5);
+      lb.sawT = this.t;
+    }
+  }
+
+  // how far it can make you out: further if you're in the light, or your lamp is on
+  _sees(dl) {
+    const L = this.L, P = this.P, p = P.pos, lb = this.lib, m = lb.m;
+    if (dl > 26) return false;
+    const lit = ART_LEVEL[this.W.getBlock(p.x, p.y + 1, p.z)] * L.powerK;
+    let range = 4 + 10 * lit + (L.mode.torchK > 0.5 ? 9 : 0);
+    if (P.sneaking) range *= 0.72;
+    range = Math.max(range, 5.5); // its own lantern
+    if (dl > range) return false;
+    const fx = Math.sin(m.rotation.y), fz = Math.cos(m.rotation.y);
+    const dot = ((p.x - m.position.x) * fx + (p.z - m.position.z) * fz) / Math.max(dl, 0.01);
+    if (dl > 2.2 && dot < (lb.state === 'hunt' ? -0.1 : lb.state === 'search' ? 0.1 : 0.35)) return false;
+    _v.set(m.position.x, m.position.y + 2.5, m.position.z);
+    _w.set(p.x, p.y + 1.3, p.z).sub(_v);
+    const dd = _w.length();
+    if (this.W.isSolid(_v.x, _v.y, _v.z)) return dl < 2.5;
+    return !this.W.raycast(_v, _w.normalize(), Math.max(0, dd - 0.4));
+  }
+
+  // a shelf face near it to put a book back on
+  _shelfFace() {
+    const m = this.lib.m, W = this.W, F = this.d.F;
+    const x0 = Math.floor(m.position.x), z0 = Math.floor(m.position.z);
+    if (W.isSolid(x0, F + 1, z0)) return null;
+    for (const [dx, dz] of DIRS4) for (let r = 1; r <= 2; r++) {
+      if (W.getBlock(x0 + dx * r, F + 3, z0 + dz * r) === B.LIB_SHELF) return [x0 + 0.5 + dx * (r - 0.3), z0 + 0.5 + dz * (r - 0.3)];
+    }
+    return null;
   }
 
   update(dt) {
     super.update(dt);
     const L = this.L, g = this.g, P = this.P, p = P.pos;
-    // how much noise you're making
-    const moving = Math.hypot(P.vel.x, P.vel.z) > 0.5;
-    if (P.sprinting && moving) this.noise += dt * 1.15;
+    this.keepOut(B.LIB_SHELF, LP.SHELF.D);
+    this.field.update(dt, g.camera.position);
+    // how much noise you're making: running is loud, walking a little, creeping nothing
+    const hs = Math.hypot(P.vel.x, P.vel.z), moving = hs > 0.6 && P.onGround;
+    const loud = moving ? (P.sprinting ? 1.3 : P.sneaking ? 0 : 0.26) : 0;
+    if (loud > this.noise) this.noise = Math.min(loud, this.noise + dt * (P.sprinting ? 1.1 : 0.5));
+    else this.noise = Math.max(0, this.noise - dt * 0.32);
     if (this.wasGround && !P.onGround && P.vel.y > 2) this.noise += 0.3;
     this.wasGround = P.onGround;
-    this.noise = Math.max(0, this.noise - dt * 0.3);
+    this.hintT -= dt;
+    if (this.hintT < 0 && this.hintT > -1) { this.hintT = -9; L.center('Quiet, please. Hold C to creep between the shelves.', '#d8ccb0', 4); }
+
     const lb = this.lib, m = lb.m;
+    lb.a += dt;
+    lb.hearCd -= dt;
     const dl = Math.hypot(m.position.x - p.x, m.position.z - p.z);
-    if (this.noise >= 1) {
-      this.noise = 0.35;
-      if (dl < 48) { lb.state = lb.state === 'hunt' ? 'hunt' : 'listen'; lb.target = [p.x, p.z]; lb.lost = 0; g.audio.whisper(0.06, this.pan(m.position.x, m.position.z)); L.center('Shhh.', '#c8b8a0', 1.5); }
+    // it hears you further the louder you are
+    const hearR = 2.5 + this.noise * 30;
+    if (this.noise > 0.12 && dl < hearR && lb.state !== 'hunt' && lb.hearCd <= 0) {
+      lb.hearCd = 0.6;
+      const err = dl * (this.noise >= 1 ? 0.04 : 0.2);
+      lb.heard = [p.x + rnd(-err, err), p.z + rnd(-err, err)];
+      if (lb.state === 'wander' || lb.state === 'shelve') {
+        this._setState('listen');
+        lb.listenT = this.noise >= 1 ? 0.4 : 1.4;
+        g.audio.whisper(0.06, this.pan(m.position.x, m.position.z));
+        if (this.noise >= 1) L.center('Shhh.', '#c8b8a0', 1.5);
+      } else if (lb.state === 'search' || lb.state === 'investigate') { this._setState('investigate'); lb.target = lb.heard; }
     }
-    // it sees you if it's close, faces you and nothing's in the way
-    _v.set(m.position.x, m.position.y + 2.6, m.position.z);
-    _w.set(p.x, p.y + 1.5, p.z).sub(_v);
-    const dd = _w.length();
-    const sees = dd < 13 && !this.W.raycast(_v, _w.normalize(), dd - 0.5);
-    if (sees && (lb.state === 'listen' || P.sprinting || lb.state === 'hunt')) { lb.state = 'hunt'; lb.lost = 0; }
-    if (lb.state === 'hunt') { lb.target = [p.x, p.z]; if (!sees) { lb.lost += dt; if (lb.lost > (this.exitOpen ? 20 : 8)) lb.state = 'wander'; } }
-    if (!lb.target || (lb.state === 'wander' && Math.hypot(m.position.x - lb.target[0], m.position.z - lb.target[1]) < 1)) {
-      const [x, z] = L.worldAt(L.local(p.x, p.z)[0] + rnd(-30, 30), L.local(p.x, p.z)[1] + rnd(-30, 30));
-      lb.target = [x, z];
+    const sees = this._sees(dl);
+    if (sees) { lb.lastSeen = [p.x, p.z]; lb.lost = 0; }
+    if (sees && lb.state !== 'hunt') {
+      lb.react += dt;
+      if (lb.react > (lb.state === 'search' || lb.state === 'investigate' ? 0.15 : 0.45)) this._setState('hunt');
+    } else if (!sees) lb.react = 0;
+    let speed = 0, tx = null, tz = null;
+    switch (lb.state) {
+      case 'wander': {
+        if (!lb.target || Math.hypot(m.position.x - lb.target[0], m.position.z - lb.target[1]) < 1.2) {
+          // drift about, more often than not somewhere near you
+          const [pu, pv] = L.local(p.x, p.z), [mu, mv] = L.local(m.position.x, m.position.z);
+          const near = Math.random() < 0.6;
+          const [wx, wz] = near ? L.worldAt(pu + rnd(-24, 24), pv + rnd(-24, 24)) : L.worldAt(mu + rnd(-30, 30), mv + rnd(-30, 30));
+          lb.target = [wx, wz];
+        }
+        [tx, tz] = lb.target; speed = 1.2;
+        lb.shelveT -= dt;
+        if (lb.shelveT <= 0) {
+          const f = this._shelfFace();
+          lb.shelveT = f ? rnd(18, 32) : 2;
+          if (f) { lb.face = f; this._setState('shelve'); }
+        }
+        break;
+      }
+      case 'shelve':
+        this.face(m, lb.face[0], lb.face[1], Math.min(1, dt * 3));
+        if (lb.a > 0.95 && lb.a - dt <= 0.95 && dl < 34) g.audio.distant('shelve', { pan: this.pan(m.position.x, m.position.z), gain: Math.pow(clamp(1 - dl / 34, 0, 1), 1.5) * 1.6 });
+        if (lb.a > 2.6) { this._setState('wander'); lb.target = null; }
+        break;
+      case 'listen':
+        if (lb.heard) this.face(m, lb.heard[0], lb.heard[1], Math.min(1, dt * 1.5));
+        if (lb.a > (lb.listenT || 1)) { this._setState('investigate'); lb.target = lb.heard; }
+        break;
+      case 'investigate':
+        if (!lb.target) lb.target = lb.heard || [p.x, p.z];
+        [tx, tz] = lb.target; speed = 2.4;
+        if (Math.hypot(m.position.x - tx, m.position.z - tz) < 1.2) this._setState('search');
+        break;
+      case 'search':
+        if (lb.a > 6.5) { this._setState('wander'); lb.target = null; }
+        break;
+      case 'hunt':
+        [tx, tz] = sees ? [p.x, p.z] : lb.lastSeen || [p.x, p.z]; speed = this.exitOpen ? 4.7 : 4.15;
+        if (!sees) {
+          lb.lost += dt;
+          if (lb.lost > 1.2) { this._setState('investigate'); lb.target = lb.lastSeen || lb.heard; }
+        }
+        break;
     }
-    const speed = lb.state === 'hunt' ? (this.exitOpen ? 4.6 : 4.1) : lb.state === 'listen' ? 3.0 : 1.4;
-    this.step(m, lb.target[0], lb.target[1], speed, dt, false);
-    this.face(m, lb.target[0], lb.target[1], Math.min(1, dt * 4));
-    m.userData.body.position.y = Math.sin(this.t * 1.3) * 0.05;
-    if (lb.state === 'listen' && Math.hypot(m.position.x - lb.target[0], m.position.z - lb.target[1]) < 1) lb.state = 'wander';
+    let mv = 0;
+    if (tx !== null && speed > 0) {
+      const ox = m.position.x, oz = m.position.z;
+      this.step(m, tx, tz, speed, dt, false);
+      this.face(m, tx, tz, Math.min(1, dt * 3.5));
+      mv = clamp(Math.hypot(m.position.x - ox, m.position.z - oz) / Math.max(dt, 1e-3) / 2.4, 0, 1);
+    }
+    const fl = poseLibrarian(m, dt, this.t, lb.state, mv, lb.a);
+    // its steps, heavy and slow; the ring of the lantern
+    if (mv > 0.1) {
+      lb.stepT -= dt * (0.6 + mv);
+      if (lb.stepT <= 0) {
+        lb.stepT = 1.0;
+        const k = Math.pow(clamp(1 - dl / 30, 0, 1), 1.4) * 1.5;
+        if (k > 0.02) g.audio.distant('step', { pan: this.pan(m.position.x, m.position.z), gain: k });
+      }
+      lb.creakT -= dt;
+      if (lb.creakT <= 0) {
+        lb.creakT = rnd(2.2, 5);
+        const k = Math.pow(clamp(1 - dl / 22, 0, 1), 1.5) * 1.4;
+        if (k > 0.02) g.audio.distant('creak', { pan: this.pan(m.position.x, m.position.z), gain: k });
+      }
+    }
+    // its lantern lights the shelves around it (and it)
+    const u = m.userData;
+    u.lightPt.getWorldPosition(this.lantern.pos);
+    const lk = fl * 1.25 / Math.max(0.3, Math.min(1.4, L.powerK));
+    this.lantern.col[0] = 1.15 * lk; this.lantern.col[1] = 0.74 * lk; this.lantern.col[2] = 0.36 * lk;
+    setPropArt(u.mat, (ART_LEVEL[this.W.getBlock(m.position.x, m.position.y + 1.5, m.position.z)] || 0.2) * 0.8, 0);
+    if (dl < 1.25 && (lb.state === 'hunt' || lb.state === 'investigate')) this._caught();
     // the lamps gutter as it passes
-    L.power = dl < 16 ? (Math.random() < 0.2 ? 0.25 : 0.55 + 0.45 * dl / 16) : 1;
-    if (dl < 1.3) this._caught();
+    L.power = dl < 15 ? (Math.random() < 0.15 ? 0.3 : 0.55 + 0.45 * dl / 15) : 1;
+    propGlowK.value = clamp(L.powerK, 0.2, 1.2);
     // shelves move when nobody is looking
     this.shiftT -= dt;
     if (this.shiftT <= 0) { this.shiftT = rnd(12, 20); this._shift(); }
+    // the books with your name glow, and brighter as you come near
+    for (const q of this.books) {
+      const h = q.halo;
+      h.visible = !q.got;
+      if (!h.visible) continue;
+      const dq = h.position.distanceTo(g.camera.position);
+      h.material.opacity = (0.8 + 0.2 * Math.sin(this.t * 2.2 + q.u)) * clamp(1.4 - dq / 30, 0.3, 1);
+    }
     // pages turning, from the nearest book you haven't found
     this.rustleT -= dt;
     let next = null, nd = 1e9;
@@ -1091,10 +1664,10 @@ class Library extends Kind {
     }
     if (next && this.rustleT <= 0 && !this.exitOpen) {
       this.rustleT = rnd(4.5, 7);
-      g.audio.whisper(0.025 + clamp(1 - nd / 60, 0, 1) * 0.06, this.pan(next[0], next[1]));
-      if (nd < 14) g.audio.distant('steps', { pan: this.pan(next[0], next[1]), gain: 0.4 });
+      g.audio.whisper(0.02 + clamp(1 - nd / 60, 0, 1) * 0.05, this.pan(next[0], next[1]));
+      g.audio.distant('page', { pan: this.pan(next[0], next[1]), gain: 0.3 + clamp(1 - nd / 50, 0, 1) * 1.4 });
     }
-    this.dread = 0.24 + clamp(1 - dl / 30, 0, 1) * 0.45 + (lb.state === 'hunt' ? 0.25 : 0);
+    this.dread = 0.24 + clamp(1 - dl / 30, 0, 1) * 0.45 + (lb.state === 'hunt' ? 0.25 : lb.state === 'investigate' || lb.state === 'search' ? 0.1 : 0);
   }
 
   _caught() {
@@ -1114,7 +1687,7 @@ class Library extends Kind {
     const a = Math.random() * Math.PI * 2;
     const [x, z] = L.worldAt(pu + Math.cos(a) * 40, pv + Math.sin(a) * 40);
     lb.m.position.set(x, this.d.F, z);
-    lb.state = 'wander'; lb.target = null;
+    this._setState('wander'); lb.target = null; lb.heard = null; lb.lastSeen = null;
     this.noise = 0;
   }
 
@@ -1126,12 +1699,14 @@ class Library extends Kind {
       const s = Math.floor(pu / 11) + Math.floor(rnd(-2, 3));
       const u0 = s * 11, v0 = r * 5 + 3;
       if (Math.abs(v0 + 1 - pv) < 3 && Math.abs(u0 + 1 - pu) < 3) continue;
+      const z0 = libZoneAt(this.d, u0, v0);
+      if (z0 !== 0 && z0 !== 2) continue;
       const cells = [[u0, v0], [u0 + 1, v0], [u0, v0 + 1], [u0 + 1, v0 + 1]];
-      if (cells.some(([u, v]) => { const id = L.get(u, 1, v); return id < 0 || id === B.GLOW_BOOK || id === B.EXIT_DOOR || id === B.EXIT_DOOR_TOP; })) continue;
+      if (cells.some(([u, v]) => { const id = L.get(u, 1, v); return id < 0 || id === B.GLOW_BOOK || id === B.EXIT_DOOR || id === B.EXIT_DOOR_TOP || L.get(u, 0, v) === B.PROP; })) continue;
       if (cells.some(([u, v]) => { L.point(u + 0.5, 1, v + 0.5, _v); if (L.visible(_v, L.world, 1.3)) return true; L.point(u + 0.5, 4, v + 0.5, _v); return L.visible(_v, L.world, 1.3); })) continue;
       const open = IS_AIRLIKE[L.get(u0, 1, v0)];
       const air = L.get(u0, 1, v0 - 1);
-      for (const [u, v] of cells) for (let y = 0; y <= 5; y++) L.set(u, y, v, open ? B.BOOKSHELF : (IS_AIRLIKE[air] ? air : B.LIT_DIM));
+      for (const [u, v] of cells) for (let y = 0; y <= 5; y++) L.set(u, y, v, open ? B.LIB_SHELF : (IS_AIRLIKE[air] ? air : B.LIT_DIM));
       this.g.audio.distant('thud');
       return;
     }
@@ -1139,53 +1714,121 @@ class Library extends Kind {
 }
 
 // ======================================================================================= Warehouse
-function buildMannequin() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xdcd6cc, emissive: 0x050505 });
-  const joint = new THREE.MeshLambertMaterial({ color: 0x9a948a });
-  const hips = new THREE.Group(); hips.position.y = 0.95; g.add(hips);
-  blk(hips, mat, 0.5, 0.75, 0.28, 0, 0.45, 0);
-  blk(hips, mat, 0.42, 0.18, 0.26, 0, 0.02, 0);
-  const head = new THREE.Group(); head.position.set(0, 1.08, 0); hips.add(head);
-  blk(head, mat, 0.3, 0.38, 0.32, 0, 0.12, 0);
-  blk(head, joint, 0.1, 0.12, 0.1, 0, -0.12, 0);
-  const limbs = [];
-  for (const s of [-1, 1]) {
-    const arm = new THREE.Group(); arm.position.set(s * 0.34, 0.78, 0); hips.add(arm);
-    blk(arm, joint, 0.11, 0.11, 0.11, 0, 0, 0);
-    blk(arm, mat, 0.11, 0.75, 0.11, 0, -0.42, 0);
-    const leg = new THREE.Group(); leg.position.set(s * 0.13, -0.05, 0); hips.add(leg);
-    blk(leg, mat, 0.15, 0.9, 0.15, 0, -0.45, 0);
-    limbs.push(arm, leg);
-  }
-  g.userData = { head, limbs };
-  return g;
+let WH_GEOS = null;
+const WH_SIGNS = [['dock', 'DOCK'], ['fire', 'FIRE'], ['lift', 'LIFT'], ['office', 'OFFICE'], ['cage', 'TOOLS']];
+function whGeos() {
+  if (WH_GEOS) return WH_GEOS;
+  const G = {};
+  for (let i = 0; i < 6; i++) { G['rackL' + i] = WP.rackBayGeometry(i + 1, 'L'); G['rackR' + i] = WP.rackBayGeometry(i + 11, 'R'); }
+  G.end = WP.rackEndGeometry(false, false); G.endL = WP.rackEndGeometry(true, false);
+  G.endR = WP.rackEndGeometry(false, true); G.endLR = WP.rackEndGeometry(true, true);
+  for (let i = 0; i < 3; i++) G['pallets' + i] = WP.palletStackGeometry(i + 1);
+  for (let i = 0; i < 2; i++) { G['wrapped' + i] = WP.wrappedGeometry(i + 1); G['heap' + i] = WP.cartonHeapGeometry(i + 1); }
+  G.forklift = WP.forkliftGeometry(); G.jack = WP.jackGeometry(); G.cone = WP.coneGeometry();
+  G.highbay = WP.highBayGeometry(); G.highbayGlow = WP.highBayGlowGeometry(); G.truss = WP.trussGeometry();
+  G.bench = WP.benchGeometry(); G.cutters = WP.cuttersGeometry();
+  G.battery = WP.batteryGeometry(); G.batteryGlow = WP.batteryGlowGeometry(); G.chain = WP.chainGeometry();
+  G.desk = BP.deskGeometry(5); G.screen = BP.screenGeometry(5); G.chair = BP.officeChairGeometry(); G.cab = BP.cabinetGeometry();
+  [0, 2, 5, 7].forEach((p, i) => { G['display' + i] = { near: MQ.bakedMannequin(p, 0, 1.1), mid: MQ.bakedMannequin(p, 0, 1.7) }; });
+  for (const [key, text] of WH_SIGNS) for (const a of ['<', '>', '^', 'v']) G[`sign_${key}_${a}`] = WP.signGeometry(text, a, key === 'fire' ? [0.1, 0.45, 0.2] : undefined, key === 'fire' ? [0.9, 0.95, 0.88] : undefined);
+  WH_GEOS = G;
+  return G;
 }
 
 class Warehouse extends Kind {
+  static warm() { whGeos(); MQ.warmMannequin(); }
+
   start() {
+    const d = this.d;
     this.goneLine = 'The door is a sheet of metal now. Out in the dark, something plastic clicks.';
     this.exitLine = 'Daylight. The shutter rattles down behind you. The shed is locked again.';
-    this.E = warehouseExit(this.d);
-    this.K = warehouseBreaker(this.d);
+    this.E = warehouseExit(d);
+    this.K = warehouseBreaker(d);
+    this.F = warehouseFire(d);
+    this.T = warehouseLift(d);
+    this.C = warehouseCage(d);
+    this.dest = { dock: [this.E.u - 0.5, this.E.v - 1], fire: [this.F.u + 0.5, this.F.v - 1], lift: [this.T.u + 0.5, this.T.v - 1], office: [this.K.u + 0.5, this.K.v - 2], cage: [this.C.u, this.C.v - 1] };
     this.powered = false;
     this.seq = -1;
     this.roll = -1;
     this.open = false;
+    this.cutters = false;
+    this.chainCut = false;
+    this.lift = { called: false, t: 0, here: false };
+    this.battery = 100;
+    this.deadSaid = false;
     this.man = [];
     this.spawnT = 3;
     this.clickT = 0;
+    this.creakT = 0;
+    this.mat = propLitMaterial(0.4);
+    this.field = new PropField(this.L, whGeos(), (c) => this._scan(c), { nearR: 16, farR: 40, max: 5000 });
     this.g.audio.setLoop('fluoro', true, 0.12);
+    this.hintT = 4;
+  }
+
+  stop() {
+    this.g.audio.setLoop('wind', false);
+    this.g.audio.setLoop('hum', false);
+    if (this.field) this.field.dispose();
+    propGlowK.value = 1;
+    this.L.mode.torchMul = 1;
   }
 
   objective() {
-    return this.open ? ['The loading door is open', 'Get to the daylight'] : this.powered ? ['The loading door is opening', 'Keep your torch on them'] : ['Find the breaker in the office', 'They only move in the dark'];
+    const b = Math.round(clamp(this.battery / 25, 0, 4));
+    const bar = '▮'.repeat(b) + '▯'.repeat(4 - b);
+    const dock = this.open ? 'open - go!' : this.powered ? 'opening' : 'no power (breaker: OFFICE)';
+    const fire = this.chainCut ? 'open' : this.cutters ? 'chained - you have the cutters' : 'chained (bolt cutters: TOOLS)';
+    const L = this.lift, lift = L.here ? 'here - get in' : L.called ? `coming (${Math.ceil(L.t)}s) - hold out` : 'call it, then hold out';
+    return [`Dock: ${dock}`, `Fire exit: ${fire}`, `Freight lift: ${lift}`, `Torch ${bar} · they move in the dark`];
   }
 
   interact(hit) {
     if (hit.id === B.BREAKER) return { prompt: this.powered ? 'The breaker is thrown' : '<span class="key">E</span>Throw the breaker', action: () => this._power() };
-    if (hit.id === B.ROLLER) return { prompt: '<span class="key">E</span>Try the loading door', action: () => { if (!this.powered) { this.L.center('It won\'t move. There\'s no power.', '#d0d4dc', 2); this.g.audio.noiseHit(0.3, 300, 0.2, 'lowpass'); } } };
+    if (hit.id === B.ROLLER) {
+      const [u, v] = this.L.cellLocal(hit.x, hit.z);
+      if (Math.abs(u - this.T.u) <= 1 && v === this.T.v) return { prompt: this.lift.here ? '' : 'The lift doors', action: () => this.L.center(this.lift.called ? 'Not yet. Listen: it\'s still coming down.' : 'Shut. There\'s a call button beside it.', '#d0d4dc', 2) };
+      return { prompt: '<span class="key">E</span>Try the loading door', action: () => { if (!this.powered) { this.L.center('It won\'t move. There\'s no power: the breaker is in the office.', '#d0d4dc', 2.5); this.g.audio.noiseHit(0.3, 300, 0.2, 'lowpass'); } } };
+    }
+    if (hit.id === B.LIFT_BTN) return { prompt: this.lift.called ? 'Called' : '<span class="key">E</span>Call the freight lift', action: () => this._callLift() };
+    if (hit.id === B.PICKUP || hit.id === B.PROP) {
+      const [u, v] = this.L.cellLocal(hit.x, hit.z);
+      const cut = Math.abs(u - (this.C.u - 1)) <= 1 && v === this.C.v + 5;
+      if (cut && !this.cutters) return { prompt: '<span class="key">E</span>Take the bolt cutters', action: () => this._take(hit, 'cutters') };
+      if (hit.id === B.PICKUP && !cut) return { prompt: '<span class="key">E</span>Take the battery', action: () => this._take(hit, 'battery') };
+    }
     return null;
+  }
+
+  onExitDoor() {
+    const L = this.L, g = this.g;
+    if (this.chainCut) { L.exit('The fire door bangs open onto a yard, and rain. Behind you it swings shut, and locks.'); return; }
+    if (!this.cutters) { L.center('Chained shut. Bolt cutters would do it. There are tools in the maintenance cage.', '#e0d8c8', 3.5); g.audio.noiseHit(0.2, 900, 0.15, 'bandpass', 2); return; }
+    this.chainCut = true;
+    this.field.forget();
+    g.audio.noiseHit(0.1, 3000, 0.3, 'highpass'); g.audio.noiseHit(0.5, 600, 0.2, 'bandpass', 1.5);
+    L.center('The chain parts and slithers to the floor. Loud. They heard that.', '#e8e0c8', 3);
+    for (const q of this.man) q.frenzy = 6;
+  }
+
+  _take(hit, what) {
+    const L = this.L, g = this.g;
+    if (what === 'cutters') {
+      this.cutters = true;
+      const [u, v] = L.cellLocal(hit.x, hit.z);
+      if (L.get(u, 1, v) === B.PICKUP) L.set(u, 1, v, B.LIT_AIR);
+      L.set(this.C.u - 1, 1, this.C.v + 5, B.LIT_AIR);
+      this.field.forget();
+      g.audio.pickup();
+      L.center('Bolt cutters. Heavy. The fire exit, then.', '#e8e0c8', 3);
+      return;
+    }
+    this.W.setBlock(hit.x, hit.y, hit.z, B.LIT_DIM);
+    this.battery = Math.min(100, this.battery + 45);
+    this.deadSaid = false;
+    g.audio.pickup();
+    L.center('A battery. The torch steadies.', '#e0e8d0', 2);
   }
 
   _power() {
@@ -1199,19 +1842,130 @@ class Warehouse extends Kind {
     for (let i = 0; i < 3; i++) this._spawn();
   }
 
-  _spawn() {
-    const spot = this.hiddenSpot(12, 30, 50);
+  _callLift() {
+    if (this.lift.called) return;
+    const g = this.g;
+    this.lift.called = true;
+    this.lift.t = 28;
+    g.audio.tone(660, 0.12, 'sine', 0.06);
+    g.audio.noiseHit(1.5, 120, 0.2, 'lowpass', 0.5);
+    this.L.center('Far above, a motor starts. It will take a while. The noise carries.', '#e8e4d8', 3.5);
+    for (let i = 0; i < 3; i++) this._spawn(true);
+  }
+
+  // what to model in a chunk: racking on every open face of the runs (braced frames at their
+  // ends, some with a sign), lamps and trusses overhead, and everything standing on the floor
+  _scan(c) {
+    const d = this.d, F = d.F, data = c.data, L = this.L, W = this.W;
+    const S = 18;
+    const at = (px, pz, y) => data[px + S * (pz + S * (F + y))];
+    const rack = (px, pz) => (at(px, pz, 3) === B.WH_RACK ? 1 : 0);
+    const rackW = (x, z) => (W.getBlock(x, F + 3, z) === B.WH_RACK ? 1 : 0);
+    const open = (px, pz) => IS_AIRLIKE[at(px, pz, 2)] === 1;
+    const yaw = (fu, fv, j = 0) => { const [dx, dz] = L.dir(fu, fv); return Math.atan2(dx, dz) + j; };
+    const out = [];
+    const X0 = c.cx * 16, Z0 = c.cz * 16;
+    for (let lz = 0; lz < 16; lz++) for (let lx = 0; lx < 16; lx++) {
+      const px = lx + 1, pz = lz + 1, x = X0 + lx, z = Z0 + lz;
+      if (rack(px, pz)) {
+        const sx = rack(px - 1, pz) + rack(px + 1, pz), sz = rack(px, pz - 1) + rack(px, pz + 1);
+        const alongX = sx !== sz ? sx > sz : rackW(x - 2, z) + rackW(x + 2, z) >= rackW(x, z - 2) + rackW(x, z + 2);
+        for (const [dx, dz] of DIRS4) {
+          if (!open(px + dx, pz + dz)) continue;
+          const ry = Math.atan2(dx, dz), fx = x + 0.5 + dx * 0.5, fz = z + 0.5 + dz * 0.5;
+          const art = ART_LEVEL[at(px + dx, pz + dz, 2)] || 0.2;
+          const tx = dz, tz = -dx;
+          if (alongX ? dx !== 0 : dz !== 0) {
+            out.push({ g: 'end' + (open(px - tx, pz - tz) ? 'L' : '') + (open(px + tx, pz + tz) ? 'R' : ''), x: fx, y: F, z: fz, ry, art, face: [dx, dz] });
+            // now and then a sign, pointing the way to somewhere
+            const h = hq(x, z, dx * 3 + dz + 30);
+            if (h < 0.4 && open(px + tx, pz + tz)) {
+              const [key] = WH_SIGNS[Math.floor(h / 0.4 * WH_SIGNS.length)];
+              const [du, dv] = this.dest[key], [wx, wz] = L.worldAt(du, dv);
+              let ddx = wx - fx, ddz = wz - fz;
+              const dl = Math.hypot(ddx, ddz) || 1; ddx /= dl; ddz /= dl;
+              const r = ddx * dz - ddz * dx, a = -(ddx * dx + ddz * dz);
+              const arrow = Math.abs(r) > 0.38 ? (r > 0 ? '>' : '<') : a > 0 ? '^' : 'v';
+              out.push({ g: `sign_${key}_${arrow}`, x: fx, y: F, z: fz, ry, art: Math.max(art, 0.5), glow: 0.35, face: [dx, dz] });
+            }
+            continue;
+          }
+          const w = dx !== 0 ? z : x, s2 = tx + tz;
+          const side = ((w & 1) === 1) === (s2 > 0) ? 'R' : 'L';
+          out.push({ g: 'rack' + side + Math.floor(hq(x, z, dx * 3 + dz) * 6), x: fx, y: F, z: fz, ry, art, face: [dx, dz] });
+        }
+        continue;
+      }
+      const [u, v] = L.cellLocal(x, z);
+      if (at(px, pz, 9) === B.PROP_LAMP) {
+        out.push({ g: 'highbay', x: x + 0.5, y: F, z: z + 0.5, art: 1 });
+        out.push({ g: 'highbayGlow', x: x + 0.5, y: F, z: z + 0.5, art: 1, glow: 1 });
+      } else if (fm(v, 14) === 0 && at(px, pz, 10) === B.METAL_PANEL) out.push({ g: 'truss', x: x + 0.5, y: F, z: z + 0.5, ry: yaw(0, 1), art: 0.25 });
+      const b0 = at(px, pz, 0);
+      if (b0 === B.PICKUP) {
+        const art = ART_LEVEL[at(px, pz, 2)] || 0.4, ry = hq(x, z, 9) * 6.28;
+        out.push({ g: 'battery', x: x + 0.5, y: F, z: z + 0.5, ry, art });
+        out.push({ g: 'batteryGlow', x: x + 0.5, y: F, z: z + 0.5, ry, art: 1, glow: 1 });
+        continue;
+      }
+      const site = whSiteAt(d, u, v);
+      if (site && site[0] === 'cage' && site[1] === -1 && site[2] === 5) {
+        const [wx, wz] = L.worldAt(u + 1, v + 0.5), ry = yaw(0, -1);
+        out.push({ g: 'bench', x: wx, y: F, z: wz, ry, art: 1 });
+        if (at(px, pz, 1) === B.PICKUP) out.push({ g: 'cutters', x: wx, y: F, z: wz, ry, art: 1 });
+        continue;
+      }
+      if (site && site[0] === 'fire' && site[1] === 0 && site[2] === 0 && !this.chainCut) {
+        const [ndx, ndz] = L.dir(0, -1);
+        out.push({ g: 'chain', x: x + 0.5 + ndx * 0.5, y: F, z: z + 0.5 + ndz * 0.5, ry: Math.atan2(ndx, ndz), art: 0.6 });
+        continue;
+      }
+      if (b0 !== B.PROP && !IS_AIRLIKE[b0]) continue;
+      const fp = whFloorProp(d, u, v);
+      if (!fp || !fp.a) continue;
+      const h = hq(x, z, 11), art = ART_LEVEL[at(px, pz, 2)] || 0.3;
+      let ou = 0.5, ov = 0.5, g = fp.t, jit = (h - 0.5) * 0.5;
+      if (fp.t === 'forklift') { ov = 1; jit = (h - 0.5) * 0.2; }
+      else if (fp.t === 'desk') { ou = 1; jit = 0; }
+      else if (fp.t === 'pallets') g = 'pallets' + Math.floor(h * 3);
+      else if (fp.t === 'wrapped') g = 'wrapped' + (h < 0.5 ? 0 : 1);
+      else if (fp.t === 'heap') g = 'heap' + (h < 0.5 ? 0 : 1);
+      else if (fp.t === 'display') { g = 'display' + Math.floor(h * 4); jit = (h - 0.5) * 0.6; }
+      else if (fp.t === 'cab') jit = 0;
+      const [wx, wz] = L.worldAt(u + ou, v + ov);
+      out.push({ g, x: wx, y: F, z: wz, ry: yaw(fp.fu ?? 0, fp.fv ?? 1, jit), art });
+      if (fp.t === 'desk') out.push({ g: 'screen', x: wx, y: F, z: wz, ry: yaw(0, -1), art: 1, glow: 1 });
+    }
+    return out;
+  }
+
+  _spawn(near = false) {
+    const spot = this.hiddenSpot(near ? 10 : 16, near ? 22 : 32, 50);
     if (!spot) return;
-    const m = buildMannequin();
+    const m = MQ.buildMannequin(this.mat);
     this.L.point(spot[0] + 0.5, 0, spot[1] + 0.5, m.position);
     m.rotation.y = Math.random() * Math.PI * 2;
+    MQ.setPose(m, MQ.POSES[0]);
     this.L.props.add(m);
-    this.man.push({ m, stuck: 0, moved: false });
+    this.man.push({ m, stuck: 0, moved: false, pose: 0, head: 0, frenzy: 0, walkT: Math.random() * 10 });
   }
 
   update(dt) {
     super.update(dt);
-    const L = this.L, g = this.g, p = this.P.pos;
+    const L = this.L, g = this.g, p = this.P.pos, S = L.mode;
+    this.keepOut(B.WH_RACK, WP.RACK.D);
+    this.field.update(dt, g.camera.position);
+    propGlowK.value = clamp(L.powerK, 0.15, 1.3);
+    this.hintT -= dt;
+    if (this.hintT < 0 && this.hintT > -1) { this.hintT = -9; L.center('Three ways out of here. Follow the signs on the ends of the racks.', '#d8dce4', 4); }
+    // the torch runs down; spare batteries lie about in the light
+    if (S.torch) this.battery = Math.max(0, this.battery - dt * 1.05);
+    if (this.battery <= 0 && S.torch) {
+      S.torch = false;
+      g.audio.noiseHit(0.05, 2000, 0.08, 'highpass');
+      if (!this.deadSaid) { this.deadSaid = true; L.center('The torch dies. Find a battery - there are some lying in the light.', '#e0c8c0', 3.5); }
+    }
+    S.torchMul = this.battery < 20 ? (Math.random() < 0.12 ? 0.15 : 0.55 + this.battery / 45) : 1;
     // the breaker sequence: surge, blackout, and the shutter starts to rise
     if (this.seq >= 0) {
       this.seq += dt;
@@ -1222,7 +1976,7 @@ class Warehouse extends Kind {
     }
     if (this.roll >= 0 && !this.open) {
       this.roll += dt;
-      const rows = Math.min(4, Math.floor(this.roll / 1.1));
+      const rows = Math.min(4, Math.floor(this.roll / 1.6));
       for (let y = 0; y < rows; y++) for (let du = -2; du <= 1; du++) {
         if (L.get(this.E.u + du, y, this.E.v) === B.ROLLER) {
           L.set(this.E.u + du, y, this.E.v, B.LIT_AIR);
@@ -1231,40 +1985,87 @@ class Warehouse extends Kind {
       }
       if (rows >= 4) this.open = true;
     }
-    if (this.open) {
-      const [u, v] = L.local(p.x, p.z);
-      if (v >= this.E.v + 0.3 && u >= this.E.u - 2.2 && u <= this.E.u + 2.2) { L.exit(this.exitLine); return; }
+    const [pu, pv] = L.local(p.x, p.z);
+    if (this.open && pv >= this.E.v + 0.3 && pu >= this.E.u - 2.2 && pu <= this.E.u + 2.2) { L.exit(this.exitLine); return; }
+    // the freight lift, coming down
+    const lf = this.lift;
+    if (lf.called && !lf.here) {
+      lf.t -= dt;
+      const dl = Math.hypot(pu - this.T.u, pv - this.T.v);
+      g.audio.setLoop('hum', dl < 30, clamp(1 - dl / 30, 0, 1) * 0.5);
+      if (lf.t <= 0) {
+        lf.here = true;
+        g.audio.setLoop('hum', false);
+        g.audio.tone(880, 0.4, 'sine', 0.08); setTimeout(() => g.audio.tone(660, 0.6, 'sine', 0.08), 350);
+        for (let a = -1; a <= 1; a++) for (let y = 0; y <= 2; y++) L.set(this.T.u + a, y, this.T.v, B.LIT_AIR);
+        L.set(this.T.u, 3, this.T.v, B.LIGHT_PANEL);
+        L.center('Ding. The lift doors open.', '#f0ecd8', 2.5);
+      }
     }
-    // mannequins
+    if (lf.here && Math.abs(pu - (this.T.u + 0.5)) <= 1.6 && pv >= this.T.v + 1 && pv <= this.T.v + 4) {
+      L.exit('The doors shut on the dark. The lift climbs for a long, long time, and opens on daylight.');
+      return;
+    }
+    this._mannequins(dt, pu, pv);
+    // the wind outside the loading door
+    const de = Math.hypot(pu - this.E.u, pv - this.E.v);
+    g.audio.setLoop('wind', de < 30, clamp(1 - de / 30, 0, 1) * 0.6);
+  }
+
+  _mannequins(dt) {
+    const L = this.L, g = this.g, p = this.P.pos;
     this.spawnT -= dt;
-    const want = this.powered ? 7 : 5;
-    if (this.spawnT <= 0) { this.spawnT = 3; if (this.man.length < want) this._spawn(); }
+    const want = Math.min(12, 4 + Math.floor(this.t / 70) + (this.powered ? 2 : 0) + (this.lift.called && !this.lift.here ? 3 : 0));
+    if (this.spawnT <= 0) { this.spawnT = 2.5; if (this.man.length < want) this._spawn(); }
     let nearest = 99;
     const surge = this.seq >= 1.2 && this.seq < 3.8;
+    const frenzied = this.lift.called && !this.lift.here;
+    this.clickT -= dt; this.creakT -= dt;
     for (const q of this.man) {
-      const m = q.m;
+      const m = q.m, j = m.userData.j;
       const d = Math.hypot(m.position.x - p.x, m.position.z - p.z);
       nearest = Math.min(nearest, d);
-      if (d > 48) { m.removeFromParent(); q.dead = true; continue; }
-      const seen = this.seen(m.position, 1.5);
-      if (seen) {
-        if (q.moved && this.clickT <= 0) { this.clickT = 0.6; g.audio.clicks(0.04, this.pan(m.position.x, m.position.z)); }
-        q.moved = false;
+      if (d > 50) { m.removeFromParent(); q.dead = true; continue; }
+      q.frenzy = Math.max(0, q.frenzy - dt);
+      if (this.seen(m.position, 1.6)) {
+        // caught in the light: a new pose each time, and the head turns to follow you
+        if (q.moved) {
+          q.moved = false;
+          let k = q.pose;
+          while (k === q.pose) k = 1 + Math.floor(Math.random() * (MQ.POSES.length - 1));
+          q.pose = k;
+          MQ.setPose(m, MQ.POSES[k]);
+          this.face(m, p.x, p.z, 1);
+          q.head = 0;
+          if (this.clickT <= 0) { this.clickT = 0.35; g.audio.clicks(0.05, this.pan(m.position.x, m.position.z)); g.audio.noiseHit(0.04, 2400, 0.05, 'bandpass', 3); }
+        }
+        const want = wrapA(Math.atan2(p.x - m.position.x, p.z - m.position.z) - m.rotation.y);
+        q.head += (clamp(want, -1.3, 1.3) - q.head) * Math.min(1, dt * 0.8);
+        j.neck.rotation.y = MQ.POSES[q.pose].neck[1] + q.head;
+        if (Math.abs(want - q.head) > 0.05 && this.creakT <= 0 && d < 14) { this.creakT = 1.4; g.audio.distant('creak', { pan: this.pan(m.position.x, m.position.z), gain: 0.8 }); }
         continue;
       }
+      // they give you a little while to find your feet
+      if (this.t < 14) continue;
+      // unseen: the quick, stiff walk you never quite catch
       q.moved = true;
-      this.face(m, p.x, p.z, 1);
-      m.userData.head.rotation.y = Math.sin(this.t * 7 + m.position.x) * 0.3;
-      const ok = this.step(m, p.x, p.z, surge ? 7 : 4.0, dt, true);
+      q.walkT += dt;
+      MQ.walkPose(m, q.walkT);
+      this.face(m, p.x, p.z, Math.min(1, dt * 8));
+      const speed = surge ? 7 : frenzied || q.frenzy > 0 ? 6.2 : 3.2 + 1.3 * clamp((this.t - 14) / 120, 0, 1);
+      const ok = this.step(m, p.x, p.z, speed, dt, true);
       q.stuck = ok ? 0 : q.stuck + dt;
       if (q.stuck > 1.2) {
         const spot = this.hiddenSpot(Math.max(5, d * 0.6), Math.max(8, d * 0.9), 20);
         if (spot) L.point(spot[0] + 0.5, 0, spot[1] + 0.5, m.position);
         q.stuck = 0;
       }
-      if (d < 1.15) {
-        L.scare(0.8);
+      if (d < 1.2) {
+        L.scare(1);
         L.hurt(22, 'a mannequin');
+        this.battery = Math.max(0, this.battery - 20);
+        L.mode.torch = false;
+        L.center('Cold plastic fingers. Your torch goes flying.', '#e8c8c0', 2.5);
         _w.set(p.x - m.position.x, 0, p.z - m.position.z).normalize();
         this.P.vel.x += _w.x * 9; this.P.vel.z += _w.z * 9; this.P.vel.y = 5;
         const spot = this.hiddenSpot(22, 34, 30);
@@ -1272,15 +2073,8 @@ class Warehouse extends Kind {
       }
     }
     this.man = this.man.filter((q) => !q.dead);
-    this.clickT -= dt;
-    // a hint of daylight from the loading door: the wind outside
-    const [ex, ez] = L.worldAt(this.E.u, this.E.v);
-    const de = Math.hypot(ex - p.x, ez - p.z);
-    g.audio.setLoop('wind', de < 30, clamp(1 - de / 30, 0, 1) * 0.6);
-    this.dread = 0.3 + clamp(1 - nearest / 18, 0, 1) * 0.5 + (surge ? 0.2 : 0);
+    this.dread = 0.3 + clamp(1 - nearest / 18, 0, 1) * 0.5 + (surge || frenzied ? 0.2 : 0);
   }
-
-  stop() { this.g.audio.setLoop('wind', false); }
 }
 
 export const KINDS = { backrooms: Backrooms, poolrooms: Poolrooms, hallway: Hallway, library: Library, warehouse: Warehouse };

@@ -137,7 +137,15 @@ are drawn in your world. Creatures are still simulated separately on each machin
 **Bigger on the inside**
 - Some small buildings on liminal-touched worlds are not what they look like: a beige box with one door, a little tiled pool house, a brick doorway, a marble reading room, a locked metal shed. Walk in and follow the passage round its bend. When you turn around, the way you came in is gone.
 - Inside, the space goes on forever and you can't break the walls or build your way out. You have to find the exit, and every place has its own way out and its own rules:
-  - **The Backrooms**: a maze of damp carpet and yellow wallpaper. Follow the hum: it's loudest near the exit. Sometimes the lights go out. Keep your headlamp up when they do.
+  - **The Backrooms**: a maze of damp carpet and yellow wallpaper, in regions that each feel different.
+    - The plain maze, halls of pillars, dense tangles and stretches where the lights are dead.
+    - Cubicle offices: partitions you can see over, desks with beige CRT monitors, swivel chairs, filing cabinets, water coolers, a copier.
+    - Tall halls of an older wallpaper over a wooden wainscot, twice the height, with great pillars.
+    - Flooded wings: soaked carpet with a wet sheen, stained ceiling tiles, missing ones with wires hanging through into the dark above, tiles broken on the floor.
+    - Places that have come apart: missing-texture walls and floor, rips in the air full of static, turning error cubes, swarms of wallpaper fragments frozen mid-burst, light panels hanging loose, furniture on the ceiling, walls stretched out into spikes.
+    - **Three doors out**, in three directions. The hum is loudest near one, and arrows scrawled on the walls by earlier wanderers point to the nearest (don't trust the ones where things have come apart).
+    - Concrete stairwells go down to **Level 1**: a car park of cinder block, pillars and pipes, crates and drums, sparse lights, something knocking on the pipes, and a maintenance door of its own. Follow the fan noise.
+    - Sometimes the lights go out on Level 0. Keep your headlamp up when they do.
   - **The Poolrooms**: bright tiled halls, skylights and still water.
     - Follow the wet footprints: one trail, all going the same way, through open arches to a long stair that goes down further than the floor is thick. When you lose them, listen: falling water sounds from the way on.
     - It descends through the ceiling of the **Lower Baths**: a dim, flooded hall of columns under a coffered roof, its floor one still mirror.
@@ -148,8 +156,15 @@ are drawn in your world. Creatures are still simulated separately on each machin
     - If anything is different, turn back. If nothing is, keep going. Either way the turn brings you to the start again, facing the same way, and the sign says how far you've got. Exit 0 is always as it should be, so you can learn what normal looks like.
     - Get it right eight times in a row and the end of the passage is a door. Get it wrong and the lights dip and you're back at Exit 0.
     - Around 40 kinds of anomaly: blocks, the furniture, the building itself, things that move, and things you can only hear. Some doors marked EXIT are not the exit.
-  - **The Endless Library**: find three books with your name on the spine; there are about nine, scattered further and further out. Each sits under its own lamp, and you can hear pages turning from the nearest. The shelves move when nobody is looking. Walk, don't run: something in there hates noise.
-  - **The Warehouse**: dark racks and pools of lamplight. Find the breaker in the office to power the loading door, then get to the daylight. Keep your torch on the mannequins.
+  - **The Endless Library**: find three books with your name on the spine; there are about nine, scattered further and further out.
+    - The shelves are real bookcases: boards, uprights, a brass ladder rail, panelled ends with label holders, and every book its own shape (sets of matching volumes, gilt bands, labels, a book leaning into a gap, a few lying flat).
+    - Rolling ladders, pendant lamps, reading rooms with green-shaded lamps on leather-topped tables, card catalogue halls, book carts, and dark stacks where books lie heaped on the floor.
+    - A book with your name is pulled out from its shelf and glows gold under its own lamp. Pages turn from the nearest one.
+    - **The Librarian**: three metres of stooped robe, a pale face deep in its hood, wire spectacles over nothing, very long fingers, and a lantern that really lights the shelves around it. It wanders and re-shelves books. The louder you are, the further it hears: running carries a long way, walking a little, and creeping (hold **C**) not at all. Hearing you, it stops to listen, then comes to look, then searches. It sees further if you stand in the light or your torch is on. Break its line of sight and creep away. It walks through shelves.
+  - **The Warehouse**: pallet racking in long runs under a roof you can't see, pools of lamplight, open floors of pallets and forklifts, and a floor of mannequins waiting to be shipped.
+    - **Three ways out**, each with its own price: the loading dock (no power until you throw the breaker in the office), the fire exit (chained shut: the bolt cutters are in the maintenance cage) and the freight lift (call it, then hold out while it comes down; the noise draws them). Signs on the ends of the racks point the way to each.
+    - Your torch runs down. Spare batteries lie about in the light.
+    - The mannequins only move when nobody is looking. Every time you look back one has struck a new pose, a little nearer, and while you watch it its head turns to follow you. They multiply as time passes, and if one reaches you it knocks your torch away.
 - **Almond Water** turns up in boxes in the Backrooms. Drink it to heal and steady your nerves.
 - Each visit is different; only the passage stays the same. Escaping pays well the first time. Time passes outside while you're in there.
 
@@ -198,6 +213,7 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - **Rain**: rain soaks the ground. Surfaces darken and gloss, puddles gather in the low spots with rain rings on them, and everything dries slowly afterwards.
 - A lens flare with ghosts and a halo that the depth buffer hides behind hills.
 - **Graphics** in Settings chooses Low, High (AO, bloom, shadows, clouds, volumetrics) or Ultra (full-rate everything).
+- **Performance**: the picture is drawn at the window's size, not the screen's scaled pixel count (on a laptop at 125-150% scaling that alone is up to 2.25 times less work; *Full high-DPI resolution* turns it back on). **Dynamic resolution** (on by default) draws a little smaller for a while when frames run slow and comes back when there's room. Multisampling, light shafts, clouds, ambient occlusion and shadow filtering were all made cheaper for much the same picture, and only creatures near you cast shadows.
 
 **Sky events**
 - Lightning storms: branching bolts, the world lit white, thunder rolling in late. The strikes fuse sand to glass. Don't stand on the highest hill.
@@ -210,6 +226,7 @@ are drawn in your world. Creatures are still simulated separately on each machin
 **Moment to moment**
 - **Dash** (X, or double-tap a direction): a burst with two charges, one of them usable in the air. You can't be hurt while it lasts, so a well-timed dash dodges a spit or a charge.
 - **Slide** (C while sprinting) keeps and boosts your speed; jump out of it to carry the momentum. In the air, C is a **ground pound**: a shockwave that hurts what's under you and breaks soft ground.
+- **Creep** (hold C at a walk): slow, crouched and silent.
 - **Vault**: hold Space at a ledge to pull yourself up to two blocks.
 - **Grapple** (RMB with the Mining Beam or an idle Dream Line): a tether that bites into anything within 50u and hauls you there. Let go to fling yourself; press Space to hop off.
 - **Plasma grenades** (RMB with the Boltcaster, three charges): they bounce, burst on contact with anything alive, carve a crater and haul what they break into your cargo. Stand close and the blast throws you: grenade jumps.
@@ -304,7 +321,7 @@ Press **Tab** (or I) for the exosuit screen. A rail down the left holds its page
 | LMB | Use tool (mine, collect block, fire, cast / hook / reel) · ship cannons |
 | RMB | Grapple (Mining Beam, Dream Line) · plasma grenade (Boltcaster) · place block (Builder) |
 | X / double-tap WASD | Dash |
-| C | Slide while sprinting · ground pound in the air · sink while flying a mount |
+| C | Hold to creep · slide while sprinting · ground pound in the air · sink while flying a mount |
 | Space at a ledge | Vault |
 | H | Eat the most useful food |
 | Q | Cycle multi-tool mode |

@@ -70,6 +70,9 @@ export class Liminal {
     const W = this._ensureWorld();
     W.setPlanet({ ...this.mode.P, interior: 'liminal', pocket: d }, null);
     W.group.visible = false;
+    // anything slow to build for this place is built now, before you're inside
+    const K = KINDS[d.kind];
+    if (K && K.warm) setTimeout(() => { try { K.warm(); } catch (e) { console.warn(e); } }, 50);
   }
 
   disarm() {
@@ -277,6 +280,7 @@ export class Liminal {
     voxelUniforms.uSeaLevel.value = P.liquid === B.WATER || P.liquid === B.DREAM_WATER ? P.seaLevel : -999;
     voxelUniforms.uArtificial.value.setRGB(...SURF_ART);
     this.power = this.powerK = 1;
+    m.torchMul = 1;
     g.audio.setLoop('fluoro', false); g.audio.setLoop('water', false);
     g.post.histValid = false;
   }

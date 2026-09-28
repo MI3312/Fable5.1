@@ -1,6 +1,7 @@
 // The movement kit: the things you can do right now, with no menu in the way.
 //   X or double-tap a direction  dash (two charges; one in the air; a perfect dodge while it lasts)
 //   C while sprinting            slide (jump out of it to keep the speed)
+//   C held at a walk             sneak: slow, crouched and quiet
 //   C in the air                 ground pound (a shockwave that hurts what is under you)
 //   Space at a ledge             vault up to two blocks
 //   RMB (Mining Beam, Dream Line) grapple: a tether that hauls you to where it bites
@@ -114,7 +115,9 @@ export class Moves {
       if ((!input.down('KeyC') && this.slideT < 0.55) || hs < 3.5 || (!p.onGround && p.vel.y > 1)) this.slideT = 0;
       if (Math.random() < dt * 30) this.mode.debris.spawn(p.pos.clone().add(this.slideDir.clone().multiplyScalar(0.6)), this._groundColor(), 1, 1.6, 0.4);
     }
-    p.crouch += ((this.slideT > 0 ? 1 : 0) - p.crouch) * Math.min(1, dt * 14);
+    // C held at a walk: creep, low and quiet
+    p.sneaking = !!ctl && input.down('KeyC') && p.onGround && !p.inWater && this.slideT <= 0 && !this.pounding && Math.hypot(p.vel.x, p.vel.z) < 5.2;
+    p.crouch += ((this.slideT > 0 ? 1 : p.sneaking ? 0.5 : 0) - p.crouch) * Math.min(1, dt * 14);
     // --- pound
     if (this.pounding) { p.control = 0; p.noJet = true; p.vel.x *= 0.9; p.vel.z *= 0.9; p.vel.y = -38; }
     // --- vault: a short scripted climb

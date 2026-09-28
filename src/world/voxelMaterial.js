@@ -41,6 +41,7 @@ export const voxelUniforms = {
   uShadowMatrix: { value: new THREE.Matrix4() },
   uShadowOn: { value: 0 },
   uShadowTexel: { value: 1 / 2048 },
+  uShadowTaps: { value: 8 },
   uShadowDepth: { value: 1 / 500 },
   // a second, coarser cascade that reaches the horizon
   uShadowMap2: { value: null },
@@ -76,7 +77,7 @@ const GLOSS = {
   base_top: [0.3, 0.1], tele_top: [0.35, 0.08], ceiling_tile: [0.08, 0.3], light_panel: [0.2, 0.05],
   exit_door_lo: [0.28, 0.14], exit_door_hi: [0.32, 0.1], poster: [0.4, 0.02], poster_odd: [0.4, 0.02], roller: [0.22, 0.2],
   breaker: [0.25, 0.12], drain: [0.4, 0.06], exit_sign: [0.3, 0.03],
-  dripstone: [0.3, 0.1], moss_top: [0.1, 0.35],
+  dripstone: [0.3, 0.1], moss_top: [0.1, 0.35], wet_carpet: [0.34, 0.1], hazard: [0.14, 0.25],
 };
 function glossTexture() {
   const data = new Uint8Array(256 * 4);
@@ -120,9 +121,22 @@ varying vec4 vLight;
 varying vec3 vWorld;
 varying float vDist;
 varying float vDist3;
+varying vec2 vSlow;
+// the slow noise that damps the walls and drifts the mist varies over blocks, not pixels:
+// worked out at the corners of each face and blended across it
+float vHash(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+float vNoise(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = mix(mix(vHash(i), vHash(i + vec3(1,0,0)), f.x), mix(vHash(i + vec3(0,1,0)), vHash(i + vec3(1,1,0)), f.x), f.y);
+  float b = mix(mix(vHash(i + vec3(0,0,1)), vHash(i + vec3(1,0,1)), f.x), mix(vHash(i + vec3(0,1,1)), vHash(i + vec3(1,1,1)), f.x), f.y);
+  return mix(a, b, f.z);
+}
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vWorld = wp.xyz;
+  vSlow = vec2(vNoise(wp.xyz * 0.085 + vec3(3.1, 7.7, 1.3)) * 0.72 + vNoise(wp.xyz * 0.42 + vec3(11.7, 2.9, 5.3)) * 0.36,
+               vNoise(wp.xyz * 0.03 + vec3(uTime * 0.04, uTime * 0.01, uTime * 0.025)) * 0.9 + 0.55);
   if (uWave > 0.0) {
     wp.y += (sin(wp.x * 0.7 + uTime * 1.6) * sin(wp.z * 0.6 + uTime * 1.3)) * 0.05 * uWave;
   }
@@ -164,7 +178,7 @@ uniform float uSSR, uSSRSteps, uCurve;
 uniform sampler2D uGloss;
 uniform sampler2D uShadowMap;
 uniform mat4 uShadowMatrix;
-uniform float uShadowOn, uShadowTexel, uShadowDepth;
+uniform float uShadowOn, uShadowTexel, uShadowDepth, uShadowTaps;
 uniform sampler2D uShadowMap2;
 uniform mat4 uShadowMatrix2;
 uniform float uShadowOn2, uShadowTexel2, uShadowDepth2, uSeaLevel, uPanelK, uMood;
@@ -194,15 +208,17 @@ float sunShadow(vec3 wp, vec3 n, float ndl) {
   float bias = (0.06 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0))) * uShadowDepth;
   float a = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
   mat2 R = mat2(cos(a), -sin(a), sin(a), cos(a));
-  float sum = 0.0;
+  float sum = 0.0, taps = 0.0;
   for (int i = 0; i < 12; i++) {
+    if (float(i) >= uShadowTaps) break;
     vec2 o = R * POISSON[i] * uShadowTexel * 1.8;
     sum += step(c.z - bias, texture(uShadowMap, c.xy + o).x);
+    taps += 1.0;
   }
   vec2 e = abs(c.xy - 0.5) * 2.0;
   float edge = smoothstep(0.82, 1.0, max(e.x, e.y));
   float far = edge > 0.0 ? farShadow(wp, n, ndl) : 1.0;
-  return mix(mix(sum / 12.0, far, edge), 1.0, 1.0 - uShadowOn);
+  return mix(mix(sum / taps, far, edge), 1.0, 1.0 - uShadowOn);
 }
 // light focused by rippling water onto whatever lies beneath it
 float caustics(vec2 uv, float t) {
@@ -234,6 +250,7 @@ varying vec4 vLight;
 varying vec3 vWorld;
 varying float vDist;
 varying float vDist3;
+varying vec2 vSlow;
 // a world point as it was drawn (bent by the planet's curvature), projected into last frame
 vec4 histClip(vec3 p) {
   vec2 cd = p.xz - cameraPosition.xz;
@@ -295,9 +312,7 @@ void main() {
     // planet-tinted surfaces (grass, leaves, stone) give up more of their colour
     base = mix(base, vec3(bl), live * (0.24 + 0.2 * mask));
     base *= 1.0 - live * mask * 0.1;
-    float n1 = fogNoise(vWorld * 0.085 + vec3(3.1, 7.7, 1.3));
-    float n2 = fogNoise(vWorld * 0.42 + vec3(11.7, 2.9, 5.3));
-    damp = smoothstep(0.38, 0.8, n1 * 0.72 + n2 * 0.36) + (1.0 - ao) * 0.7;
+    damp = smoothstep(0.38, 0.8, vSlow.x) + (1.0 - ao) * 0.7;
     if (abs(fn.y) < 0.5) {
       // drip streaks: long in y, narrow across the face
       float st = fogNoise(vec3((vWorld.x + vWorld.z) * 2.6, vWorld.y * 0.32, 4.2));
@@ -433,7 +448,7 @@ void main() {
     vec3 hv = normalize(uSunDir - viewDir);
     col += uSunColor * pow(max(dot(n, hv), 0.0), 140.0) * 2.0 * k * uDaylight * (1.0 - 0.6 * uMood);
   }
-  col = applyFog(col, vWorld, viewDir, vDist, vDist3, plGlow * uPLStrength);
+  col = applyFog(col, vWorld, viewDir, vDist, vDist3, plGlow * uPLStrength, vSlow.y);
   gl_FragColor = vec4(col, alpha);
 }
 `;

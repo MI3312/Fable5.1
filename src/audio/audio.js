@@ -335,6 +335,14 @@ export class AudioSystem {
     else if (kind === 'rush') { noise(2.2, 520, 0.09, 'lowpass', 0.5); noise(2.0, 2300, 0.035, 'bandpass', 0.6, 0.1); noise(1.4, 1200, 0.03, 'bandpass', 0.8, 0.5); }
     else if (kind === 'splash') { noise(0.5, 1400, 0.05, 'bandpass', 0.8); noise(1.6, 380, 0.06, 'lowpass', 0.7, 0.12); }
     else if (kind === 'steps') { for (let i = 0; i < 6; i++) noise(0.09, 500, 0.05, 'bandpass', 1.2, i * 0.55 + Math.random() * 0.05); }
+    // one heavy, soft footfall on boards; a robe dragging after it
+    else if (kind === 'step') { noise(0.14, 240, 0.12, 'lowpass', 0.9); osc(58, 0.18, 0.05, 'sine', 0.7); noise(0.5, 900, 0.012, 'bandpass', 0.6, 0.06); }
+    // a book slid home on a shelf
+    else if (kind === 'shelve') { noise(0.3, 1600, 0.03, 'bandpass', 0.7); noise(0.12, 320, 0.09, 'lowpass', 0.9, 0.28); }
+    // the lantern's ring, turning on its hook
+    else if (kind === 'creak') { osc(760 + Math.random() * 200, 0.22, 0.012, 'triangle', 0.82); osc(1180, 0.12, 0.006, 'triangle', 0.9, 0.12); }
+    // a page turned somewhere
+    else if (kind === 'page') { noise(0.28, 3200, 0.03, 'highpass', 0.6); noise(0.2, 1800, 0.02, 'bandpass', 1, 0.16); }
   }
 
   // ---------------- horror ----------------

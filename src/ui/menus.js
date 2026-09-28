@@ -330,6 +330,10 @@ export class Menus {
     rows.push(h('span', {}, 'Invert mouse Y'), inv, h('span'));
     const fade = h('input', { type: 'checkbox', checked: s.hudFade !== false ? true : null, onchange: (e) => { s.hudFade = e.target.checked; g.applySettings(); } });
     rows.push(h('span', {}, 'Fade HUD when idle'), fade, h('span'));
+    const dyn = h('input', { type: 'checkbox', checked: s.dynRes !== false ? true : null, onchange: (e) => { s.dynRes = e.target.checked; g.applySettings(); } });
+    rows.push(h('span', {}, 'Dynamic resolution'), dyn, h('span', { class: 'muted' }, 'drops the resolution a little when frames run slow'));
+    const sharp = h('input', { type: 'checkbox', checked: s.sharp ? true : null, onchange: (e) => { s.sharp = e.target.checked; g.applySettings(); } });
+    rows.push(h('span', {}, 'Full high-DPI resolution'), sharp, h('span', { class: 'muted' }, 'sharper on scaled screens, much slower'));
     const el = h('div', { class: 'dialog interactive', style: { width: 'min(720px, 94vw)' } },
       h('div', { class: 'dh' }, 'Settings'),
       h('div', { class: 'db' }, h('div', { class: 'settings-grid' }, rows),
@@ -344,7 +348,7 @@ export class Menus {
       ['WASD', 'Move / ship throttle & roll'], ['Mouse', 'Look / steer ship'], ['Space', 'Jump · hold for jetpack · ship: take off / pulse drive (space)'],
       ['Shift', 'Sprint / ship boost'], ['LMB', 'Use tool: mine · collect block · fire · cast / hook / reel'],
       ['RMB', 'Grapple (Mining Beam, Dream Line) · plasma grenade (Boltcaster) · place block (Builder)'],
-      ['X · double-tap', 'Dash (dodges while it lasts; once in the air)'], ['C', 'Slide while sprinting · ground pound in the air'],
+      ['X · double-tap', 'Dash (dodges while it lasts; once in the air)'], ['C', 'Hold to creep · slide while sprinting · ground pound in the air'],
       ['Space at a ledge', 'Vault up to two blocks'], ['H', 'Eat the most useful food you carry'],
       ['Q', 'Cycle multi-tool mode (Mining / Builder / Boltcaster / Dream Line)'], ['1–9 · Wheel', 'Select hotbar block'],
       ['F', 'Scanner pulse (resources, points of interest)'], ['V', 'Analysis visor (hold LMB on creatures/flora to discover)'],

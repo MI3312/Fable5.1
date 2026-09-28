@@ -780,6 +780,121 @@ function paintTiles() {
       return [0.18 + rr * 0.12 + n, 0.1 + rr * 0.06 + n, 0.08 + n, UNT];
     });
   });
+  // the Library's shelving seen from afar: deep shelves of dim spines in the lamplight
+  t('lib_shelf', (p) => {
+    const PAL = [[0.36, 0.1, 0.08], [0.12, 0.24, 0.16], [0.1, 0.13, 0.26], [0.32, 0.19, 0.1], [0.55, 0.42, 0.26], [0.66, 0.6, 0.48], [0.08, 0.07, 0.07], [0.26, 0.12, 0.22], [0.52, 0.38, 0.13]];
+    p.fill((x, y, r) => {
+      const ly = y % 8;
+      if (ly === 7) return [0.2, 0.12, 0.07, UNT];
+      if (ly === 6) return [0.08, 0.05, 0.035, UNT];
+      if (x === 0 || x === 15) return [0.17, 0.1, 0.06, UNT];
+      const book = Math.floor((x - 1) / 2) + Math.floor(y / 8) * 7;
+      const rr = ((book * 9301 + 49297) % 233280) / 233280;
+      const top = 1 + Math.floor(rr * 3);
+      if (ly < top || rr > 0.93) return [0.06, 0.04, 0.03, UNT];
+      const c = PAL[Math.floor(rr * 97) % PAL.length];
+      const n = (r.next() - 0.5) * 0.04;
+      const band = ly === top + 1 && rr > 0.4 ? 0.16 : 0;
+      const k = (x - 1) % 2 === 0 ? 1 : 0.8;
+      return [(c[0] + band) * k + n, (c[1] + band * 0.8) * k + n, (c[2] + band * 0.4) * k + n, UNT];
+    });
+  });
+  // blue-grey loop pile with a darker fleck, the carpet of every office anywhere
+  t('office_carpet', (p) => {
+    p.fill((x, y, r) => {
+      const n = (r.next() - 0.5) * 0.08, loop = ((x + (y >> 1)) % 3 === 0) ? -0.04 : 0;
+      return [0.34 + n + loop, 0.38 + n + loop, 0.44 + n + loop, UNT];
+    });
+    p.speckle([0.24, 0.26, 0.32], 0.12);
+    p.speckle([0.5, 0.5, 0.52], 0.03);
+  });
+  // carpet that has been wet for years: darker, browner, pooled
+  t('wet_carpet', (p) => field(p, (u, v, x, y) => {
+    const w = fbmT(u, v, 2, 3, 131);
+    const n = (th(x, y, 133) - 0.5) * 0.1;
+    const pool = w > 0.56 ? 0.55 : w > 0.5 ? 0.75 : 1;
+    return [(0.56 + n) * pool, (0.48 + n) * pool, (0.3 + n * 0.8) * pool * 0.95, UNT];
+  }));
+  // a ceiling tile with a tide-mark of brown water damage
+  t('ceiling_stain', (p) => field(p, (u, v, x, y) => {
+    if (x === 0 || y === 0) return [0.6, 0.57, 0.5, UNT];
+    const w = fbmT(u, v, 2, 3, 137), ring = Math.abs(w - 0.52) < 0.025;
+    const n = (th(x, y, 139) - 0.5) * 0.03;
+    const hole = th(x, y, 141) < 0.08 ? -0.1 : 0;
+    if (ring) return [0.55, 0.42, 0.26, UNT];
+    if (w > 0.52) return [0.74 + n + hole, 0.64 + n + hole, 0.46 + n + hole, UNT];
+    return [0.86 + n + hole, 0.84 + n + hole, 0.77 + n + hole, UNT];
+  }));
+  // the void above the tiles: ducting, insulation, dark
+  t('plenum', (p) => field(p, (u, v, x, y) => {
+    const duct = x >= 4 && x <= 11;
+    const n = (th(x, y, 143) - 0.5) * 0.05;
+    if (duct) return y % 6 === 0 ? [0.2, 0.2, 0.21, UNT] : [0.3 + n, 0.3 + n, 0.31 + n, UNT];
+    const fluff = fbmT(u, v, 4, 2, 145);
+    return [0.2 + fluff * 0.12 + n, 0.15 + fluff * 0.08 + n, 0.08 + n, UNT];
+  }));
+  // older wallpaper, the kind in the tall halls: faded stripes and a small repeating motif
+  t('wallpaper_b', (p) => {
+    p.fill((x, y, r) => {
+      const n = (r.next() - 0.5) * 0.035;
+      const band = (x % 8 === 0 || x % 8 === 1) ? -0.07 : 0;
+      const motif = (x % 8 === 4 && (y % 8 === 2 || y % 8 === 4)) || ((x % 8 === 3 || x % 8 === 5) && y % 8 === 3) ? -0.12 : 0;
+      const age = (y > 12 ? -0.03 : 0);
+      return [0.8 + n + band + motif + age, 0.72 + n + band + motif + age, 0.44 + n + band * 0.6 + age, UNT];
+    });
+  });
+  // a panelled dado of painted wood below the wallpaper
+  t('wainscot', (p) => field(p, (u, v, x, y) => {
+    const n = (th(x, y, 147) - 0.5) * 0.04;
+    if (y <= 1) return [0.4, 0.3, 0.19, UNT];
+    if (y === 2) return [0.3, 0.22, 0.13, UNT];
+    const frame = x % 8 === 0 || x % 8 === 7 || y === 3 || y === 14;
+    if (frame) return [0.46 + n, 0.35 + n, 0.22 + n, UNT];
+    if (x % 8 === 1 || y === 4) return [0.33 + n, 0.24 + n, 0.15 + n, UNT];
+    return [0.52 + n, 0.4 + n, 0.25 + n, UNT];
+  }));
+  // painted cinder block, damp at the bottom
+  t('cinder', (p) => field(p, (u, v, x, y) => {
+    const row = y >> 3, off = row & 1 ? 8 : 0;
+    const mortar = y % 8 === 0 || (x + off) % 16 === 0;
+    const n = (th(x, y, 149) - 0.5) * 0.06, damp = fbmT(u, v, 2, 3, 151) * 0.08;
+    if (mortar) return [0.5 - damp, 0.5 - damp, 0.48 - damp, UNT];
+    return [0.64 + n - damp, 0.64 + n - damp, 0.61 + n - damp, UNT];
+  }));
+  // yellow and black safety stripes
+  t('hazard', (p) => field(p, (u, v, x, y) => {
+    const n = (th(x, y, 153) - 0.5) * 0.06;
+    if (y <= 1 || y >= 14) return [0.5 + n, 0.5 + n, 0.48 + n, UNT];
+    return ((x + y) >> 2) & 1 ? [0.1 + n, 0.09 + n, 0.08 + n, UNT] : [0.86 + n, 0.68 + n, 0.1 + n, UNT];
+  }));
+  // pallet racking from afar: blue uprights, orange beams, boxes on pallets
+  t('wh_rack', (p) => field(p, (u, v, x, y) => {
+    const n = (th(x, y, 155) - 0.5) * 0.05;
+    if (x <= 1) return [0.16 + n, 0.28 + n, 0.5 + n, UNT];
+    if (y === 7 || y === 15) return [0.82, 0.38, 0.08, UNT];
+    if (y === 6 || y === 14) return [0.5 + n, 0.36 + n, 0.2 + n, UNT];
+    const box = ((x >> 2) + (y >> 3) * 3) % 5;
+    if (box === 4 || y % 8 < 1) return [0.06, 0.06, 0.07, UNT];
+    const k = box === 3 ? [0.72, 0.72, 0.74] : [0.58 + box * 0.03, 0.44 + box * 0.02, 0.28, UNT];
+    return [k[0] + n, k[1] + n, k[2] + n, UNT];
+  }));
+  // a call button: a steel plate, a lit orange button, an arrow
+  t('lift_btn', (p) => field(p, (u, v, x, y) => {
+    const n = (th(x, y, 157) - 0.5) * 0.04;
+    const d = Math.hypot(x - 7.5, y - 9.5);
+    if (d < 2.4) return [1.3, 0.62, 0.15, UNT];
+    if (d < 3.2) return [0.2, 0.2, 0.2, UNT];
+    if (y >= 3 && y <= 5 && Math.abs(x - 7.5) <= 5 - y + 2.5) return [0.9, 0.9, 0.85, UNT];
+    if (x === 0 || y === 0 || x === 15 || y === 15) return [0.3, 0.31, 0.33, UNT];
+    return [0.55 + n, 0.56 + n, 0.58 + n, UNT];
+  }));
+  // welded wire mesh (see-through)
+  t('fence', (p) => p.fill((x, y) => {
+    const wire = x % 4 === 0 || y % 4 === 0;
+    const frame = x === 0 || y === 0 || x === 15 || y === 15;
+    if (frame) return [0.34, 0.36, 0.34, UNT];
+    return wire ? [0.55, 0.57, 0.55, UNT] : [0, 0, 0, 0];
+  }));
   t('drain', (p) => field(p, (u, v, x, y) => {
     const r = Math.hypot(u - 0.5, v - 0.5);
     if (r > 0.47) return [0.25, 0.45, 0.62, UNT];

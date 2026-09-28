@@ -59,7 +59,7 @@ float fogNoise(vec3 p) {
   float b = mix(mix(fogHash(i + vec3(0,0,1)), fogHash(i + vec3(1,0,1)), f.x), mix(fogHash(i + vec3(0,1,1)), fogHash(i + vec3(1,1,1)), f.x), f.y);
   return mix(a, b, f.z);
 }
-float fogAmount(vec3 wpos, float distH, float dist3, out float mistPart) {
+float fogAmount(vec3 wpos, float distH, float dist3, out float mistPart, float drift) {
   float fd = dist3 * uFogDensity;
   float haze = 1.0 - exp(-fd * fd);
   float camY = cameraPosition.y;
@@ -67,15 +67,14 @@ float fogAmount(vec3 wpos, float distH, float dist3, out float mistPart) {
   float k = (wpos.y - camY) / uMistFalloff;
   float integ = abs(k) > 0.001 ? exp(-h0) * (1.0 - exp(-k)) / k : exp(-h0);
   integ = min(integ, 30.0);
-  float drift = fogNoise(wpos * 0.03 + vec3(uTime * 0.04, uTime * 0.01, uTime * 0.025)) * 0.9 + 0.55;
   float mist = 1.0 - exp(-dist3 * uMistDensity * integ * drift);
   float edge = smoothstep(uFogNear, uFogFar, distH);
   mistPart = mist;
   return clamp(max(max(haze, edge), mist), 0.0, 1.0);
 }
-vec3 applyFog(vec3 col, vec3 wpos, vec3 viewDir, float distH, float dist3, vec3 glow) {
+vec3 applyFog(vec3 col, vec3 wpos, vec3 viewDir, float distH, float dist3, vec3 glow, float drift) {
   float mistPart;
-  float f = fogAmount(wpos, distH, dist3, mistPart);
+  float f = fogAmount(wpos, distH, dist3, mistPart, drift);
   vec3 fogDir = normalize(vec3(viewDir.x, max(viewDir.y, 0.02), viewDir.z));
   vec3 fogCol = mix(skyGradient(fogDir), uMistCol, clamp(mistPart / max(f, 0.001), 0.0, 1.0) * 0.75);
   // forward scattering: the mist lights up looking toward the sun

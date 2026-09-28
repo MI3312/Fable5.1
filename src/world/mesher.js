@@ -2,7 +2,7 @@
 // Works on a padded chunk (1-block border) so it never needs neighbour chunks.
 import { CHUNK, HEIGHT, PW } from '../config.js';
 import {
-  BLOCKS, B, IS_OPAQUE, BLOCK_PASS, IS_CROSS, IS_LIQUID, BLOCK_EMIT, IS_AIRLIKE, TINT, ART_LEVEL,
+  BLOCKS, B, IS_OPAQUE, BLOCK_PASS, IS_CROSS, IS_HIDDEN, IS_LIQUID, BLOCK_EMIT, IS_AIRLIKE, TINT, ART_LEVEL,
 } from './blocks.js';
 import { hash32 } from '../core/rng.js';
 
@@ -136,6 +136,7 @@ export function meshChunk(data, heights, tints, ox, oz) {
         const emit = BLOCK_EMIT[id];
         const wx = ox + px - 1, wz = oz + pz - 1;
         if (emit >= 0.5 && id !== B.LAVA && id !== B.VOID && lights.length < 1024) lights.push(px - 1, y, pz - 1, id);
+        if (IS_HIDDEN[id]) continue;
 
         if (IS_CROSS[id]) {
           emitCross(buf, def, id, px, y, pz, wx, wz, tints, skyAt(px, y, pz), emit, artAt(px, y, pz));

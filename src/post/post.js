@@ -268,6 +268,7 @@ export class PostFX {
   constructor(renderer) {
     this.renderer = renderer;
     this.scale = 1;
+    this.dyn = 1;      // dynamic resolution, on top of the chosen render scale
     this.rt = null;
     this.uniforms = {
       tDiffuse: { value: null },
@@ -422,10 +423,12 @@ export class PostFX {
           }
           // light shafts through the fog: march toward the sun, gathering bright sky
           if (uRays > 0.0) {
-            vec2 delta = (uSunPos - uv) / 28.0;
-            vec2 suv = uv;
+            vec2 delta = (uSunPos - uv) / 14.0;
+            // half the taps, each started a random fraction along so the steps don't band
+            float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+            vec2 suv = uv + delta * (jit - 0.5);
             float acc = 0.0, w = 1.0;
-            for (int i = 0; i < 28; i++) {
+            for (int i = 0; i < 14; i++) {
               suv += delta;
               vec2 cuv = clamp(suv, 0.001, 0.999);
               vec3 sc = texture2D(tDiffuse, cuv).rgb;
@@ -433,10 +436,10 @@ export class PostFX {
               float lit = uHasMask > 0.5 ? texture2D(tMask, cuv).g * smoothstep(0.35, 1.0, dot(sc, vec3(0.33)))
                                          : smoothstep(0.62, 1.1, dot(sc, vec3(0.33)));
               acc += lit * w;
-              w *= 0.955;
+              w *= 0.912;
             }
             float fall = 1.0 - smoothstep(0.0, 0.9, length((uv - uSunPos) * vec2(uRes.x / uRes.y, 1.0)));
-            col += uRayCol * acc / 28.0 * uRays * (0.35 + 0.65 * fall) * (1.0 - min(uVol, 1.0) * 0.75);
+            col += uRayCol * acc / 14.0 * uRays * (0.35 + 0.65 * fall) * (1.0 - min(uVol, 1.0) * 0.75);
           }
           // volumetric light shafts
           if (uVol > 0.0) col += texture2D(tVol, uv).rgb * uVol;
@@ -597,20 +600,24 @@ export class PostFX {
     });
   }
 
-  resize(w, h, pixelRatio) {
+  resize(w, h, pixelRatio, keepExposure = false) {
     this._build();
-    const s = this.scale;
+    const s = this.scale * (this.dyn || 1);
     const rw = Math.max(1, Math.floor(w * pixelRatio * s));
     const rh = Math.max(1, Math.floor(h * pixelRatio * s));
     if (this.rt) { this.rt.depthTexture?.dispose(); this.rt.dispose(); }
+    // multisampling a big half-float target is a lot of memory traffic: 4x only on Ultra at
+    // ordinary resolutions, 2x otherwise, none when the picture is deliberately coarse
+    const px = rw * rh;
     this.rt = new THREE.WebGLRenderTarget(rw, rh, {
-      samples: s >= 0.99 ? 4 : 0,
+      samples: this.scale < 0.99 ? 0 : this.quality >= 2 && px <= 2.4e6 ? 4 : 2,
       type: THREE.HalfFloatType,
       depthBuffer: true,
     });
     this.rt.depthTexture = new THREE.DepthTexture(rw, rh);
     this.rt.depthTexture.type = THREE.UnsignedIntType;
-    const filter = s < 0.99 ? THREE.NearestFilter : THREE.LinearFilter;
+    // a chosen low render scale is meant to look pixelated; dynamic resolution isn't
+    const filter = this.scale < 0.99 ? THREE.NearestFilter : THREE.LinearFilter;
     this.rt.texture.minFilter = filter;
     this.rt.texture.magFilter = filter;
     this.uniforms.tDiffuse.value = this.rt.texture;
@@ -630,7 +637,7 @@ export class PostFX {
     for (const t of [this.volA, this.volB]) t?.dispose();
     this.volA = this._target(aw, ah);
     this.volB = this._target(aw, ah);
-    this.expReset = true;
+    if (!keepExposure) this.expReset = true;
     this.hist?.dispose();
     this.hist = this._target(aw, ah);
     this.hist.texture.minFilter = this.hist.texture.magFilter = THREE.NearestFilter;
@@ -647,7 +654,7 @@ export class PostFX {
 
   _ambientOcclusion(camera) {
     const U = this.ssao.u, w = this.aoA.width, h = this.aoA.height;
-    this.ssao.m.defines.SAMPLES = this.quality >= 2 ? 16 : 10;
+    this.ssao.m.defines.SAMPLES = this.quality >= 2 ? 12 : 8;
     if (this.ssao.m.userData.samples !== this.ssao.m.defines.SAMPLES) { this.ssao.m.userData.samples = this.ssao.m.defines.SAMPLES; this.ssao.m.needsUpdate = true; }
     U.tDepth.value = this.rt.depthTexture;
     U.uRes.value.set(w, h);
@@ -671,7 +678,7 @@ export class PostFX {
     U.uInvProj.value.copy(camera.projectionMatrixInverse);
     U.uCamWorld.value.copy(camera.matrixWorld);
     U.uCam.value.copy(camera.position);
-    U.uSteps.value = this.quality >= 2 ? 24 : 12;
+    U.uSteps.value = this.quality >= 2 ? 16 : 10;
     // thicker air, stronger shafts
     U.uDensity.value = Math.min(0.08, voxelUniforms.uFogDensity.value * 2.2 + voxelUniforms.uMistDensity.value * 0.8);
     this._pass(this.vol, this.volA);
@@ -762,7 +769,7 @@ export class PostFX {
       V.uHist.value = this.hist.texture;
       V.uHistVP.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
       V.uSSR.value = this.histValid ? 1 : 0;
-      V.uSSRSteps.value = q >= 2 ? 26 : 16;
+      V.uSSRSteps.value = q >= 2 ? 20 : 14;
       this.histValid = true;
     } else { V.uSSR.value = 0; this.histValid = false; }
     this.uniforms.uHasMask.value = useAO ? 1 : 0;

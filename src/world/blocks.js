@@ -21,6 +21,9 @@ export const TILE = {
   exit_door_lo: 95, exit_door_hi: 96, exit_sign: 97, glow_book: 98, drain: 99, roller: 100, poster: 101, poster_odd: 102,
   breaker: 103, office_door_lo: 104, office_door_hi: 105,
   moss_top: 106, moss_side: 107, dripstone: 108, glowcap: 109, glow_vine: 110,
+  lib_shelf: 111,
+  office_carpet: 112, wet_carpet: 113, ceiling_stain: 114, plenum: 115, wallpaper_b: 116, wainscot: 117, cinder: 118, hazard: 119,
+  wh_rack: 120, lift_btn: 121, fence: 122,
 };
 
 // Tint channels. The palette of each planet supplies an RGB colour per channel.
@@ -51,6 +54,9 @@ export const B = {
   EXIT_DOOR: 90, EXIT_DOOR_TOP: 91, EXIT_SIGN: 92, GLOW_BOOK: 93, DRAIN: 94, ROLLER: 95, POSTER: 96, POSTER_ODD: 97,
   BREAKER: 98, OFFICE_DOOR: 99, OFFICE_DOOR_TOP: 100,
   MOSS: 101, DRIPSTONE: 102, GLOWCAP: 103, GLOW_VINE: 104,
+  LIB_SHELF: 105, PROP: 106, PROP_LAMP: 107,
+  OFFICE_CARPET: 108, WET_CARPET: 109, CEILING_STAIN: 110, PLENUM: 111, WALLPAPER_B: 112, WAINSCOT: 113, CINDER: 114, HAZARD: 115,
+  CEILING_EDGE: 116, WH_RACK: 117, PICKUP: 118, LIFT_BTN: 119, FENCE: 120,
 };
 
 const T = TILE;
@@ -186,6 +192,29 @@ BLOCKS[B.MOSS] = def('Cave Moss', [T.moss_top, T.stone, T.moss_side], { tint: TI
 BLOCKS[B.DRIPSTONE] = def('Dripstone', T.dripstone, { tint: TINT.stone, hardness: 0.8, drops: [['ferrite', 1, 2], ['silicate', 0, 1]], color: [0.62, 0.58, 0.52] });
 BLOCKS[B.GLOWCAP] = def('Glowcap', T.glowcap, { pass: PASS.cutout, solid: false, shape: 'cross', tint: TINT.crystal, emissive: 0.85, hardness: 0.1, drops: [['carbon', 1, 2], ['sodium', 0, 2]], color: [0.5, 0.95, 0.85] });
 BLOCKS[B.GLOW_VINE] = def('Glow Threads', T.glow_vine, { pass: PASS.cutout, solid: false, shape: 'cross', emissive: 0.6, hardness: 0.05, drops: [['carbon', 1, 1]], color: [0.62, 0.84, 1.0] });
+// the Library's shelving: solid, painted as a bookcase from afar, dressed with modelled shelves
+// and books up close (libraryProps.js)
+BLOCKS[B.LIB_SHELF] = def('Endless Shelf', [T.dark_wood, T.dark_wood, T.lib_shelf], { hardness: 0.7, drops: [['carbon', 2, 3], ['memory_fragment', 0, 1]], color: [0.3, 0.2, 0.14] });
+// furniture: never drawn as a block, only there to be bumped into; a modelled piece stands in it
+BLOCKS[B.PROP] = def('Furniture', T.dark_wood, { shape: 'none', hardness: 999, unbreakable: true, collect: false, color: [0.4, 0.3, 0.22] });
+BLOCKS[B.PROP_LAMP] = def('Lamp', T.lamp, { shape: 'none', emissive: 1.0, hardness: 999, unbreakable: true, collect: false, color: [1.0, 0.85, 0.55] });
+// the further reaches of the Backrooms: offices, flooded halls, the old wing, and Level 1 below
+BLOCKS[B.OFFICE_CARPET] = def('Office Carpet', T.office_carpet, { hardness: 0.5, drops: [['carbon', 1, 1]], color: [0.36, 0.4, 0.46] });
+BLOCKS[B.WET_CARPET] = def('Soaked Carpet', T.wet_carpet, { hardness: 0.5, drops: [['carbon', 1, 1]], color: [0.46, 0.4, 0.26] });
+BLOCKS[B.CEILING_STAIN] = def('Stained Ceiling Tile', T.ceiling_stain, { hardness: 0.5, drops: [['silicate', 1, 1]], color: [0.78, 0.72, 0.6] });
+BLOCKS[B.PLENUM] = def('Ceiling Void', T.plenum, { hardness: 999, unbreakable: true, collect: false, color: [0.12, 0.11, 0.1] });
+BLOCKS[B.WALLPAPER_B] = def('Old Wallpaper', T.wallpaper_b, { hardness: 0.8, drops: [['carbon', 1, 1]], color: [0.78, 0.7, 0.44] });
+BLOCKS[B.WAINSCOT] = def('Wainscot', [T.dark_wood, T.dark_wood, T.wainscot], { hardness: 0.8, drops: [['carbon', 1, 2]], color: [0.5, 0.38, 0.24] });
+BLOCKS[B.CINDER] = def('Cinder Block', T.cinder, { hardness: 1.2, drops: [['silicate', 1, 2]], color: [0.55, 0.55, 0.53] });
+BLOCKS[B.HAZARD] = def('Hazard Paint', [T.concrete, T.concrete, T.hazard], { hardness: 1.2, drops: [['silicate', 1, 1]], color: [0.85, 0.7, 0.1] });
+// a ceiling tile at the edge of a tall hall: its side is the hall's wall
+BLOCKS[B.CEILING_EDGE] = def('Ceiling Tile', [T.ceiling_tile, T.ceiling_tile, T.wallpaper_b], { hardness: 0.5, drops: [['silicate', 1, 1]], color: [0.88, 0.86, 0.8] });
+// the Warehouse: pallet racking (modelled up close like the Library's shelves), something small
+// you can pick up (a model stands in the block), the freight lift's call button, a wire-mesh fence
+BLOCKS[B.WH_RACK] = def('Pallet Racking', [T.metal_panel, T.metal_panel, T.wh_rack], { hardness: 1.2, drops: [['ferrite', 1, 2], ['carbon', 0, 1]], color: [0.3, 0.36, 0.5] });
+BLOCKS[B.PICKUP] = def('Something', T.metal_plate, { shape: 'none', solid: false, hardness: 999, unbreakable: true, collect: false, color: [0.8, 0.8, 0.5] });
+BLOCKS[B.LIFT_BTN] = def('Lift Call Button', [T.metal_panel, T.metal_panel, T.lift_btn], { hardness: 999, unbreakable: true, collect: false, interact: 'lift', emissive: 0.3, color: [0.9, 0.6, 0.2] });
+BLOCKS[B.FENCE] = def('Wire Mesh', T.fence, { pass: PASS.cutout, hardness: 999, unbreakable: true, collect: false, color: [0.5, 0.52, 0.5] });
 
 export const BLOCK_COUNT = BLOCKS.length;
 
@@ -198,6 +227,8 @@ export const IS_LIQUID = new Uint8Array(256);
 export const BLOCK_TINT = new Uint8Array(256);
 export const BLOCK_EMIT = new Float32Array(256);
 export const IS_AIRLIKE = new Uint8Array(256);
+// solid but never meshed (a model stands in it)
+export const IS_HIDDEN = new Uint8Array(256);
 // how brightly lit a pocket of interior air is (liminal rooms: bright under the lights, dim between)
 export const ART_LEVEL = new Float32Array(256);
 
@@ -207,13 +238,14 @@ for (let i = 0; i < BLOCKS.length; i++) {
   IS_SOLID[i] = b.solid ? 1 : 0;
   BLOCK_PASS[i] = b.pass;
   IS_CROSS[i] = b.shape === 'cross' ? 1 : 0;
+  IS_HIDDEN[i] = b.shape === 'none' ? 1 : 0;
   IS_LIQUID[i] = b.liquid ? 1 : 0;
   BLOCK_TINT[i] = b.tint;
   BLOCK_EMIT[i] = b.emissive;
   const airy = i === B.AIR || i === B.LIT_AIR || i === B.LIT_DIM || i === B.LIT_DARK;
   IS_OPAQUE[i] = (b.pass === PASS.opaque && b.shape === 'cube' && !airy) ? 1 : 0;
   IS_AIRLIKE[i] = airy ? 1 : 0;
-  ART_LEVEL[i] = i === B.LIT_AIR ? 1 : i === B.LIT_DIM ? 0.5 : i === B.LIT_DARK ? 0.2 : 0;
+  ART_LEVEL[i] = i === B.LIT_AIR ? 1 : i === B.LIT_DIM ? 0.5 : i === B.LIT_DARK ? 0.2 : i === B.PICKUP ? 0.6 : 0;
 }
 
 // Blocks that can be placed from the block bag (everything collectible)

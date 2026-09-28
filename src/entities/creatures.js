@@ -196,6 +196,7 @@ export class CreatureManager {
     };
     model.position.copy(c.pos);
     castShadows(model);
+    c.shadowOn = true;
     this.group.add(model);
     this.list.push(c);
     return c;
@@ -249,6 +250,9 @@ export class CreatureManager {
         c.pos.set(P.x + 3, gy + 1, P.z + 3);
       } else if (dist > 120 || c.dead) { this.group.remove(c.model); if (c.dead && !c.vanished && ctx.onDeath) ctx.onDeath(c); continue; }
       keep.push(c);
+      // only the ones near enough for their shadows to be seen cast them
+      const sh = dist < 42;
+      if (c.shadowOn !== sh) { c.shadowOn = sh; castShadows(c.model, sh); }
       this._think(c, dt, ctx, dist, dx, dz);
       this._animate(c, dt, ctx.time);
     }
