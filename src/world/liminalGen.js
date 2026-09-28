@@ -157,7 +157,7 @@ export function backroomsExit(d) {
 // Baths, and somewhere across the baths a well of daylight with a stair up its wall to the grass.
 export const PR = { LF: -22, CEIL: -9, R: 11, LOOPS: 1.25, TOP: 7 };
 export function poolStair(d) {
-  const [u0, v0] = ring(d, 73, 30, 46);
+  const [u0, v0] = ring(d, 73, 18, 30);
   const i = Math.floor(u0 / 12), j = Math.max(2, Math.floor(v0 / 12));
   // four wide down the middle of rooms (i, j) and (i, j + 1), one step per block, running +v
   return { i, j, u0: i * 12 + 4, u1: i * 12 + 7, v0: j * 12 + 2, v1: j * 12 + 21, bu: i * 12 + 6, bv: j * 12 + 23 };
@@ -178,13 +178,19 @@ export function wellSteps(W, a) {
   }
   return out;
 }
+// Nine books with your name, scattered further and further out; any three will do. Each sits in
+// a shelf with a lamp over the aisle in front of it.
 export function libraryBooks(d) {
   const a0 = hf(d.seed, 75, 0) * Math.PI * 2;
-  return [0, 1, 2].map((k) => {
-    const [u0, v0] = ring(d, 76 + k, 34, 62, a0 + k * 2.1);
+  const out = [];
+  for (let k = 0; k < 9; k++) {
+    const r0 = 18 + k * 9 + hf(d.seed, 77, k) * 6;
+    const [u0, v0] = ring(d, 76 + k, r0, r0 + 1, a0 + k * 2.39996);
     const u = 11 * Math.floor(u0 / 11) + 5, v = 5 * Math.floor(v0 / 5) + 3;
-    return { u, v, y: 1 + (k % 2) };
-  });
+    if (out.some((b) => Math.abs(b.u - u) < 8 && Math.abs(b.v - v) < 8)) continue;
+    out.push({ u, v, y: 1 + (k % 2) });
+  }
+  return out;
 }
 export function warehouseExit(d) {
   const [u0, v0] = ring(d, 81, 80, 110);
@@ -255,9 +261,27 @@ function backrooms(d, u, y, v) {
 
 // The Poolrooms: white tile rooms, twelve blocks across, joined by wide arches. Some rooms are
 // dry halls of pillars, some are shallow, some are deep, some are open to a sky that isn't there.
+// The way to the stair: along the entrance row of rooms (j = 1) to the stair's column, then up
+// that column to the stair room. Every wall on it has an arch, and every room on it a floor you
+// can walk.
+function prOnRoute(d, i, j) {
+  const S = d._pstair || (d._pstair = poolStair(d));
+  const lo = Math.min(0, S.i), hi = Math.max(0, S.i);
+  return (j === 1 && i >= lo && i <= hi) || (i === S.i && j >= 1 && j <= S.j);
+}
+function prRouteWall(d, line, cell, axis) {
+  // axis 1: the wall at u = line * 12 between rooms (line - 1, cell) and (line, cell);
+  // axis 2: the wall at v = line * 12 between rooms (cell, line - 1) and (cell, line)
+  const S = d._pstair || (d._pstair = poolStair(d));
+  if (axis === 1) return cell === 1 && prOnRoute(d, line - 1, 1) && prOnRoute(d, line, 1);
+  return cell === S.i && line - 1 >= 1 && line <= S.j;
+}
 export function prArch(d, line, cell, axis) {
   const h = hash32(d.seed, line, cell, axis);
-  if ((h & 255) < 36) return null; // a solid wall
+  const route = prRouteWall(d, line, cell, axis);
+  if (!route && (h & 255) < 36) return null; // a solid wall
+  // the arch into the stair room lines up with the stair
+  if (route && axis === 2 && line === (d._pstair || poolStair(d)).j) return [4, 7];
   const w = 3 + ((h >>> 8) % 3);
   const c = 2 + ((h >>> 12) % (10 - w));
   return [c, c + w - 1];
@@ -268,7 +292,49 @@ export function prRoomType(d, i, j) {
   if (i === S.i && j === S.j + 1) return 'stair2';
   if (i >= -1 && i <= 0 && j >= 0 && j <= 1) return 'dry';
   const r = hf(d.seed, i, j, 31);
+  if (prOnRoute(d, i, j)) return r < 0.45 ? 'pillars' : r < 0.8 ? 'dry' : 'sky';
   return r < 0.38 ? 'shallow' : r < 0.6 ? 'pillars' : r < 0.76 ? 'deep' : r < 0.9 ? 'flooded' : 'sky';
+}
+// The footprints' trail from the entrance to the well, as points { u, v, y } (y: the floor you
+// stand on, relative to the pocket floor): through the middle of each arch on the route, down the
+// long stair, and across the baths.
+export function poolTrail(d) {
+  if (d._ptrail) return d._ptrail;
+  const S = d._pstair || (d._pstair = poolStair(d));
+  const W = d._pwell || (d._pwell = poolWell(d));
+  const way = [[6.5, 15.5, 0]];
+  const di = Math.sign(S.i);
+  for (let i = 0; i !== S.i; i += di) {
+    const wall = di > 0 ? (i + 1) * 12 : i * 12;
+    const a = prArch(d, di > 0 ? i + 1 : i, 1, 1);
+    const v = 12 + (a[0] + a[1]) / 2 + 0.5;
+    way.push([wall - di * 2.5, v, 0], [wall + 0.5 + di * 2.5, v, 0]);
+  }
+  for (let j = 1; j < S.j; j++) {
+    const a = prArch(d, j + 1, S.i, 2);
+    const u = S.i * 12 + (a[0] + a[1]) / 2 + 0.5;
+    way.push([u, (j + 1) * 12 - 2.5, 0], [u, (j + 1) * 12 + 3, 0]);
+  }
+  way.push([S.bu, S.v0 - 0.5, 0], [S.bu, S.v1 + 3, PR.LF + 1]);
+  const dw = Math.hypot(W.u + 0.5 - S.bu, W.v + 0.5 - (S.v1 + 3));
+  const k = (dw - PR.R - 1.5) / dw;
+  way.push([S.bu + (W.u + 0.5 - S.bu) * k, S.v1 + 3 + (W.v + 0.5 - S.v1 - 3) * k, PR.LF + 1]);
+  // sample it
+  const pts = [];
+  let n = 0;
+  for (let q = 0; q + 1 < way.length; q++) {
+    const [u0, v0] = way[q], [u1, v1] = way[q + 1];
+    const len = Math.hypot(u1 - u0, v1 - v0);
+    const du = (u1 - u0) / len, dv = (v1 - v0) / len;
+    for (let s = 0; s < len; s += 0.72) {
+      const side = (n++ & 1 ? 1 : -1) * 0.13;
+      const u = u0 + du * s - dv * side, v = v0 + dv * s + du * side;
+      const st = prStep(S, Math.floor(u), Math.floor(v));
+      const y = st !== null ? st + 1 : (q >= way.length - 3 && v > S.v1 ? PR.LF + 1 : 0);
+      pts.push({ u, v, y, du, dv, left: !!(n & 1) });
+    }
+  }
+  return (d._ptrail = pts);
 }
 // the long stair: its step height at a cell, or null if the cell isn't on it
 function prStep(S, u, v) {
@@ -434,47 +500,87 @@ function prWell(d, W, u, y, v, r) {
   return B.STONE;
 }
 
-// The Hallway: one corridor, forty blocks long, that you walk again and again. Each end turns a
-// corner into a short bend and comes back into the start of the same corridor, so the space
-// repeats every 48 blocks along u; the pocket manager moves you back one repeat whenever you cross
-// the middle of a bend, and changes the corridor while you can't see it.
-export const HALL = { P: 48, L: 40, v0: 14, v1: 16, mid: 44 };
+// The Hallway: the underground passage you walk again and again. A short passage with the exit
+// sign opens into a long, tall concourse (tiled walls, pilasters, a vending alcove, a seating
+// recess, doors that stay shut), which narrows again into a second passage. Its end turns into a
+// Z-shaped bend (left, a shaft to the right, left again) that leads into the start of the same
+// passage, so the space repeats every HALL.P blocks along u. The bend is point-symmetric about the
+// middle of its shaft: walking on through the middle moves you back one repeat; turning back and
+// walking the other way through the middle turns the whole place half round, so both ways out
+// bring you, facing the same way, to the start. You can't see either end from the shaft, so
+// neither move shows. The pocket's entrance comes in through the side of the first concourse.
+export const HALL = { L: 52, P: 68, u0: -8, cv: 17.5, hall0: 6, hall1: 45 };
+export const hallT = (u) => fm(u - HALL.u0, HALL.P);
+// the middle of the turn after corridor k, in local coordinates
+export const hallTurn = (k) => HALL.u0 + k * HALL.P + HALL.L + 8;
+// alcoves off the concourse: vending machines to the north, a seating recess to the south
+export const HALL_ALCOVES = { north: [36, 39], south: [36, 39] };
+const inHall = (t) => t >= HALL.hall0 && t <= HALL.hall1;
 export function hallOpen(u, v) {
-  const t = fm(u, 48);
-  if (t <= 39) return v >= 14 && v <= 16;
-  if ((t <= 42 || t >= 45) && v >= 14 && v <= 22) return true;
-  return v >= 20 && v <= 22;
+  const t = hallT(u);
+  if (t < HALL.L) {
+    if (!inHall(t)) return v >= 16 && v <= 18;
+    if (v >= 14 && v <= 20) return !hallPilaster(t, v);
+    if (t >= HALL_ALCOVES.north[0] && t <= HALL_ALCOVES.north[1] && v >= 21 && v <= 22) return true;
+    if (t >= HALL_ALCOVES.south[0] && t <= HALL_ALCOVES.south[1] && v >= 12 && v <= 13) return true;
+    return false;
+  }
+  const D = t - HALL.L;
+  return (D <= 2 && v >= 16 && v <= 24) || (D <= 9 && v >= 22 && v <= 24) || (D >= 6 && D <= 9 && v >= 10 && v <= 24)
+    || (D >= 6 && v >= 10 && v <= 12) || (D >= 13 && v >= 10 && v <= 18);
 }
-// the decor of an ordinary corridor at base-period position t on the given wall side
+// square pilasters standing out from both walls every eight blocks
+export function hallPilaster(t, v) { return inHall(t) && fm(t, 8) === 2 && t > HALL.hall0 && t < HALL.hall1 && (v === 14 || v === 20); }
+export const hallHeight = (t) => (t < HALL.L && inHall(t) ? 5 : 4);
+// the decor of an ordinary lap at position t, on the wall side v, at height y
+export const HALL_DOORS = [16, 20, 30], HALL_POSTERS_N = [12, 23], HALL_POSTERS_S = [8, 21, 29];
 export function hallDecor(t, v, y) {
-  if (v === 17) {
-    if ((t === 8 || t === 20 || t === 32) && y <= 1) return y === 0 ? B.OFFICE_DOOR : B.OFFICE_DOOR_TOP;
-    if ((t === 12 || t === 24) && y === 1) return B.POSTER;
-    if (t === 16 && y === 3) return B.GRATE;
+  if (!inHall(t)) return -1;
+  if (v === 21 && HALL_DOORS.includes(t) && y <= 1) return y === 0 ? B.OFFICE_DOOR : B.OFFICE_DOOR_TOP;
+  if (y === 0 || y === 3) return B.POOL_DEEP;                    // bands of dark tile along the walls
+  if (v === 21) {
+    if (HALL_POSTERS_N.includes(t) && y === 1) return B.POSTER;
+    if (t === 28 && y === 4) return B.GRATE;
   } else if (v === 13) {
-    if ((t === 4 || t === 14 || t === 26 || t === 36) && y === 1) return B.POSTER;
-    if (t === 30 && y === 1) return B.EMERGENCY;
+    if (HALL_POSTERS_S.includes(t) && y === 1) return B.POSTER;
+    if (t === 35 && y === 4) return B.EMERGENCY;
   }
   return -1;
 }
+// ceiling lights: in the passages every fourth tile; in the concourse two rows of them; and in the
+// turn, in point-symmetric pairs
+const TURN_LIGHTS = [[1, 20], [4, 23], [7, 19]];
 export function hallCeiling(t, v) {
-  if (t <= 39) return v === 15 && fm(t, 4) === 1 ? B.LIGHT_PANEL : B.CEILING_TILE;
-  if ((t === 41 || t === 46) && v === 18) return B.LIGHT_PANEL;
-  if ((t === 43 || t === 44) && v === 21) return B.LIGHT_PANEL;
+  if (t < HALL.L) {
+    if (!inHall(t)) return v === 17 && fm(t, 4) === 1 ? B.LIGHT_PANEL : B.CEILING_TILE;
+    if (v >= 21 || v <= 13) return fm(t, 2) === 0 ? B.LIGHT_PANEL : B.CEILING_TILE;   // the alcoves are lit
+    return (v === 16 || v === 18) && fm(t, 4) === 1 ? B.LIGHT_PANEL : B.CEILING_TILE;
+  }
+  const D = t - HALL.L;
+  for (const [a, b] of TURN_LIGHTS) if ((D === a && v === b) || (D === 15 - a && v === 34 - b)) return B.LIGHT_PANEL;
   return B.CEILING_TILE;
 }
 function hallway(d, u, y, v) {
   if (y < -1) return B.STONE;
-  if (y > 4) return B.AIR;
-  const t = fm(u, 48);
+  if (y > 5) return B.AIR;
+  const t = hallT(u);
+  const H = hallHeight(t);
   const entry = (u === 6 || u === 7) && v === 13 && y >= -1 && y <= 2;
   const open = hallOpen(u, v) || entry;
-  if (y === -1) return open ? B.CHECKER : B.STONE;
-  if (y === 4) return open ? hallCeiling(t, v) : B.STONE;
+  if (y === -1) {
+    if (!open) return B.STONE;
+    // a darker border of tiles round the concourse floor
+    return inHall(t) && t < HALL.L && (v === 14 || v === 20) ? B.POOL_DEEP : B.CHECKER;
+  }
+  if (y === H) return open ? hallCeiling(t, v) : B.STONE;
+  if (y > H) return B.STONE;
   if (open) return B.LIT_AIR;
-  if (t <= 39 && (v === 13 || v === 17)) {
-    const dec = hallDecor(t, v, y);
-    if (dec >= 0) return dec;
+  if (t < HALL.L) {
+    if (hallPilaster(t, v)) return y === 0 || y === 3 ? B.POOL_DEEP : B.CONCRETE;
+    if (v === 13 || v === 21) {
+      const dec = hallDecor(t, v, y);
+      if (dec >= 0) return dec;
+    }
   }
   return B.POOL_TILE;
 }
@@ -493,13 +599,17 @@ function library(d, u, y, v) {
   if (y === -1) return fm(v, 5) === 1 ? B.PLANKS : B.DARK_WOOD;
   if (y > 7) return B.AIR;
   const zone = libZone(d, u, v);
+  const books = d._books || (d._books = libraryBooks(d));
+  // a warmer pool of light in the aisle by each book, under a lamp of its own
+  let near = false;
+  for (const b of books) if (Math.abs(u - b.u) <= 2 && v >= b.v - 3 && v <= b.v) near = true;
   if (y === 7) {
+    for (const b of books) if (u === b.u && v === b.v - 2) return B.LAMP;
     if (zone === 2) return B.DARK_WOOD;
     if (zone === 1) return fm(u, 6) === 3 && fm(v, 6) === 3 ? B.LAMP : B.DARK_WOOD;
     return fm(v, 5) === 1 && fm(u, 6) === 3 ? B.LAMP : B.DARK_WOOD;
   }
-  const air = zone === 2 ? B.LIT_DARK : zone === 1 ? B.LIT_AIR : B.LIT_DIM;
-  const books = d._books || (d._books = libraryBooks(d));
+  const air = near || zone === 1 ? B.LIT_AIR : zone === 2 ? B.LIT_DARK : B.LIT_DIM;
   for (const b of books) if (b.u === u && b.v === v) return y === b.y ? B.GLOW_BOOK : y <= 5 ? B.BOOKSHELF : air;
   if (clearing(u, v)) return air;
   if (zone === 1) {

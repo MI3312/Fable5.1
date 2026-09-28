@@ -300,13 +300,14 @@ export class AudioSystem {
   }
 
   // Distant, unexplained sounds for dream worlds. kind: 'thud' | 'door' | 'hum' | 'chime' | 'steps'
-  distant(kind) {
+  // opts: { pan: -1..1 (random if left out), gain }
+  distant(kind, opts = {}) {
     if (!this.ctx) return;
     const c = this.ctx, t = c.currentTime;
     const pan = c.createStereoPanner ? c.createStereoPanner() : null;
     const out = c.createGain();
-    out.gain.value = 1;
-    if (pan) { pan.pan.value = (Math.random() * 2 - 1) * 0.9; out.connect(pan); pan.connect(this.reverb); pan.connect(this.sfxBus); }
+    out.gain.value = opts.gain ?? 1;
+    if (pan) { pan.pan.value = opts.pan ?? (Math.random() * 2 - 1) * 0.9; out.connect(pan); pan.connect(this.reverb); pan.connect(this.sfxBus); }
     else { out.connect(this.reverb); out.connect(this.sfxBus); }
     const noise = (dur, freq, vol, type = 'lowpass', q = 0.7, at = 0) => {
       const s = this._noiseSrc();
@@ -331,6 +332,7 @@ export class AudioSystem {
     else if (kind === 'door') { noise(0.25, 900, 0.05, 'bandpass', 3); noise(1.4, 220, 0.14, 'lowpass', 0.7, 0.18); osc(70, 1, 0.06, 'sine', 0.6, 0.18); }
     else if (kind === 'hum') { osc(60, 5, 0.025, 'sawtooth'); osc(120.4, 5, 0.012, 'square'); }
     else if (kind === 'chime') { [0, 5, 10].forEach((st, i) => osc(midi(83 + st), 3, 0.018, 'sine', 0, i * 0.9)); }
+    else if (kind === 'rush') { noise(2.2, 520, 0.09, 'lowpass', 0.5); noise(2.0, 2300, 0.035, 'bandpass', 0.6, 0.1); noise(1.4, 1200, 0.03, 'bandpass', 0.8, 0.5); }
     else if (kind === 'splash') { noise(0.5, 1400, 0.05, 'bandpass', 0.8); noise(1.6, 380, 0.06, 'lowpass', 0.7, 0.12); }
     else if (kind === 'steps') { for (let i = 0; i < 6; i++) noise(0.09, 500, 0.05, 'bandpass', 1.2, i * 0.55 + Math.random() * 0.05); }
   }

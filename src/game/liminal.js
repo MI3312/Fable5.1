@@ -306,6 +306,26 @@ export class Liminal {
     this.mode.debris.clear?.();
   }
 
+  // Turn the pocket half round about a point: you (and whatever follows you) end up at the
+  // mirror-image spot facing the other way. Only seamless where the space around that point is
+  // the same when rotated, and nothing else is in view.
+  turn(cu, cv) {
+    const g = this.g, p = g.player;
+    const [lu, lv] = this.local(p.pos.x, p.pos.z);
+    const [x, z] = this.worldAt(2 * cu - lu, 2 * cv - lv);
+    const [ox, oz] = this.worldAt(cu, cv);
+    p.pos.x = x; p.pos.z = z;
+    p.yaw += Math.PI;
+    p.vel.x = -p.vel.x; p.vel.z = -p.vel.z;
+    for (const c of this.props.children) {
+      if (!c.userData.follow) continue;
+      c.position.x = 2 * ox - c.position.x; c.position.z = 2 * oz - c.position.z;
+      c.rotation.y += Math.PI;
+    }
+    g.post.histValid = false;
+    this.mode.debris.clear?.();
+  }
+
   // ------------------------------------------------------------------ small conveniences
   center(text, color = '#e8e2d0', t = 3) { this.g.hud.setCenter(text, color); this.mode.centerT = t; }
   hurt(dmg, why) { this.mode._hurtPlayer(dmg, why); }

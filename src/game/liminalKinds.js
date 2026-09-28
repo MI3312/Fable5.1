@@ -12,9 +12,11 @@ import * as THREE from 'three';
 import { B, IS_AIRLIKE, IS_SOLID } from '../world/blocks.js';
 import { clamp, lerp } from '../core/rng.js';
 import {
-  backroomsExit, poolStair, poolWell, PR, libraryBooks, warehouseExit, warehouseBreaker, prArch, HALL, STYLE,
+  backroomsExit, poolStair, poolWell, poolTrail, PR, libraryBooks, warehouseExit, warehouseBreaker, prArch, STYLE,
+  HALL, hallT, hallTurn, hallOpen, hallHeight, hallCeiling, HALL_DOORS, HALL_POSTERS_N, HALL_POSTERS_S, HALL_ALCOVES,
 } from '../world/liminalGen.js';
 import { buildNullFigure } from '../entities/horrorModels.js';
+import * as HP from '../entities/hallProps.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const fm = (a, n) => ((a % n) + n) % n;
@@ -327,8 +329,10 @@ class Poolrooms extends Kind {
     this.S = poolStair(this.d);
     this.well = poolWell(this.d);
     this.minY = PR.LF - 7;
-    this.prints = [];
-    this.printT = 3;
+    this.trail = poolTrail(this.d);
+    this.shown = new Map();     // trail index -> print mesh
+    this.printT = 0;
+    this.rushT = 2;
     this.said = {};
     this.grabT = 0;
     this.grabbed = false;
@@ -349,7 +353,7 @@ class Poolrooms extends Kind {
   objective() {
     if (this.level === 2) return ['Climb the stair up the wall', 'Stay out of the water'];
     if (this.level === 1) return ['Cross the baths toward the daylight', 'The footprints know the way'];
-    return ['Follow the wet footprints', 'They lead down'];
+    return ['Follow the wet footprints', 'Listen for falling water'];
   }
 
   // the light turns bluer and dimmer in the baths, and warm and open in the well
@@ -395,12 +399,18 @@ class Poolrooms extends Kind {
     if (i === S.i && (j === S.j || j === S.j + 1) && ly > -1) this.say('stair', 'The stairs go down further than the floor is thick.');
     if (this.level === 1) this.say('baths', 'Under the rooms, more water. Very still. Far off, daylight.', 4.5);
     if (this.level === 2) { this.say('well', 'Real daylight. A stair climbs the wall. Stay out of the water.', 4.5); g.audio.swell(0.02); }
-    // footprints leading on
+    // the footprints near you, all one trail, all going the same way
     this.printT -= dt;
-    if (this.printT <= 0 && this.level < 2) { this.printT = rnd(5.5, 8); this._trail(u, v, ly, i, j, onStair); }
-    for (const pr of this.prints) { pr.t -= dt; pr.m.material.opacity = 0.5 * clamp(pr.t / 4, 0, 1); }
-    for (const pr of this.prints.filter((q) => q.t <= 0)) { pr.m.removeFromParent(); pr.m.material.dispose(); }
-    this.prints = this.prints.filter((q) => q.t > 0);
+    if (this.printT <= 0) { this.printT = 0.25; this._prints(u, v, ly); }
+    // and somewhere ahead, water falling
+    this.rushT -= dt;
+    if (this.rushT <= 0 && this.level < 2) {
+      this.rushT = rnd(3.5, 5.5);
+      const [tu, tv] = this.level === 0 ? [S.bu, S.v0 + 6] : [W.u + 0.5, W.v + 0.5];
+      const [tx, tz] = L.worldAt(tu, tv);
+      const dd = Math.hypot(tu - u, tv - v);
+      g.audio.distant('rush', { pan: this.pan(tx, tz), gain: 0.35 + clamp(1 - dd / 60, 0, 1) * 0.9 });
+    }
     // the swimmer
     this._swim(dt, u, v, ly, wr);
     // out: up the last step and onto the grass
@@ -499,99 +509,74 @@ class Poolrooms extends Kind {
     }
   }
 
-  // wet prints from where you stand toward the way on: through the rooms to the stair, down the
-  // stair, and across the baths toward the well
-  _trail(u, v, ly, i, j, onStair) {
-    const L = this.L, d = this.d, S = this.S, W = this.well;
-    let tu, tv;
-    if (onStair || (i === S.i && (j === S.j || j === S.j + 1))) {
-      if (!onStair && ly > -1 && v < S.v0) { tu = S.bu; tv = S.v0 + 0.5; }
-      else { tu = S.bu; tv = S.v1 + 3; }
-    } else if (ly < PR.CEIL - 1) {
-      tu = W.u + 0.5; tv = W.v + 0.5;
-    } else {
-      // the next arch toward the stair room
-      const opts = [];
-      const add = (ni, nj, pu, pv) => opts.push({ n: Math.abs(ni - S.i) + Math.abs(nj - S.j), pu, pv });
-      let a;
-      if ((a = prArch(d, i, j, 1))) add(i - 1, j, i * 12, j * 12 + (a[0] + a[1]) / 2);
-      if ((a = prArch(d, i + 1, j, 1))) add(i + 1, j, (i + 1) * 12, j * 12 + (a[0] + a[1]) / 2);
-      if ((a = prArch(d, j, i, 2))) add(i, j - 1, i * 12 + (a[0] + a[1]) / 2, j * 12);
-      if ((a = prArch(d, j + 1, i, 2))) add(i, j + 1, i * 12 + (a[0] + a[1]) / 2, (j + 1) * 12);
-      if (!opts.length) return;
-      opts.sort((x, y) => x.n - y.n);
-      tu = opts[0].pu + 0.5; tv = opts[0].pv + 0.5;
+  // show the stretch of the trail around you: prints fade in as you come near and out behind
+  _prints(u, v, ly) {
+    const L = this.L, T = this.trail, near = new Set();
+    for (let k = 0; k < T.length; k++) {
+      const q = T[k];
+      if (Math.abs(q.y - ly) > 6) continue;
+      const dd = Math.hypot(q.u - u, q.v - v);
+      if (dd > 12) continue;
+      near.add(k);
+      let m = this.shown.get(k);
+      if (m === undefined) {
+        // only on dry tile
+        const fu = Math.floor(q.u), fv = Math.floor(q.v);
+        const a = L.get(fu, q.y, fv), f = L.get(fu, q.y - 1, fv);
+        m = null;
+        if (a >= 0 && IS_AIRLIKE[a] && (f === B.POOL_TILE || f === B.POOL_DEEP)) {
+          m = new THREE.Mesh(printGeo, printMat.clone());
+          m.scale.x = q.left ? 1 : -1;
+          L.point(q.u, q.y + 0.012, q.v, m.position);
+          const [wx, wz] = L.dir(q.du, q.dv);
+          m.rotation.y = Math.atan2(wx, wz);
+          L.props.add(m);
+        }
+        this.shown.set(k, m);
+      }
+      if (m) m.material.opacity = 0.5 * clamp((12 - dd) / 4, 0, 1);
     }
-    let du = tu - u, dv = tv - v;
-    const len = Math.hypot(du, dv);
-    if (len < 2) return;
-    du /= len; dv /= len;
-    const n = Math.min(26, Math.floor((len + 3) / 0.7));
-    let y0 = Math.floor(ly + 0.2), laid = 0;
-    for (let k = 3; k < n; k++) {
-      const s = k * 0.7, side = (k & 1 ? 1 : -1) * 0.13;
-      const pu = u + du * s - dv * side, pv = v + dv * s + du * side;
-      const fy = this._floorAt(Math.floor(pu), Math.floor(pv), y0);
-      if (fy === null) continue;
-      y0 = fy;
-      const m = new THREE.Mesh(printGeo, printMat.clone());
-      m.scale.x = k & 1 ? 1 : -1;
-      L.point(pu, fy + 0.012, pv, m.position);
-      const [wx, wz] = L.dir(du, dv);
-      m.rotation.y = Math.atan2(wx, wz);
-      L.props.add(m);
-      this.prints.push({ m, t: 16 + k * 0.25 });
-      laid++;
+    for (const [k, m] of this.shown) {
+      if (near.has(k)) continue;
+      if (m) { m.removeFromParent(); m.material.dispose(); }
+      this.shown.delete(k);
     }
-    if (laid) this.g.audio.distant('steps');
-  }
-  // the dry tile floor near height y0 in a column, or null
-  _floorAt(u, v, y0) {
-    const L = this.L;
-    for (let y = y0 + 1; y >= y0 - 3; y--) {
-      const a = L.get(u, y, v), b = L.get(u, y - 1, v);
-      if (a < 0 || b < 0) return null;
-      if (a === B.WATER || b === B.WATER) return null;
-      if (IS_AIRLIKE[a] && (b === B.POOL_TILE || b === B.POOL_DEEP)) return y;
-    }
-    return null;
   }
 
   stop() {
-    for (const pr of this.prints) pr.m.material.dispose();
+    for (const m of this.shown.values()) if (m) m.material.dispose();
     this.g.audio.setLoop('wind', false);
   }
 }
 
 // ======================================================================================= Hallway
-function signCanvas(text, sub) {
-  const c = document.createElement('canvas');
-  c.width = 256; c.height = 96;
-  const x = c.getContext('2d');
-  x.fillStyle = '#f2c230'; x.fillRect(0, 0, 256, 96);
-  x.fillStyle = '#1a1406'; x.fillRect(6, 6, 244, 84);
-  x.fillStyle = '#f2c230'; x.fillRect(10, 10, 236, 76);
-  x.fillStyle = '#1a1406';
-  x.font = 'bold 44px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText(text, 128, 44);
-  x.font = 'bold 14px sans-serif';
-  x.fillText(sub, 128, 76);
-  return c;
-}
-function plaque(lines) {
-  const c = document.createElement('canvas');
-  c.width = 384; c.height = 224;
-  const x = c.getContext('2d');
-  x.fillStyle = '#f4f1ea'; x.fillRect(0, 0, 384, 224);
-  x.strokeStyle = '#2a2a2a'; x.lineWidth = 6; x.strokeRect(8, 8, 368, 208);
-  x.fillStyle = '#222'; x.font = 'bold 22px sans-serif'; x.textAlign = 'center';
-  lines.forEach((l, i) => x.fillText(l, 192, 52 + i * 40));
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.1), new THREE.MeshBasicMaterial({ map: tex }));
+// The passage you walk eight times. Every lap is the same place, and about half the time
+// something in it is wrong. See something: turn back. See nothing: keep going. Either way the turn
+// at the end brings you to the start of it again, and the sign says how far you've got.
+const ut = (t) => HALL.u0 + t;
+const PLAQUE = ['DO NOT OVERLOOK ANY ANOMALIES.', 'IF YOU SEE ONE, TURN BACK.', 'IF YOU DO NOT, KEEP GOING.', 'TO LEAVE, GO TO EXIT 8.'];
+const PLAQUE_ODD = ['DO NOT OVERLOOK ANY ANOMALIES.', 'IF YOU SEE ONE, KEEP GOING.', 'IF YOU DO NOT, TURN BACK.', 'TO LEAVE, GO TO EXIT 8.'];
+
+// the figures are modelled facing -z; this turns one round inside a holder that faces +z, which is
+// what place() and face() point at things
+function faceForward(f) {
+  const w = new THREE.Group();
+  f.rotation.y = Math.PI;
+  w.add(f);
+  w.userData.head = f.userData.head;
+  return w;
 }
 
-const ANOMALIES = ['poster', 'door', 'lights', 'extra_door', 'missing', 'water', 'vent', 'figure', 'ceiling', 'red', 'tv', 'sign', 'poster_gone', 'doors_open'];
+// Every way a lap can be wrong. Most change a block or two; some change the furniture or the
+// building itself; a few move, or can only be heard.
+const HALL_ANOMS = [
+  ['poster', 1], ['poster_gone', 1], ['poster_extra', 0.8], ['door', 1], ['extra_door', 1], ['doors_open', 1], ['door_ajar', 0.9],
+  ['lights', 1], ['red', 0.9], ['ceiling', 1], ['water', 0.9], ['vent', 1], ['missing', 0.8], ['tv', 0.8], ['floor_hole', 0.9],
+  ['mirror', 0.9], ['exit_early', 0.9], ['pilaster_gone', 0.9], ['pillar', 0.9], ['alcove_shut', 0.9], ['alcove_dark', 0.8], ['dim_passage', 0.8],
+  ['sign', 1], ['plaque', 1], ['rail_gone', 0.9], ['extinguisher', 1], ['handprints', 0.9], ['clock', 0.9], ['camera', 1],
+  ['poster_eyes', 1], ['vending_gone', 0.8], ['bench_moved', 0.8], ['figure', 0.9], ['still_figure', 0.9], ['knocking', 0.7],
+  ['footsteps', 0.6], ['flicker', 0.8], ['long_shadow', 0.7],
+];
 
 class Hallway extends Kind {
   start() {
@@ -600,48 +585,112 @@ class Hallway extends Kind {
     this.count = 0;
     this.first = true;
     this.anomaly = null;
-    this.entry = 1;
-    this.edits = [];
-    this.sideClosed = false;
     this.lastAnom = null;
-    this.figure = null;
+    this.edits = [];
+    this.undo = [];
+    this.aprops = [];
+    this.dyn = null;
+    this.sideClosed = false;
+    this.zone = null;
+    this.dip = 0;
+    this.best = 0;
+    this.laps = 0;
+    const L = this.L;
+    const place = (obj, t, y, v, du, dv) => {
+      L.point(ut(t), y, v, obj.position);
+      const [nx, nz] = L.dir(du, dv);
+      obj.rotation.y = Math.atan2(nx, nz);
+      if (!obj.parent) L.props.add(obj);
+      return obj;
+    };
+    this.place = place;
+    const face = (tex, w, h, z = 0) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); m.position.z = z; return m; };
+    // the signs, over each end of the passage
     this.signs = [];
-    for (const su of [4, 35]) {
+    for (const t of [2, HALL.L - 3]) {
       const g = new THREE.Group();
-      const tex = new THREE.CanvasTexture(signCanvas('EXIT 0', 'KEEP GOING'));
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const mat = new THREE.MeshBasicMaterial({ map: tex });
-      for (const s of [0, 1]) {
-        const pl = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.56), mat);
-        pl.rotation.y = s * Math.PI;
-        pl.position.z = s ? -0.012 : 0.012;
+      g.add(HP.signHousing());
+      const tex = HP.pixelCanvas(64, 24, (x) => HP.drawExitSign(x, 0));
+      for (const sd of [0, 1]) {
+        const pl = face(tex, 1.54, 0.58, sd ? -0.058 : 0.058);
+        pl.rotation.y = sd * Math.PI;
         g.add(pl);
       }
-      blk(g, new THREE.MeshBasicMaterial({ color: 0x333333 }), 0.03, 0.4, 0.03, -0.5, 0.45, 0);
-      blk(g, new THREE.MeshBasicMaterial({ color: 0x333333 }), 0.03, 0.4, 0.03, 0.5, 0.45, 0);
-      this.L.point(su + 0.5, 3.35, 15.5, g.position);
-      const [nx, nz] = this.L.dir(1, 0);
-      g.rotation.y = Math.atan2(nx, nz);
-      this.L.props.add(g);
-      this.signs.push({ g, tex, mat });
+      place(g, t + 0.5, 3.28, 17.5, -1, 0);
+      this.signs.push({ g, tex });
     }
-    const pq = plaque(['IF YOU SEE ANYTHING UNUSUAL,', 'TURN BACK IMMEDIATELY.', 'IF NOTHING IS UNUSUAL, KEEP GOING.', 'EXIT AT 8.']);
-    this.L.point(7.0, 1.7, 16.97, pq.position);
-    const [nx, nz] = this.L.dir(0, -1);
-    pq.rotation.y = Math.atan2(nx, nz);
-    this.L.props.add(pq);
-    this._setSigns(`EXIT ${this.count}`);
+    // the rules, opposite where you come in
+    this.plaqueTex = HP.pixelCanvas(192, 56, (x) => HP.drawPlaque(x, PLAQUE));
+    this.plaqueOdd = HP.pixelCanvas(192, 56, (x) => HP.drawPlaque(x, PLAQUE_ODD));
+    this.plaque = new THREE.Group();
+    this.plaque.add(HP.plaqueFrame());
+    this.plaqueFace = face(this.plaqueTex, 1.92, 0.56, 0.005);
+    this.plaque.add(this.plaqueFace);
+    place(this.plaque, 15, 2.0, 20.96, 0, -1);
+    // a clock that keeps real time
+    this.clockCanvas = document.createElement('canvas'); this.clockCanvas.width = 32; this.clockCanvas.height = 32;
+    this.clockTex = new THREE.CanvasTexture(this.clockCanvas);
+    this.clockTex.colorSpace = THREE.SRGBColorSpace; this.clockTex.magFilter = THREE.NearestFilter;
+    this.clock = new THREE.Group();
+    this.clock.add(HP.clockFrame());
+    this.clock.add(face(this.clockTex, 0.58, 0.58, 0.005));
+    place(this.clock, 44.5, 3.0, 20.94, 0, -1);
+    this.clockT = 0; this.clockSpin = 0;
+    this._drawClock();
+    // handrails in the bays along the south wall
+    this.rails = new THREE.Group();
+    L.props.add(this.rails);
+    for (const t of [22.5, 30.5]) this.rails.add(place(HP.handrail(6.6), t, 0, 14.12, 1, 0));
+    // a fire extinguisher by the far end, with its sign
+    this.ext = new THREE.Group();
+    this.ext.add(HP.extinguisher());
+    const fire = face(HP.fireSign(), 0.36, 0.18, -0.12); fire.position.y = 1.25;
+    this.ext.add(fire);
+    this.extHome = [44.5, 14.14, 0, 1];
+    this._putExt(...this.extHome);
+    // a camera at the far end of the concourse, watching it
+    const cam = HP.cctv();
+    this.cam = new THREE.Group();
+    this.cam.add(cam.arm);
+    this.camHead = new THREE.Group(); this.camHead.position.y = -0.02; this.cam.add(this.camHead);
+    this.camHead.add(cam.head);
+    const led = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 0.025), new THREE.MeshBasicMaterial({ color: 0xff2a1a }));
+    led.position.set(0.06, 0.05, 0.2); this.camHead.add(led);
+    place(this.cam, 45.4, 4.38, 19.4, 0, 1);
+    this._aimCam(null);
+    // a bench in a bay, drinks machines in the north alcove, a seat and a plant in the south one
+    this.bench = place(HP.bench(2.4), 22.5, 0, 14.42, 0, 1);
+    this.bench.rotation.y += 0;
+    this.benchHome = [22.5, 14.42];
+    this.vend = [place(HP.vending(0), 37.5, 0, 22.55, 0, -1), place(HP.vending(1), 38.5 + 0.05, 0, 22.55, 0, -1)];
+    place(HP.bench(1.8), 38, 0, 12.4, 0, 1);
+    place(HP.plant(), 36.45, 0, 12.5, 0, 1);
+    place(HP.bin(), 33.2, 0, 14.3, 0, 1);
     this.g.audio.setLoop('fluoro', true, 0.35);
+    this._setSigns(0);
   }
 
   sub() { return `Exit ${this.count}`; }
-  objective() { return [`Exit ${this.count} of 8`, 'Something wrong: turn back', 'Nothing wrong: keep going']; }
+  objective() {
+    const lines = [`Exit ${this.count} of 8`, 'Anything unusual: turn back', 'Nothing unusual: keep going'];
+    if (this.best > 0) lines.push(`Furthest: Exit ${this.best}`);
+    return lines;
+  }
 
-  _setSigns(text) {
-    for (const s of this.signs) {
-      const c = signCanvas(text, text.startsWith('EXIT') ? '' : '');
-      s.tex.image = c; s.tex.needsUpdate = true;
-    }
+  _setSigns(n) {
+    for (const s of this.signs) { HP.drawExitSign(s.tex.image.getContext('2d'), n); s.tex.needsUpdate = true; }
+  }
+  _drawClock() {
+    const d = new Date();
+    let h = d.getHours(), m = d.getMinutes(), sec = d.getSeconds();
+    if (this.clockSpin) { const k = -this.t * 1400; m = ((k / 60) % 60 + 60) % 60; h = ((k / 3600) % 12 + 12) % 12; sec = ((k % 60) + 60) % 60; }
+    HP.drawClockFace(this.clockCanvas.getContext('2d'), h, m, sec);
+    this.clockTex.needsUpdate = true;
+  }
+  _putExt(t, v, du, dv) { this.place(this.ext, t, 0, v, du, dv); }
+  _aimCam(target) {
+    // it normally looks back down the concourse at whoever's coming
+    this.camHead.lookAt(target || this.L.point(ut(12), 0.8, 17.5, _q));
   }
 
   edit(u, y, v, id) {
@@ -650,95 +699,246 @@ class Hallway extends Kind {
     this.edits.push([u, y, v, old]);
     this.L.set(u, y, v, id);
   }
+  e(t, y, v, id) { this.edit(ut(t), y, v, id); }
+  prop(obj) { if (!obj.parent) this.L.props.add(obj); this.aprops.push(obj); return obj; }
+  hide(obj) { obj.visible = false; this.undo.push(() => { obj.visible = true; }); }
 
   _revert() {
     for (let i = this.edits.length - 1; i >= 0; i--) { const [u, y, v, id] = this.edits[i]; this.L.set(u, y, v, id); }
     this.edits = [];
-    if (this.figure) { this.figure.removeFromParent(); this.figure = null; }
+    for (const f of this.undo) f();
+    this.undo = [];
+    for (const o of this.aprops) o.removeFromParent();
+    this.aprops = [];
+    this.dyn = null;
+    this.figure = null;
+    this.L.power = 1;
   }
 
   _apply(kind) {
-    const e = (u, y, v, id) => this.edit(u, y, v, id);
+    const e = (t, y, v, id) => this.e(t, y, v, id);
+    const L = this.L, g = this.g;
+    const hallAir = (t, fn) => { for (let v = 12; v <= 22; v++) if (hallOpen(ut(t), v)) fn(v); };
     switch (kind) {
-      case 'poster': e(14, 1, 13, B.POSTER_ODD); break;
-      case 'door': e(20, 0, 17, B.DREAM_DOOR); e(20, 1, 17, B.DREAM_DOOR); break;
+      // ---- the blocks
+      case 'poster': e(21, 1, 13, B.POSTER_ODD); break;
+      case 'poster_gone': e(23, 1, 21, B.POOL_TILE); break;
+      case 'poster_extra': e(24, 1, 13, B.POSTER); break;
+      case 'door': e(20, 0, 21, B.DREAM_DOOR); e(20, 1, 21, B.DREAM_DOOR); break;
+      case 'extra_door': e(24, 0, 21, B.OFFICE_DOOR); e(24, 1, 21, B.OFFICE_DOOR_TOP); break;
+      case 'doors_open': for (const t of HALL_DOORS) { e(t, 0, 21, B.LIT_DARK); e(t, 1, 21, B.LIT_DARK); } break;
+      case 'door_ajar': e(30, 0, 21, B.LIT_DARK); e(30, 1, 21, B.LIT_DARK); break;
       case 'lights':
-        for (let u = 17; u <= 33; u++) {
-          if (fm(u, 4) === 1) e(u, 4, 15, B.CEILING_TILE);
-          for (let y = 0; y <= 3; y++) for (let v = 14; v <= 16; v++) e(u, y, v, B.LIT_DARK);
+        for (let t = 26; t < HALL.L; t++) {
+          const H = hallHeight(t);
+          hallAir(t, (v) => { if (hallCeiling(t, v) === B.LIGHT_PANEL) e(t, H, v, B.CEILING_TILE); for (let y = 0; y < H; y++) e(t, y, v, B.LIT_DARK); });
         }
         break;
-      case 'extra_door': e(26, 0, 17, B.OFFICE_DOOR); e(26, 1, 17, B.OFFICE_DOOR_TOP); break;
-      case 'missing': for (let u = 22; u <= 23; u++) for (let y = 1; y <= 2; y++) e(u, y, 13, B.MISSING); break;
-      case 'water': for (let u = 10; u <= 30; u++) for (let v = 14; v <= 16; v++) e(u, -1, v, B.WATER); break;
-      case 'vent': e(16, 3, 17, B.EYE); break;
-      case 'ceiling': for (let u = 12; u <= 28; u++) for (let v = 14; v <= 16; v++) e(u, 3, v, B.CEILING_TILE); break;
-      case 'red': for (let u = 1; u <= 37; u += 4) e(u, 4, 15, B.EMERGENCY); break;
-      case 'tv': e(18, 0, 16, B.TV); break;
-      case 'poster_gone': e(26, 1, 13, B.POOL_TILE); break;
-      case 'doors_open': for (const u of [8, 20, 32]) { e(u, 0, 17, B.LIT_DARK); e(u, 1, 17, B.LIT_DARK); } break;
+      case 'red': for (let t = 0; t < HALL.L; t++) { const H = hallHeight(t); hallAir(t, (v) => { if (hallCeiling(t, v) === B.LIGHT_PANEL) e(t, H, v, B.EMERGENCY); }); } break;
+      case 'ceiling': for (let t = 12; t <= 34; t++) hallAir(t, (v) => e(t, 4, v, B.CEILING_TILE)); break;
+      case 'water': for (let t = 11; t <= 40; t++) for (let v = 14; v <= 20; v++) if (hallOpen(ut(t), v)) e(t, -1, v, B.WATER); break;
+      case 'vent': e(28, 4, 21, B.EYE); break;
+      case 'missing': for (let t = 27; t <= 28; t++) for (let y = 1; y <= 2; y++) e(t, y, 13, B.MISSING); break;
+      case 'tv': e(31, 0, 19, B.TV); break;
+      case 'floor_hole': e(24, -1, 17, B.VOID); break;
+      case 'mirror':
+        // the doors and posters have swapped walls
+        for (const t of HALL_DOORS) { e(t, 0, 21, B.POOL_DEEP); e(t, 1, 21, B.POOL_TILE); e(t, 0, 13, B.OFFICE_DOOR); e(t, 1, 13, B.OFFICE_DOOR_TOP); }
+        for (const t of HALL_POSTERS_N) { e(t, 1, 21, B.POOL_TILE); e(t, 1, 13, B.POSTER); }
+        for (const t of HALL_POSTERS_S) { e(t, 1, 13, B.POOL_TILE); e(t, 1, 21, B.POSTER); }
+        break;
+      case 'exit_early': e(30, 0, 21, B.EXIT_DOOR); e(30, 1, 21, B.EXIT_DOOR_TOP); e(30, 2, 21, B.EXIT_SIGN); break;
+      // ---- the building
+      case 'pilaster_gone': for (let y = 0; y <= 4; y++) e(26, y, 14, B.LIT_AIR); break;
+      case 'pillar': for (let y = 0; y <= 4; y++) e(29, y, 17, y === 0 || y === 3 ? B.POOL_DEEP : B.CONCRETE); break;
+      case 'alcove_shut':
+        for (let t = HALL_ALCOVES.north[0]; t <= HALL_ALCOVES.north[1]; t++) for (let y = 0; y <= 4; y++) e(t, y, 21, y === 0 || y === 3 ? B.POOL_DEEP : B.POOL_TILE);
+        for (const m of this.vend) this.hide(m);
+        break;
+      case 'alcove_dark':
+        for (let t = HALL_ALCOVES.north[0]; t <= HALL_ALCOVES.north[1]; t++) { e(t, 5, 21, B.CEILING_TILE); e(t, 5, 22, B.CEILING_TILE); for (let y = 0; y <= 4; y++) { e(t, y, 21, B.LIT_DARK); e(t, y, 22, B.LIT_DARK); } }
+        break;
+      case 'dim_passage':
+        // the far passage has lost its lights
+        for (let t = HALL.hall1 + 1; t < HALL.L; t++) for (let v = 16; v <= 18; v++) for (let y = 0; y <= 3; y++) e(t, y, v, B.LIT_DIM);
+        for (let t = HALL.hall1 + 1; t < HALL.L; t++) if (fm(t, 4) === 1) e(t, 4, 17, B.CEILING_TILE);
+        break;
+      // ---- the furniture
+      case 'sign': break; // handled with the signs
+      case 'plaque': this.plaqueFace.material.map = this.plaqueOdd; this.plaqueFace.material.needsUpdate = true; this.undo.push(() => { this.plaqueFace.material.map = this.plaqueTex; this.plaqueFace.material.needsUpdate = true; }); break;
+      case 'rail_gone': this.hide(this.rails); break;
+      case 'extinguisher': this._putExt(44.5, 20.85, 0, -1); this.undo.push(() => this._putExt(...this.extHome)); break;
+      case 'vending_gone': this.hide(this.vend[1]); break;
+      case 'bench_moved': this.place(this.bench, 22.5, 0, 20.58, 0, -1); this.undo.push(() => this.place(this.bench, this.benchHome[0], 0, this.benchHome[1], 0, 1)); break;
+      case 'handprints': {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.25), new THREE.MeshBasicMaterial({ map: HP.pixelCanvas(64, 40, HP.drawHandprints), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+        this.prop(this.place(m, 30.5, 1.55, 14.02, 0, 1));
+        break;
+      }
+      case 'clock': this.clockSpin = 1; this.undo.push(() => { this.clockSpin = 0; this._drawClock(); }); break;
+      case 'camera': this.dyn = () => this._aimCam(_w.copy(g.camera.position)); this.undo.push(() => this._aimCam(null)); break;
+      case 'poster_eyes': {
+        // the sun on the poster by the door has eyes, and they follow you
+        const eyes = new THREE.Group();
+        const white = new THREE.MeshBasicMaterial({ color: 0xf2eee4 }), dark = new THREE.MeshBasicMaterial({ color: 0x0a0806 });
+        const list = [];
+        for (const s of [-1, 1]) {
+          const eg = new THREE.Group(); eg.position.set(s * 0.12, 0, 0);
+          eg.add(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.1, 0.06), white));
+          const pu = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.02), dark); pu.position.z = 0.035; eg.add(pu);
+          eyes.add(eg); list.push(eg);
+        }
+        this.prop(this.place(eyes, 12.4, 1.66, 20.97, 0, -1));
+        this.dyn = () => { for (const eg of list) eg.lookAt(g.camera.position); };
+        break;
+      }
+      case 'long_shadow': {
+        // a shadow on the wall with nobody to cast it
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 2.4), new THREE.MeshBasicMaterial({ map: HP.pixelCanvas(16, 40, HP.drawShadow), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+        this.prop(this.place(m, 32.5, 1.2, 20.97, 0, -1));
+        break;
+      }
+      // ---- the things that move, or that you only hear
       case 'figure': {
-        const f = buildNullFigure(true);
-        const fu = this.entry > 0 ? 33.5 : 6.5;
-        this.L.point(fu, 0, 15.5, f.position);
-        this.L.props.add(f);
+        const f = faceForward(buildNullFigure(true));
+        this.prop(this.place(f, HALL.hall1 - 1.5, 0, 17.5, -1, 0));
         this.figure = f;
         break;
       }
+      case 'still_figure': {
+        // someone standing with their face to the wall; it turns its head as you pass
+        const f = faceForward(buildNullFigure(false));
+        this.prop(this.place(f, 29.5, 0, 20.3, 0, 1));
+        const head = f.userData.head;
+        this.dyn = () => {
+          const d = f.position.distanceTo(g.camera.position);
+          if (d < 4.5) head.rotation.y += (Math.PI - head.rotation.y) * 0.04;
+        };
+        break;
+      }
+      case 'knocking': {
+        let done = false;
+        this.dyn = () => {
+          const [u] = L.local(this.P.pos.x, this.P.pos.z);
+          const t = u - HALL.u0;
+          if (!done && t > 17 && t < 24) {
+            done = true;
+            for (let k = 0; k < 3; k++) setTimeout(() => { g.audio.noiseHit(0.12, 180, 0.35, 'lowpass', 1); g.audio.noiseHit(0.05, 900, 0.05, 'bandpass', 2); }, 200 + k * 330);
+            this.L.mode.horror.shake = Math.max(this.L.mode.horror.shake, 0.12);
+          }
+        };
+        break;
+      }
+      case 'footsteps': {
+        // someone walks when you walk, a step behind
+        let acc = 0;
+        this.dyn = (dt) => {
+          const sp = Math.hypot(this.P.vel.x, this.P.vel.z);
+          if (sp < 1 || !this.P.onGround) return;
+          acc += sp * dt;
+          if (acc > 1.35) { acc = 0; setTimeout(() => g.audio.footstep('hard'), 240); }
+        };
+        break;
+      }
+      case 'flicker': this.dyn = () => { L.power = Math.random() < 0.08 ? 0.12 : Math.random() < 0.05 ? 0.5 : 1; }; break;
       default: break;
     }
   }
 
-  // crossed the middle of a bend: judge the corridor you just walked, and change the next one
+  // came through the middle of the turn: judge the lap you just walked, and change the next one
   _cross(dir) {
     const L = this.L;
     if (this.first) this.first = false;
     else {
-      const forward = dir === this.entry;
-      const correct = this.anomaly ? !forward : forward;
-      this.count = correct ? Math.min(8, this.count + 1) : 0;
+      this.laps++;
+      const correct = this.anomaly ? dir < 0 : dir > 0;
+      if (correct) {
+        this.count = Math.min(8, this.count + 1);
+        this.g.audio.distant('chime');
+      } else {
+        // wrong: back to the beginning, and the lights know it
+        if (this.count > 0) this.L.center(this.anomaly ? 'You walked past something.' : 'There was nothing there.', '#d8c8b8', 2.2);
+        this.count = 0;
+        this.dip = 0.45;
+        this.g.audio.distant('thud');
+      }
+      this.best = Math.max(this.best, this.count);
     }
     if (!this.sideClosed) {
       this.sideClosed = true;
-      for (const u of [6, 7]) for (let y = 0; y <= 2; y++) L.set(u, y, 13, B.POOL_TILE);
+      for (const u of [6, 7]) for (let y = 0; y <= 2; y++) L.set(u, y, 13, y === 0 ? B.POOL_DEEP : B.POOL_TILE);
     }
     this._revert();
-    this.entry = dir;
-    let sign = `EXIT ${this.count}`;
+    let sign = this.count;
     if (this.count >= 8) {
-      // the far end becomes a door
+      // the end of the passage is a door
       this.anomaly = null;
-      const ue = dir > 0 ? 40 : -1;
-      for (let v = 14; v <= 16; v++) for (let y = 0; y <= 3; y++) {
-        const id = v === 15 ? (y === 0 ? B.EXIT_DOOR : y === 1 ? B.EXIT_DOOR_TOP : y === 2 ? B.EXIT_SIGN : B.POOL_TILE) : B.POOL_TILE;
-        this.edit(ue, y, v, id);
+      for (let v = 16; v <= 18; v++) for (let y = 0; y <= 3; y++) {
+        const id = v === 17 ? (y === 0 ? B.EXIT_DOOR : y === 1 ? B.EXIT_DOOR_TOP : y === 2 ? B.EXIT_SIGN : B.POOL_TILE) : B.POOL_TILE;
+        this.e(HALL.L, y, v, id);
       }
     } else {
-      const pool = ANOMALIES.filter((a) => a !== this.lastAnom);
-      this.anomaly = Math.random() < 0.55 ? pool[Math.floor(Math.random() * pool.length)] : null;
+      // Exit 0 is always the passage as it should be, so you can learn what normal looks like
+      const clean = this.count === 0;
+      const pool = HALL_ANOMS.filter(([a]) => a !== this.lastAnom);
+      let total = 0; for (const [, w] of pool) total += w;
+      let r = Math.random() * total, pick = pool[0][0];
+      for (const [a, w] of pool) { r -= w; if (r <= 0) { pick = a; break; } }
+      this.anomaly = !clean && Math.random() < 0.58 ? pick : null;
       if (this.anomaly) { this.lastAnom = this.anomaly; this._apply(this.anomaly); }
-      if (this.anomaly === 'sign') sign = `EXIT ${(this.count + 1 + Math.floor(Math.random() * 7)) % 10}`;
+      if (this.anomaly === 'sign') sign = (this.count + 2 + Math.floor(Math.random() * 6)) % 10;
     }
     this._setSigns(sign);
+  }
+
+  onExitDoor(hit) {
+    const [u] = this.L.cellLocal(hit.x, hit.z);
+    if (this.count >= 8 && hallT(u) === HALL.L) { this.L.exit(this.exitLine); return; }
+    this.L.center('The handle turns, but the door will not open. Something on the other side is holding it.', '#e8c0c0', 3.5);
+    this.g.audio.distant('thud');
+    this.L.scare(0.35);
   }
 
   update(dt) {
     super.update(dt);
     const L = this.L, p = this.P.pos;
-    const [u] = L.local(p.x, p.z);
-    const n = Math.floor((u + 4) / HALL.P);
-    if (n !== 0) {
-      L.shift(-n * HALL.P, 0);
-      this._cross(n > 0 ? 1 : -1);
+    const [u, v] = L.local(p.x, p.z);
+    const t = hallT(u);
+    // In the shaft of the turn. Its top half leads back to the passage you came from, its bottom
+    // half on to the next. Come down through the middle: one lap on. Go up through it (you turned
+    // back): half round about the middle, and you're on your way to the start again.
+    const inShaft = t >= HALL.L + 6 && t < HALL.L + 10 && v >= 10 && v < 25;
+    if (!inShaft) this.zone = null;
+    else {
+      const side = v >= 19.5 ? 'top' : v < 15.5 ? 'bottom' : null;
+      if (side && this.zone && side !== this.zone) {
+        const k = Math.floor((u - HALL.u0) / HALL.P);
+        if (side === 'bottom') {
+          L.shift(-(k + 1) * HALL.P, 0);
+          this._cross(1);
+        } else {
+          L.turn(hallTurn(k), HALL.cv);
+          if (k !== -1) L.shift(-(k + 1) * HALL.P, 0);
+          this._cross(-1);
+        }
+        this.zone = 'bottom';
+      } else if (side) this.zone = side;
     }
-    // the man at the end of the corridor comes closer when you look away
+    if (this.dyn) this.dyn(dt);
+    // the clock
+    this.clockT -= dt;
+    if (this.clockT <= 0) { this.clockT = this.clockSpin ? 0.05 : 1; this._drawClock(); }
+    // lights: a dip when you get it wrong; the furniture dims with them
+    if (this.dip > 0) { this.dip -= dt; L.power = this.dip > 0.15 ? 0.1 : 1; }
+    HP.hallPropMaterial().color.setScalar(clamp(L.powerK, 0.12, 1));
+    // the man at the end of the concourse comes closer when you look away
     const f = this.figure;
     let fd = 99;
     if (f) {
       this.face(f, p.x, p.z, 1);
       fd = Math.hypot(f.position.x - p.x, f.position.z - p.z);
       if (!this.seen(f.position, 1.8, false)) {
-        const [fu, fv] = L.local(f.position.x, f.position.z);
+        const [, fv] = L.local(f.position.x, f.position.z);
         const [tx, tz] = L.worldAt(u, fv);
         this.step(f, tx, tz, 2.6, dt, false);
         if (Math.random() < dt * 0.6) this.g.audio.footstep('hard');
@@ -747,12 +947,14 @@ class Hallway extends Kind {
         L.scare(1);
         L.hurt(22, 'the man in the hallway');
         this.count = 0;
-        this._setSigns('EXIT 0');
+        this._setSigns(0);
         f.removeFromParent(); this.figure = null;
       }
     }
-    this.dread = 0.16 + (this.anomaly ? 0.1 : 0) + (f ? clamp(1 - fd / 30, 0, 1) * 0.55 : 0);
+    this.dread = 0.16 + (this.anomaly ? 0.08 : 0) + (f ? clamp(1 - fd / 30, 0, 1) * 0.55 : 0);
   }
+
+  stop() { HP.hallPropMaterial().color.setScalar(1); }
 }
 
 // ======================================================================================= Library
@@ -799,7 +1001,8 @@ class Library extends Kind {
   objective() {
     const q = clamp(this.noise, 0, 1);
     const bar = '▮'.repeat(Math.round(q * 4)) + '▯'.repeat(4 - Math.round(q * 4));
-    return [this.exitOpen ? 'A door has opened somewhere near' : `Books with your name: ${this.have}/3`, `Noise ${bar}`];
+    if (this.exitOpen) return ['A door has opened somewhere near', `Noise ${bar}`];
+    return [`Books with your name: ${this.have}/3`, 'Listen for pages turning; look for a lamp over an aisle', `Noise ${bar}`];
   }
 
   interact(hit) {
@@ -877,14 +1080,19 @@ class Library extends Kind {
     // shelves move when nobody is looking
     this.shiftT -= dt;
     if (this.shiftT <= 0) { this.shiftT = rnd(12, 20); this._shift(); }
-    // pages turning somewhere toward the next book
+    // pages turning, from the nearest book you haven't found
     this.rustleT -= dt;
-    const next = this.books.find((q) => !q.got);
-    if (next && this.rustleT <= 0) {
-      this.rustleT = rnd(8, 12);
-      const [bx, bz] = L.worldAt(next.u + 0.5, next.v + 0.5);
+    let next = null, nd = 1e9;
+    for (const q of this.books) {
+      if (q.got) continue;
+      const [bx, bz] = L.worldAt(q.u + 0.5, q.v + 0.5);
       const db = Math.hypot(bx - p.x, bz - p.z);
-      g.audio.whisper(0.02 + clamp(1 - db / 70, 0, 1) * 0.05, this.pan(bx, bz));
+      if (db < nd) { nd = db; next = [bx, bz]; }
+    }
+    if (next && this.rustleT <= 0 && !this.exitOpen) {
+      this.rustleT = rnd(4.5, 7);
+      g.audio.whisper(0.025 + clamp(1 - nd / 60, 0, 1) * 0.06, this.pan(next[0], next[1]));
+      if (nd < 14) g.audio.distant('steps', { pan: this.pan(next[0], next[1]), gain: 0.4 });
     }
     this.dread = 0.24 + clamp(1 - dl / 30, 0, 1) * 0.45 + (lb.state === 'hunt' ? 0.25 : 0);
   }

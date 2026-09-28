@@ -139,12 +139,16 @@ are drawn in your world. Creatures are still simulated separately on each machin
 - Inside, the space goes on forever and you can't break the walls or build your way out. You have to find the exit, and every place has its own way out and its own rules:
   - **The Backrooms**: a maze of damp carpet and yellow wallpaper. Follow the hum: it's loudest near the exit. Sometimes the lights go out. Keep your headlamp up when they do.
   - **The Poolrooms**: bright tiled halls, skylights and still water.
-    - Follow the wet footprints to a long stair that goes down further than the floor is thick.
+    - Follow the wet footprints: one trail, all going the same way, through open arches to a long stair that goes down further than the floor is thick. When you lose them, listen: falling water sounds from the way on.
     - It descends through the ceiling of the **Lower Baths**: a dim, flooded hall of columns under a coffered roof, its floor one still mirror.
     - Somewhere across the baths is a round well of real daylight with a waterfall. A stair climbs its wall all the way up to a lawn in the tiles, and that is the way out.
     - Don't swim in the well's pool. You won't be the only thing in it.
-  - **The Hallway**: one corridor, walked again and again. If anything is different, turn back. If nothing is, keep going. Get it right eight times in a row and there's a door. Get it wrong and you start again.
-  - **The Endless Library**: find the three books with your name on the spine. The shelves move when nobody is looking. Walk, don't run: something in there hates noise.
+  - **The Hallway**: an underground passage walked again and again.
+    - A short passage with the exit sign opens into a long, tall tiled concourse: pilasters, a bench, doors that stay shut, a vending alcove, a seating recess, a clock that keeps real time and a camera at the far end. Then it narrows again and turns.
+    - If anything is different, turn back. If nothing is, keep going. Either way the turn brings you to the start again, facing the same way, and the sign says how far you've got. Exit 0 is always as it should be, so you can learn what normal looks like.
+    - Get it right eight times in a row and the end of the passage is a door. Get it wrong and the lights dip and you're back at Exit 0.
+    - Around 40 kinds of anomaly: blocks, the furniture, the building itself, things that move, and things you can only hear. Some doors marked EXIT are not the exit.
+  - **The Endless Library**: find three books with your name on the spine; there are about nine, scattered further and further out. Each sits under its own lamp, and you can hear pages turning from the nearest. The shelves move when nobody is looking. Walk, don't run: something in there hates noise.
   - **The Warehouse**: dark racks and pools of lamplight. Find the breaker in the office to power the loading door, then get to the daylight. Keep your torch on the mannequins.
 - **Almond Water** turns up in boxes in the Backrooms. Drink it to heal and steady your nerves.
 - Each visit is different; only the passage stays the same. Escaping pays well the first time. Time passes outside while you're in there.
